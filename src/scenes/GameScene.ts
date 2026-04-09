@@ -478,10 +478,7 @@ export class GameScene extends Phaser.Scene {
 
     // While dying, keep the world alive for the death animation but skip player input
     if (this.dying) {
-      this.updateTowers(time);
-      this.updateEnemies(time, vd);
-      this.updateBoss(time);
-      this.updateProjectiles(time);
+      // World freezes — just let tweens/timers run for the death animation
       return;
     }
 
@@ -1541,9 +1538,10 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver || this.dying) return;
     this.dying = true;
 
-    // Stop the player but keep the scene running for the death animation
+    // Stop the player and freeze the world
     this.player.setVelocity(0, 0);
     (this.player.body as Phaser.Physics.Arcade.Body).enable = false;
+    this.physics.pause();
 
     // Kill any existing tweens on the player (e.g. hurt flash) to avoid conflicts
     this.tweens.killTweensOf(this.player);
