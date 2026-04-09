@@ -548,6 +548,7 @@ export class GameScene extends Phaser.Scene {
   // ---------- TOWERS ----------
   updateTowers(time: number) {
     for (const tower of this.towers) {
+      tower.drawHpBar();
       const st = tower.stats();
       const tgt = this.findNearestEnemy(tower.x, tower.y, st.range);
       if (!tgt) continue;
@@ -705,6 +706,7 @@ export class GameScene extends Phaser.Scene {
   updateBoss(time: number) {
     const b = this.boss;
     if (!b || !b.active || b.dying) return;
+    b.drawHpBar();
 
     // resolve state timers
     if (b.state === 'slam_wind' && time >= b.stateEnd) {

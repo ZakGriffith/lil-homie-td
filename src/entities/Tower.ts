@@ -11,6 +11,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   totalSpent: number;
   lastShot = 0;
   top: Phaser.GameObjects.Sprite;
+  hpBar: Phaser.GameObjects.Graphics;
   tileX: number;
   tileY: number;
   size = CFG.tower.tiles;
@@ -37,6 +38,8 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
     const topTex = kind === 'cannon' ? 'c_top_0' : 't_top_0';
     this.top = scene.add.sprite(wx, wy, topTex).setDepth(7);
+
+    this.hpBar = scene.add.graphics().setDepth(20);
 
     const s = this.stats();
     this.hp = s.hp;
@@ -90,7 +93,22 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.scene.time.delayedCall(60, () => { this.applyTierVisual(); });
   }
 
+  drawHpBar() {
+    this.hpBar.clear();
+    if (this.hp >= this.maxHp) return;
+    const pct = Math.max(0, this.hp / this.maxHp);
+    const w = 28, h = 3;
+    const bx = this.x - w / 2;
+    const by = this.y + CFG.tile * this.size / 2 + 3;
+    this.hpBar.fillStyle(0x111826, 0.8);
+    this.hpBar.fillRect(bx - 1, by - 1, w + 2, h + 2);
+    const color = pct > 0.5 ? 0x4ad96a : pct > 0.25 ? 0xd9a84a : 0xd94a4a;
+    this.hpBar.fillStyle(color, 1);
+    this.hpBar.fillRect(bx, by, w * pct, h);
+  }
+
   destroyTower() {
+    this.hpBar.destroy();
     this.top.destroy();
     this.destroy();
   }
