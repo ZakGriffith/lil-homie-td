@@ -744,6 +744,24 @@ export class GameScene extends Phaser.Scene {
       this.spawnChargeSmoke(b, 1);
     }
 
+    // Mid-charge: bulldoze through anything in her path
+    if (b.state === 'charging') {
+      // Crush player if she runs over them
+      if (b.contactCd < time &&
+          Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < 40) {
+        const chargeDmg = Math.floor(CFG.player.hp * 0.55); // ~55% max HP
+        this.player.hurt(chargeDmg, this);
+        b.contactCd = time + 600; // don't double-tap within the same charge
+        if (this.player.hp <= 0) this.lose();
+      }
+      // Instantly destroy any tower she barrels into
+      for (const t of [...this.towers]) {
+        if (Phaser.Math.Distance.Between(b.x, b.y, t.x, t.y) < 50) {
+          this.destroyTower(t);
+        }
+      }
+    }
+
     if (b.state !== 'chase') return;
 
     const target = this.chooseBossTarget(b);
@@ -848,13 +866,14 @@ export class GameScene extends Phaser.Scene {
   bossChargeImpact(b: Boss) {
     const r = 80;
     if (Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < r) {
-      this.player.hurt(40, this);
+      const chargeDmg = Math.floor(CFG.player.hp * 0.55);
+      this.player.hurt(chargeDmg, this);
       if (this.player.hp <= 0) this.lose();
     }
+    // Towers caught in the impact zone are instantly destroyed
     for (const t of [...this.towers]) {
       if (Phaser.Math.Distance.Between(b.x, b.y, t.x, t.y) < r) {
-        t.hurt(55);
-        if (t.hp <= 0) this.destroyTower(t);
+        this.destroyTower(t);
       }
     }
     for (const w of [...this.walls]) {
