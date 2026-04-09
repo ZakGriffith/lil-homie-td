@@ -10,6 +10,7 @@ export class UIScene extends Phaser.Scene {
   hintText!: Phaser.GameObjects.Text;
   buildText!: Phaser.GameObjects.Text;
   btnTower!: Phaser.GameObjects.Container;
+  btnCannon!: Phaser.GameObjects.Container;
   btnWall!: Phaser.GameObjects.Container;
   btnSpeed!: Phaser.GameObjects.Container;
   speedLabel!: Phaser.GameObjects.Text;
@@ -31,15 +32,18 @@ export class UIScene extends Phaser.Scene {
     this.moneyText = this.add.text(12, 52, '', { fontFamily: 'monospace', fontSize: '14px', color: '#ffd84a' });
     this.killsText = this.add.text(12, 72, '', { fontFamily: 'monospace', fontSize: '14px', color: '#eee' });
 
+    const arrowCost = CFG.tower.kinds.arrow.cost;
+    const cannonCost = CFG.tower.kinds.cannon.cost;
     this.hintText = this.add.text(12, this.scale.height - 22,
-      `1=Tower(${CFG.tower.cost})  2=Wall(${CFG.wall.cost})  Click tower=Info  Hold X+Click=Sell  ESC=Cancel`,
+      `1=Arrow($${arrowCost})  2=Cannon($${cannonCost})  3=Wall($${CFG.wall.cost})  Click tower=Info  Hold X+Click=Sell  ESC=Cancel`,
       { fontFamily: 'monospace', fontSize: '12px', color: '#667' });
 
     this.buildText = this.add.text(W - 12, 10, '', { fontFamily: 'monospace', fontSize: '13px', color: '#7cc4ff' }).setOrigin(1, 0);
 
     // build buttons (top-right)
-    this.btnTower = this.makeButton(W - 160, 34, 70, 28, `TOWER ${CFG.tower.cost}`, () => this.game.events.emit('ui-build', 'tower'));
-    this.btnWall = this.makeButton(W - 82, 34, 70, 28, `WALL ${CFG.wall.cost}`, () => this.game.events.emit('ui-build', 'wall'));
+    this.btnTower = this.makeButton(W - 242, 34, 76, 28, `ARROW ${arrowCost}`, () => this.game.events.emit('ui-build', 'tower', 'arrow'));
+    this.btnCannon = this.makeButton(W - 160, 34, 76, 28, `CANNON ${cannonCost}`, () => this.game.events.emit('ui-build', 'tower', 'cannon'));
+    this.btnWall = this.makeButton(W - 78, 34, 70, 28, `WALL ${CFG.wall.cost}`, () => this.game.events.emit('ui-build', 'wall'));
 
     // speed toggle (top-right, above build buttons)
     this.btnSpeed = this.makeButton(W - 46, 10, 40, 18, '> 1x', () => this.cycleSpeed());

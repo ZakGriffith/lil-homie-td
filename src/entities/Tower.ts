@@ -1,7 +1,10 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
 
+export type TowerKind = 'arrow' | 'cannon';
+
 export class Tower extends Phaser.Physics.Arcade.Sprite {
+  kind: TowerKind;
   level = 0;
   hp: number;
   maxHp: number;
@@ -12,37 +15,42 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   tileY: number;
   size = CFG.tower.tiles;
 
-  // visual tint per level (L1 neutral, L2 blue-ish, L3 gold)
-  static readonly TIER_TINT = [0xffffff, 0x9fd9ff, 0xffd67a];
+  // visual tint per level per kind
+  static readonly TIER_TINT: Record<TowerKind, number[]> = {
+    arrow:  [0xffffff, 0x9fd9ff, 0xffd67a],
+    cannon: [0x6a6a78, 0xb07a3a, 0xd94a2a]
+  };
 
-  constructor(scene: Phaser.Scene, tileX: number, tileY: number) {
+  constructor(scene: Phaser.Scene, tileX: number, tileY: number, kind: TowerKind = 'arrow') {
     const size = CFG.tower.tiles;
     const wx = (tileX + size / 2) * CFG.tile;
     const wy = (tileY + size / 2) * CFG.tile;
     super(scene, wx, wy, 't_base');
     scene.add.existing(this);
     scene.physics.add.existing(this, true); // static
+    this.kind = kind;
     this.tileX = tileX;
     this.tileY = tileY;
     this.setDepth(6);
     const bodySize = CFG.tile * this.size - 10;
     (this.body as Phaser.Physics.Arcade.StaticBody).setSize(bodySize, bodySize);
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
-    this.top = scene.add.sprite(wx, wy, 't_top_0').setDepth(7);
+    const topTex = kind === 'cannon' ? 'c_top_0' : 't_top_0';
+    this.top = scene.add.sprite(wx, wy, topTex).setDepth(7);
 
     const s = this.stats();
     this.hp = s.hp;
     this.maxHp = s.hp;
-    this.totalSpent = CFG.tower.cost;
+    this.totalSpent = CFG.tower.kinds[kind].cost;
     this.applyTierVisual();
   }
 
   stats() {
-    return CFG.tower.levels[this.level];
+    return CFG.tower.kinds[this.kind].levels[this.level];
   }
 
   canUpgrade(): boolean {
-    return this.level < CFG.tower.levels.length - 1;
+    return this.level < CFG.tower.kinds[this.kind].levels.length - 1;
   }
 
   upgradeCost(): number {
@@ -68,9 +76,11 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   }
 
   applyTierVisual() {
-    const tint = Tower.TIER_TINT[this.level] ?? 0xffffff;
+    const tint = Tower.TIER_TINT[this.kind][this.level] ?? 0xffffff;
     this.setTint(tint);
-    this.top.setTint(tint);
+    // Cannon top is already dark pixel art — don't wash it with tint.
+    if (this.kind === 'cannon') this.top.clearTint();
+    else this.top.setTint(tint);
   }
 
   hurt(amount: number) {

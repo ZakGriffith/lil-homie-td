@@ -4,6 +4,7 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
   damage = 10;
   lifetime = 1500;
   born = 0;
+  splashRadius = 0;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'arrow_0');
@@ -14,12 +15,21 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
     this.setSize(10, 4).setOffset(10, 14);
   }
 
-  fire(tx: number, ty: number, speed: number, damage: number) {
+  fire(tx: number, ty: number, speed: number, damage: number, splashRadius = 0) {
     this.damage = damage;
+    this.splashRadius = splashRadius;
     this.born = (this.scene as any).vTime ?? this.scene.time.now;
     const angle = Math.atan2(ty - this.y, tx - this.x);
     this.setRotation(angle);
     this.setVelocity(Math.cos(angle) * speed, Math.sin(angle) * speed);
     this.setActive(true).setVisible(true);
+    // Cannonballs look chunkier and greyer.
+    if (splashRadius > 0) {
+      this.setTint(0x2a2a33);
+      this.setScale(1.4);
+    } else {
+      this.clearTint();
+      this.setScale(1);
+    }
   }
 }

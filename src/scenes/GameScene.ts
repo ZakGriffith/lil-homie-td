@@ -2,7 +2,7 @@ import Phaser from 'phaser';
 import { CFG } from '../config';
 import { Player } from '../entities/Player';
 import { Enemy, EnemyKind } from '../entities/Enemy';
-import { Tower } from '../entities/Tower';
+import { Tower, TowerKind } from '../entities/Tower';
 import { Wall } from '../entities/Wall';
 import { Projectile } from '../entities/Projectile';
 import { Coin } from '../entities/Coin';
@@ -26,6 +26,8 @@ export class GameScene extends Phaser.Scene {
 
   keys!: any;
   buildKind: BuildKind = 'none';
+  buildTowerKind: TowerKind = 'arrow';
+  nextRunnerPack = 0;
   ghost!: Phaser.GameObjects.Sprite;
   gridOverlay!: Phaser.GameObjects.Graphics;
 
@@ -99,9 +101,10 @@ export class GameScene extends Phaser.Scene {
     // boss overlaps set up when boss spawns (since it's created later)
 
     // input
-    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ONE,TWO,X,ESC');
-    this.input.keyboard!.on('keydown-ONE', () => this.setBuild('tower'));
-    this.input.keyboard!.on('keydown-TWO', () => this.setBuild('wall'));
+    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ONE,TWO,THREE,X,ESC');
+    this.input.keyboard!.on('keydown-ONE', () => this.setBuild('tower', 'arrow'));
+    this.input.keyboard!.on('keydown-TWO', () => this.setBuild('tower', 'cannon'));
+    this.input.keyboard!.on('keydown-THREE', () => this.setBuild('wall'));
     this.input.keyboard!.on('keydown-ESC', () => {
       if (this.selectedTower) this.deselectTower();
       else this.setBuild('none');
@@ -130,7 +133,7 @@ export class GameScene extends Phaser.Scene {
 
     // events from UI
     this.events.emit('hud', this.hudState());
-    this.game.events.on('ui-build', (k: BuildKind) => this.setBuild(k));
+    this.game.events.on('ui-build', (k: BuildKind, tk?: TowerKind) => this.setBuild(k, tk));
     this.game.events.on('ui-sell', () => this.setBuild('none'));
     this.game.events.on('ui-speed', (mult: number) => this.setTimeScale(mult));
 
@@ -153,7 +156,7 @@ export class GameScene extends Phaser.Scene {
       money: this.player?.money ?? 0,
       kills: this.player?.kills ?? 0,
       target: this.killsTarget,
-      build: this.buildKind,
+      build: this.buildKind === 'tower' ? this.buildTowerKind : this.buildKind,
       bossSpawned: this.bossSpawned
     };
   }
@@ -171,12 +174,21 @@ export class GameScene extends Phaser.Scene {
     this.time.timeScale = mult;
   }
 
-  setBuild(k: BuildKind) {
+  setBuild(k: BuildKind, towerKind?: TowerKind) {
     this.buildKind = k;
+    if (k === 'tower' && towerKind) this.buildTowerKind = towerKind;
     this.ghost.setVisible(k !== 'none');
     if (this.gridOverlay) this.gridOverlay.setVisible(k !== 'none');
-    if (k === 'tower') this.ghost.setTexture('t_base');
-    if (k === 'wall') this.ghost.setTexture('wall');
+    if (k === 'tower') {
+      this.ghost.setTexture('t_base');
+      // pre-tint the ghost so player sees which kind they're placing
+      const baseTint = Tower.TIER_TINT[this.buildTowerKind][0];
+      this.ghost.setTint(baseTint);
+    }
+    if (k === 'wall') {
+      this.ghost.setTexture('wall');
+      this.ghost.clearTint();
+    }
     if (k !== 'none') this.deselectTower();
     this.pushHud();
   }
@@ -239,9 +251,10 @@ export class GameScene extends Phaser.Scene {
         ? Math.round(wy / CFG.tile) - s / 2
         : Math.floor(wy / CFG.tile) - Math.floor(s / 2);
       if (!this.canPlaceTower(ox, oy)) return;
-      if (this.player.money < CFG.tower.cost) return;
-      this.player.money -= CFG.tower.cost;
-      const t = new Tower(this, ox, oy);
+      const kindCost = CFG.tower.kinds[this.buildTowerKind].cost;
+      if (this.player.money < kindCost) return;
+      this.player.money -= kindCost;
+      const t = new Tower(this, ox, oy, this.buildTowerKind);
       this.towers.push(t);
       this.towerGroup.add(t);
       for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) this.grid[oy + j][ox + i] = 1;
@@ -341,7 +354,7 @@ export class GameScene extends Phaser.Scene {
     panel.add(nub);
 
     // Title: LVL X
-    const title = this.add.text(-W / 2 + 8, -H / 2 + 6, `ARROW  LVL ${t.level + 1}`, {
+    const title = this.add.text(-W / 2 + 8, -H / 2 + 6, `${t.kind.toUpperCase()}  LVL ${t.level + 1}`, {
       fontFamily: 'monospace', fontSize: '12px', color: '#7cc4ff'
     });
     panel.add(title);
@@ -355,8 +368,9 @@ export class GameScene extends Phaser.Scene {
 
     // Current stats
     const st = t.stats();
+    const splashLine = st.splashRadius > 0 ? `  AOE ${st.splashRadius}` : '';
     const stats = this.add.text(-W / 2 + 8, -H / 2 + 22,
-      `DMG ${st.damage}  RNG ${st.range}\nFIRE ${(1000 / st.fireRate).toFixed(1)}/s  HP ${t.hp}/${t.maxHp}`,
+      `DMG ${st.damage}  RNG ${st.range}${splashLine}\nFIRE ${(1000 / st.fireRate).toFixed(1)}/s  HP ${t.hp}/${t.maxHp}`,
       { fontFamily: 'monospace', fontSize: '10px', color: '#ccd' });
     panel.add(stats);
 
@@ -541,8 +555,8 @@ export class GameScene extends Phaser.Scene {
       tower.top.setRotation(angle);
       if (time > tower.lastShot + st.fireRate) {
         tower.lastShot = time;
-        tower.top.play('tower-top-shoot', true);
-        this.spawnProjectile(tower.x, tower.y, tgt.x, tgt.y, st.projectileSpeed, st.damage);
+        tower.top.play(tower.kind === 'cannon' ? 'cannon-top-shoot' : 'tower-top-shoot', true);
+        this.spawnProjectile(tower.x, tower.y, tgt.x, tgt.y, st.projectileSpeed, st.damage, st.splashRadius);
       }
     }
   }
@@ -990,10 +1004,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ---------- PROJECTILES ----------
-  spawnProjectile(x: number, y: number, tx: number, ty: number, speed: number, dmg: number) {
+  spawnProjectile(x: number, y: number, tx: number, ty: number, speed: number, dmg: number, splashRadius = 0) {
     const pr = new Projectile(this, x, y);
     this.projectiles.add(pr);
-    pr.fire(tx, ty, speed, dmg);
+    pr.fire(tx, ty, speed, dmg, splashRadius);
   }
 
   updateProjectiles(time: number) {
@@ -1027,14 +1041,32 @@ export class GameScene extends Phaser.Scene {
 
   projectileHitsEnemy(pr: Projectile, e: Enemy) {
     if (!pr.active || !e.active || e.dying) return;
-    e.hurt(pr.damage);
-    const spark = this.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15);
+    const splash = pr.splashRadius;
+    const dmg = pr.damage;
+    const ix = pr.x, iy = pr.y;
+
+    if (splash > 0) {
+      // AoE: damage everyone (including the initial hit enemy and boss) within radius
+      this.cannonExplode(ix, iy, splash, dmg);
+    } else {
+      this.applyDamageToEnemy(e, dmg);
+    }
+
+    const spark = this.add.sprite(ix, iy, 'fx_hit_0').setDepth(15);
     spark.play('fx-hit');
     spark.once('animationcomplete', () => spark.destroy());
     pr.destroy();
+  }
+
+  // Damage a single enemy and handle its death drops/counts.
+  applyDamageToEnemy(e: Enemy, dmg: number) {
+    if (!e || !e.active || e.dying) return;
+    e.hurt(dmg);
     if (e.hp <= 0) {
-      // drop coin (bronze for basic, silver for heavy)
-      const tier = e.kind === 'basic' ? 'bronze' : 'silver';
+      const tier =
+        e.kind === 'heavy'  ? 'silver' :
+        e.kind === 'runner' ? 'bronze' :
+                              'bronze';
       const coin = new Coin(this, e.x + Phaser.Math.Between(-4, 4), e.y + Phaser.Math.Between(-4, 4), tier);
       this.coins.add(coin);
       const burst = this.add.sprite(e.x, e.y, 'fx_death_0').setDepth(15);
@@ -1043,6 +1075,41 @@ export class GameScene extends Phaser.Scene {
       this.player.kills++;
       this.waveKills++;
       this.pushHud();
+    }
+  }
+
+  cannonExplode(x: number, y: number, radius: number, dmg: number) {
+    // Visual: expanding ring + shake
+    const ring = this.add.circle(x, y, radius, 0xffc070, 0.35)
+      .setStrokeStyle(3, 0xff8030, 0.9)
+      .setDepth(14)
+      .setScale(0.2);
+    this.tweens.add({
+      targets: ring,
+      scale: 1,
+      alpha: { from: 0.7, to: 0 },
+      duration: 280,
+      ease: 'Sine.Out',
+      onComplete: () => ring.destroy()
+    });
+    this.cameras.main.shake(80, 0.004);
+
+    // Damage all enemies in radius
+    const r2 = radius * radius;
+    const hitList: Enemy[] = [];
+    this.enemies.children.iterate((c: any) => {
+      const en = c as Enemy;
+      if (!en || !en.active || en.dying) return true;
+      const dx = en.x - x, dy = en.y - y;
+      if (dx * dx + dy * dy <= r2) hitList.push(en);
+      return true;
+    });
+    for (const en of hitList) this.applyDamageToEnemy(en, dmg);
+
+    // Also chip the boss if in range
+    if (this.boss && this.boss.active && !this.boss.dying) {
+      const dx = this.boss.x - x, dy = this.boss.y - y;
+      if (dx * dx + dy * dy <= r2) this.boss.hurt(Math.floor(dmg * 0.6));
     }
   }
 
@@ -1148,6 +1215,38 @@ export class GameScene extends Phaser.Scene {
     if (this.spawnTimer > this.spawnInterval && this.waveSpawned < waveSize) {
       this.spawnTimer = 0;
       this.spawnEnemy();
+      this.waveSpawned++;
+    }
+
+    // Runner pack bursts, independent of the normal spawn cadence.
+    if (this.wave >= CFG.spawn.runnerPackStartWave && this.waveSpawned < waveSize) {
+      if (this.nextRunnerPack === 0) {
+        this.nextRunnerPack = time + Phaser.Math.Between(
+          CFG.spawn.runnerPackCooldownMin, CFG.spawn.runnerPackCooldownMax);
+      } else if (time >= this.nextRunnerPack) {
+        this.spawnRunnerPack();
+        this.nextRunnerPack = time + Phaser.Math.Between(
+          CFG.spawn.runnerPackCooldownMin, CFG.spawn.runnerPackCooldownMax);
+      }
+    }
+  }
+
+  spawnRunnerPack() {
+    const W = CFG.worldCols * CFG.tile;
+    const H = CFG.worldRows * CFG.tile;
+    const waveSize = CFG.spawn.waveSize;
+    const side = Phaser.Math.Between(0, 3);
+    let cx = 0, cy = 0;
+    if (side === 0) { cx = Phaser.Math.Between(60, W - 60); cy = 8; }
+    if (side === 1) { cx = Phaser.Math.Between(60, W - 60); cy = H - 8; }
+    if (side === 2) { cx = 8; cy = Phaser.Math.Between(60, H - 60); }
+    if (side === 3) { cx = W - 8; cy = Phaser.Math.Between(60, H - 60); }
+    const n = CFG.spawn.runnerPackSize;
+    for (let i = 0; i < n && this.waveSpawned < waveSize; i++) {
+      const ox = Phaser.Math.Between(-28, 28);
+      const oy = Phaser.Math.Between(-28, 28);
+      const e = new Enemy(this, cx + ox, cy + oy, 'runner');
+      this.enemies.add(e);
       this.waveSpawned++;
     }
   }

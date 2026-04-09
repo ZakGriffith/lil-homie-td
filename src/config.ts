@@ -15,13 +15,25 @@ export const CFG = {
   },
 
   tower: {
-    cost: 60,     // L1 build cost
     tiles: 2,     // 2x2 footprint
-    levels: [
-      { hp: 120, fireRate: 620, range: 240, damage: 16, projectileSpeed: 480, upgradeCost: 60 },
-      { hp: 170, fireRate: 520, range: 270, damage: 24, projectileSpeed: 520, upgradeCost: 110 },
-      { hp: 240, fireRate: 430, range: 300, damage: 34, projectileSpeed: 560, upgradeCost: 0 }
-    ]
+    kinds: {
+      arrow: {
+        cost: 60,
+        levels: [
+          { hp: 120, fireRate: 620, range: 240, damage: 16, projectileSpeed: 480, splashRadius: 0, upgradeCost: 60 },
+          { hp: 170, fireRate: 520, range: 270, damage: 24, projectileSpeed: 520, splashRadius: 0, upgradeCost: 110 },
+          { hp: 240, fireRate: 430, range: 300, damage: 34, projectileSpeed: 560, splashRadius: 0, upgradeCost: 0 }
+        ]
+      },
+      cannon: {
+        cost: 120,
+        levels: [
+          { hp: 180, fireRate: 1400, range: 220, damage: 30, projectileSpeed: 360, splashRadius: 48, upgradeCost: 130 },
+          { hp: 250, fireRate: 1250, range: 240, damage: 44, projectileSpeed: 380, splashRadius: 58, upgradeCost: 220 },
+          { hp: 340, fireRate: 1100, range: 260, damage: 62, projectileSpeed: 400, splashRadius: 72, upgradeCost: 0 }
+        ]
+      }
+    }
   },
 
   wall: {
@@ -32,8 +44,9 @@ export const CFG = {
   startMoney: 60,
 
   enemy: {
-    basic: { hp: 20, speed: 60, dmg: 8, coin: 1, color: 0xd9412b },
-    heavy: { hp: 30, speed: 40, dmg: 10, coin: 2, color: 0x7a1d14 }
+    basic:  { hp: 20, speed: 60,  dmg: 8,  coin: 1, color: 0xd9412b },
+    heavy:  { hp: 30, speed: 40,  dmg: 10, coin: 2, color: 0x7a1d14 },
+    runner: { hp: 12, speed: 115, dmg: 5,  coin: 1, color: 0x6af078 }
   },
 
   coin: { magnetRange: 90, magnetSpeed: 420 },
@@ -49,7 +62,11 @@ export const CFG = {
     heavyChanceStep: 0.03,
     waveSize: 100,          // enemies per wave
     waveCount: 2,           // number of waves before the boss
-    waveBreak: 15000        // ms of build break between waves
+    waveBreak: 15000,       // ms of build break between waves
+    runnerPackStartWave: 0, // 0-indexed wave at which runner packs start appearing
+    runnerPackSize: 5,      // runners per pack
+    runnerPackCooldownMin: 7000,
+    runnerPackCooldownMax: 12000
   },
 
   winKills: 200, // kills needed to trigger the boss; defeating the boss wins
