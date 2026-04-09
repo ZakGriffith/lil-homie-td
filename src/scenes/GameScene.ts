@@ -701,7 +701,7 @@ export class GameScene extends Phaser.Scene {
     } else if (b.state === 'birthing' && time >= b.stateEnd) {
       this.bossBirthSpawn(b);
       b.state = 'chase';
-      b.nextBirth = time + 6000;
+      b.nextBirth = time + 3800;
       b.play('boss-idle');
     } else if (b.state === 'charge_wind' && time >= b.stateEnd) {
       // Charge always aims at the player, ignoring towers.
