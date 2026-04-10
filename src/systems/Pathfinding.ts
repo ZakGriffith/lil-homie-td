@@ -1,63 +1,79 @@
 import { CFG } from '../config';
 
-export type Grid = number[][]; // 0 = walkable, 1 = blocked (wall/tower)
+// Sparse grid: only stores blocked tiles. Missing keys = walkable (0).
+export type SparseGrid = Map<string, number>;
 
-export function createGrid(cols = CFG.worldCols, rows = CFG.worldRows): Grid {
-  const g: Grid = [];
-  for (let y = 0; y < rows; y++) {
-    g.push(new Array(cols).fill(0));
-  }
-  return g;
+export function createSparseGrid(): SparseGrid {
+  return new Map();
 }
 
-export function inBounds(g: Grid, x: number, y: number) {
-  return y >= 0 && y < g.length && x >= 0 && x < g[0].length;
+export function gridKey(x: number, y: number): string {
+  return `${x},${y}`;
 }
 
-// BFS from (sx,sy) to (tx,ty). Returns list of {x,y} tile coords or empty.
+export function gridGet(g: SparseGrid, x: number, y: number): number {
+  return g.get(gridKey(x, y)) ?? 0;
+}
+
+export function gridSet(g: SparseGrid, x: number, y: number, v: number) {
+  if (v === 0) g.delete(gridKey(x, y));
+  else g.set(gridKey(x, y), v);
+}
+
+// BFS from (sx,sy) to (tx,ty) on a sparse grid.
+// Bounds the search to a region around start and goal to keep it fast.
 export function findPath(
-  g: Grid,
+  g: SparseGrid,
   sx: number, sy: number,
   tx: number, ty: number
 ): { x: number; y: number }[] {
-  if (!inBounds(g, sx, sy)) return [];
-  const rows = g.length, cols = g[0].length;
-  const prev = new Array(rows * cols).fill(-1);
-  const visited = new Uint8Array(rows * cols);
-  const idx = (x: number, y: number) => y * cols + x;
+  // Bound the search area: rectangle covering start+goal with generous padding
+  const pad = 20;
+  const minX = Math.min(sx, tx) - pad, maxX = Math.max(sx, tx) + pad;
+  const minY = Math.min(sy, ty) - pad, maxY = Math.max(sy, ty) + pad;
+
+  const width = maxX - minX + 1;
+  const height = maxY - minY + 1;
+  const total = width * height;
+  const prev = new Int32Array(total).fill(-1);
+  const visited = new Uint8Array(total);
+  const idx = (x: number, y: number) => (y - minY) * width + (x - minX);
+  const inRange = (x: number, y: number) => x >= minX && x <= maxX && y >= minY && y <= maxY;
+
+  if (!inRange(sx, sy)) return [];
   const queue: number[] = [];
   const start = idx(sx, sy);
   queue.push(start);
   visited[start] = 1;
 
   let foundTarget = false;
-  // 8-directional: cardinals first, then diagonals
   const cardinals: [number, number][] = [[1,0],[-1,0],[0,1],[0,-1]];
   const diagonals: [number, number][] = [[1,1],[-1,1],[1,-1],[-1,-1]];
 
   while (queue.length) {
     const cur = queue.shift()!;
-    const cx = cur % cols, cy = Math.floor(cur / cols);
+    const cx = (cur % width) + minX;
+    const cy = Math.floor(cur / width) + minY;
     if (cx === tx && cy === ty) { foundTarget = true; break; }
     // Cardinals
     for (const [dx, dy] of cardinals) {
       const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      if (!inRange(nx, ny)) continue;
       const ni = idx(nx, ny);
       if (visited[ni]) continue;
-      if (g[ny][nx] === 1) continue;
+      if (gridGet(g, nx, ny) === 1) continue;
       visited[ni] = 1;
       prev[ni] = cur;
       queue.push(ni);
     }
-    // Diagonals — only if both adjacent cardinal tiles are walkable (no wall-cutting)
+    // Diagonals — only if both adjacent cardinal tiles are walkable
     for (const [dx, dy] of diagonals) {
       const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
+      if (!inRange(nx, ny)) continue;
       const ni = idx(nx, ny);
       if (visited[ni]) continue;
-      if (g[ny][nx] === 1) continue;
-      if (g[cy][cx + dx] === 1 || g[cy + dy][cx] === 1) continue; // can't cut corners
+      if (gridGet(g, nx, ny) === 1) continue;
+      if (gridGet(g, cx + dx, cy) === 1 || gridGet(g, cx, cy + dy) === 1) continue;
       visited[ni] = 1;
       prev[ni] = cur;
       queue.push(ni);
@@ -69,51 +85,42 @@ export function findPath(
   const path: { x: number; y: number }[] = [];
   let c = goalIdx;
   while (c !== -1 && c !== start) {
-    path.push({ x: c % cols, y: Math.floor(c / cols) });
+    path.push({ x: (c % width) + minX, y: Math.floor(c / width) + minY });
     c = prev[c];
   }
   path.reverse();
   return path;
 }
 
-// Flood-fill from the player tile and check that at least one walkable tile
-// on each of the 4 map edges is reachable. This ensures enemies spawning from
-// any edge can always path to the player without breaking structures.
-export function edgesCanReachPlayer(g: Grid, px: number, py: number): boolean {
-  const rows = g.length, cols = g[0].length;
-  if (!inBounds(g, px, py) || g[py][px] === 1) return false;
+// Check that enemies can reach the player from spawn distance in all 4 directions.
+// Instead of fixed world edges, checks from points at spawn distance around the player.
+export function canReachFromSpawnDirections(
+  g: SparseGrid, px: number, py: number, spawnDist: number
+): boolean {
+  // Test 4 cardinal spawn points at spawnDist tiles from the player
+  const testPoints = [
+    { x: px, y: py - spawnDist },  // top
+    { x: px, y: py + spawnDist },  // bottom
+    { x: px - spawnDist, y: py },  // left
+    { x: px + spawnDist, y: py },  // right
+  ];
 
-  const visited = new Uint8Array(rows * cols);
-  const idx = (x: number, y: number) => y * cols + x;
-  const queue: number[] = [];
-  const start = idx(px, py);
-  queue.push(start);
-  visited[start] = 1;
-
-  const dirs = [[1,0],[-1,0],[0,1],[0,-1]];
-  while (queue.length) {
-    const cur = queue.shift()!;
-    const cx = cur % cols, cy = Math.floor(cur / cols);
-    for (const [dx, dy] of dirs) {
-      const nx = cx + dx, ny = cy + dy;
-      if (nx < 0 || ny < 0 || nx >= cols || ny >= rows) continue;
-      const ni = idx(nx, ny);
-      if (visited[ni]) continue;
-      if (g[ny][nx] === 1) continue;
-      visited[ni] = 1;
-      queue.push(ni);
+  for (const tp of testPoints) {
+    // Find nearest walkable tile to the spawn point
+    let found = false;
+    for (let r = 0; r <= 3 && !found; r++) {
+      for (let dy = -r; dy <= r && !found; dy++) {
+        for (let dx = -r; dx <= r && !found; dx++) {
+          if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+          const sx = tp.x + dx, sy = tp.y + dy;
+          if (gridGet(g, sx, sy) === 0) {
+            const path = findPath(g, sx, sy, px, py);
+            if (path.length > 0) found = true;
+          }
+        }
+      }
     }
+    if (!found) return false;
   }
-
-  // Check each edge for at least one reachable walkable tile
-  let top = false, bottom = false, left = false, right = false;
-  for (let x = 0; x < cols; x++) {
-    if (visited[idx(x, 0)]) top = true;
-    if (visited[idx(x, rows - 1)]) bottom = true;
-  }
-  for (let y = 0; y < rows; y++) {
-    if (visited[idx(0, y)]) left = true;
-    if (visited[idx(cols - 1, y)]) right = true;
-  }
-  return top && bottom && left && right;
+  return true;
 }

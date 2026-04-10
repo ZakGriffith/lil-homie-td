@@ -16,7 +16,6 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     super(scene, x, y, 'p_idle_0');
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setCollideWorldBounds(true);
     this.setSize(14, 18).setOffset(9, 10);
     this.setDepth(10);
     this.play('player-idle');

@@ -7,7 +7,7 @@ import { Wall } from '../entities/Wall';
 import { Projectile } from '../entities/Projectile';
 import { Coin } from '../entities/Coin';
 import { Boss } from '../entities/Boss';
-import { createGrid, findPath, edgesCanReachPlayer, Grid } from '../systems/Pathfinding';
+import { createSparseGrid, findPath, canReachFromSpawnDirections, gridGet, gridSet, SparseGrid } from '../systems/Pathfinding';
 
 type BuildKind = 'none' | 'tower' | 'wall';
 
@@ -21,8 +21,9 @@ export class GameScene extends Phaser.Scene {
   wallGroup!: Phaser.Physics.Arcade.StaticGroup;
   towerGroup!: Phaser.Physics.Arcade.StaticGroup;
 
-  grid: Grid = createGrid();
+  grid: SparseGrid = createSparseGrid();
   gridVersion = 0;
+  generatedChunks = new Set<string>();
 
   keys!: any;
   buildKind: BuildKind = 'none';
@@ -68,18 +69,9 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
-    const W = CFG.worldCols * CFG.tile;
-    const H = CFG.worldRows * CFG.tile;
-    this.physics.world.setBounds(0, 0, W, H);
-    this.cameras.main.setBounds(0, 0, W, H);
-
-    // ground
-    for (let y = 0; y < CFG.worldRows; y++) {
-      for (let x = 0; x < CFG.worldCols; x++) {
-        const key = `ground_${(x * 31 + y * 17) % 4}`;
-        this.add.image(x * CFG.tile + CFG.tile / 2, y * CFG.tile + CFG.tile / 2, key).setDepth(0);
-      }
-    }
+    // Infinite world — no physics bounds, no camera bounds
+    this.physics.world.setBounds(-1e6, -1e6, 2e6, 2e6);
+    this.physics.world.setBoundsCollision(false);
 
     // groups
     this.enemies = this.physics.add.group({ classType: Enemy, runChildUpdate: false });
@@ -88,9 +80,12 @@ export class GameScene extends Phaser.Scene {
     this.wallGroup = this.physics.add.staticGroup();
     this.towerGroup = this.physics.add.staticGroup();
 
-    // player
-    this.player = new Player(this, W / 2, H / 2);
+    // player — starts at origin, camera follows
+    this.player = new Player(this, 0, 0);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+
+    // Generate initial ground chunks around player
+    this.generateChunksAround(0, 0);
 
     // collisions
     this.physics.add.collider(this.player, this.wallGroup);
@@ -115,16 +110,8 @@ export class GameScene extends Phaser.Scene {
     // build ghost
     this.ghost = this.add.sprite(0, 0, 'wall').setAlpha(0.5).setDepth(20).setVisible(false).setOrigin(0.5);
 
-    // grid overlay (only visible while building)
-    const gridG = this.add.graphics().setDepth(19).setVisible(false);
-    gridG.lineStyle(1, 0xffffff, 0.18);
-    for (let x = 0; x <= CFG.worldCols; x++) {
-      gridG.lineBetween(x * CFG.tile, 0, x * CFG.tile, H);
-    }
-    for (let y = 0; y <= CFG.worldRows; y++) {
-      gridG.lineBetween(0, y * CFG.tile, W, y * CFG.tile);
-    }
-    this.gridOverlay = gridG;
+    // grid overlay (redrawn each frame while building)
+    this.gridOverlay = this.add.graphics().setDepth(19).setVisible(false);
 
     // selection ring (tower range visualizer)
     this.selectionRing = this.add.graphics().setDepth(18).setVisible(false);
@@ -143,7 +130,7 @@ export class GameScene extends Phaser.Scene {
 
     // pre-wave build phase
     this.waveStartAt = CFG.spawn.startDelay;
-    this.countdownText = this.add.text(W / 2, 36, '', {
+    this.countdownText = this.add.text(CFG.width / 2, 36, '', {
       fontFamily: 'monospace', fontSize: '20px', color: '#7cc4ff',
       stroke: '#0b0f1a', strokeThickness: 4
     }).setOrigin(0.5).setDepth(30).setScrollFactor(0);
@@ -198,18 +185,17 @@ export class GameScene extends Phaser.Scene {
   // and wouldn't block enemy pathing from all 4 edges to the player.
   canPlaceTower(tx: number, ty: number): boolean {
     const s = CFG.tower.tiles;
-    if (tx < 0 || ty < 0 || tx + s > CFG.worldCols || ty + s > CFG.worldRows) return false;
     const pt = this.worldToTile(this.player.x, this.player.y);
     for (let j = 0; j < s; j++) {
       for (let i = 0; i < s; i++) {
-        if (this.grid[ty + j][tx + i] !== 0) return false;
+        if (gridGet(this.grid, tx + i, ty + j) !== 0) return false;
         if (pt.x === tx + i && pt.y === ty + j) return false;
       }
     }
-    // Temporarily block tiles and check edges can still reach the player
-    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) this.grid[ty + j][tx + i] = 1;
-    const ok = edgesCanReachPlayer(this.grid, pt.x, pt.y);
-    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) this.grid[ty + j][tx + i] = 0;
+    // Temporarily block tiles and check spawn directions can still reach the player
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, tx + i, ty + j, 1);
+    const ok = canReachFromSpawnDirections(this.grid, pt.x, pt.y, CFG.spawnDist);
+    for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, tx + i, ty + j, 0);
     return ok;
   }
 
@@ -222,10 +208,6 @@ export class GameScene extends Phaser.Scene {
 
     const tx = Math.floor(wx / CFG.tile);
     const ty = Math.floor(wy / CFG.tile);
-    if (tx < 0 || ty < 0 || tx >= CFG.worldCols || ty >= CFG.worldRows) {
-      this.deselectTower();
-      return;
-    }
 
     // sell with X held + click
     if (this.keys.X.isDown) {
@@ -263,27 +245,27 @@ export class GameScene extends Phaser.Scene {
       const t = new Tower(this, ox, oy, this.buildTowerKind);
       this.towers.push(t);
       this.towerGroup.add(t);
-      for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) this.grid[oy + j][ox + i] = 1;
+      for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, ox + i, oy + j, 1);
       this.gridVersion++;
       this.pushHud();
       return;
     }
 
     // wall
-    if (this.grid[ty][tx] !== 0) return;
+    if (gridGet(this.grid, tx, ty) !== 0) return;
     const pt = this.worldToTile(this.player.x, this.player.y);
     if (pt.x === tx && pt.y === ty) return;
     if (this.player.money < CFG.wall.cost) return;
-    // Check placing this wall won't block all paths from edges to player
-    this.grid[ty][tx] = 1;
-    const wallOk = edgesCanReachPlayer(this.grid, pt.x, pt.y);
-    this.grid[ty][tx] = 0;
+    // Check placing this wall won't block all paths from spawn directions to player
+    gridSet(this.grid, tx, ty, 1);
+    const wallOk = canReachFromSpawnDirections(this.grid, pt.x, pt.y, CFG.spawnDist);
+    gridSet(this.grid, tx, ty, 0);
     if (!wallOk) return;
     this.player.money -= CFG.wall.cost;
     const w = new Wall(this, tx, ty);
     this.walls.push(w);
     this.wallGroup.add(w);
-    this.grid[ty][tx] = 1;
+    gridSet(this.grid, tx, ty, 1);
     this.gridVersion++;
     this.pushHud();
   }
@@ -296,7 +278,7 @@ export class GameScene extends Phaser.Scene {
     if (ti >= 0) {
       const t = this.towers[ti];
       this.player.money += Math.floor(t.totalSpent * 0.5);
-      for (let j = 0; j < t.size; j++) for (let i = 0; i < t.size; i++) this.grid[t.tileY + j][t.tileX + i] = 0;
+      for (let j = 0; j < t.size; j++) for (let i = 0; i < t.size; i++) gridSet(this.grid, t.tileX + i, t.tileY + j, 0);
       t.destroyTower();
       this.towers.splice(ti, 1);
       this.gridVersion++;
@@ -309,7 +291,7 @@ export class GameScene extends Phaser.Scene {
       this.player.money += Math.floor(CFG.wall.cost * 0.5);
       w.destroy();
       this.walls.splice(wi, 1);
-      this.grid[ty][tx] = 0; this.gridVersion++;
+      gridSet(this.grid, tx, ty, 0); this.gridVersion++;
       this.pushHud();
     }
   }
@@ -451,7 +433,7 @@ export class GameScene extends Phaser.Scene {
     this.player.money += Math.floor(t.totalSpent * 0.5);
     for (let j = 0; j < t.size; j++)
       for (let i = 0; i < t.size; i++)
-        this.grid[t.tileY + j][t.tileX + i] = 0;
+        gridSet(this.grid, t.tileX + i, t.tileY + j, 0);
     const idx = this.towers.indexOf(t);
     if (idx >= 0) this.towers.splice(idx, 1);
     t.destroyTower();
@@ -477,6 +459,50 @@ export class GameScene extends Phaser.Scene {
 
   worldToTile(x: number, y: number) {
     return { x: Math.floor(x / CFG.tile), y: Math.floor(y / CFG.tile) };
+  }
+
+  // Generate ground chunks around a world position
+  generateChunksAround(wx: number, wy: number) {
+    const cs = CFG.chunkSize;
+    const tile = CFG.tile;
+    const cx = Math.floor(wx / (cs * tile));
+    const cy = Math.floor(wy / (cs * tile));
+    const radius = 2; // generate chunks within 2 chunks of the player
+    for (let dy = -radius; dy <= radius; dy++) {
+      for (let dx = -radius; dx <= radius; dx++) {
+        const key = `${cx + dx},${cy + dy}`;
+        if (this.generatedChunks.has(key)) continue;
+        this.generatedChunks.add(key);
+        const startX = (cx + dx) * cs;
+        const startY = (cy + dy) * cs;
+        for (let y = 0; y < cs; y++) {
+          for (let x = 0; x < cs; x++) {
+            const gx = startX + x, gy = startY + y;
+            const texKey = `ground_${((gx * 31 + gy * 17) % 4 + 4) % 4}`;
+            this.add.image(gx * tile + tile / 2, gy * tile + tile / 2, texKey).setDepth(0);
+          }
+        }
+      }
+    }
+  }
+
+  // Redraw the grid overlay around the current camera view
+  redrawGridOverlay() {
+    const g = this.gridOverlay;
+    g.clear();
+    const cam = this.cameras.main;
+    const tile = CFG.tile;
+    const left = Math.floor(cam.scrollX / tile) - 1;
+    const top = Math.floor(cam.scrollY / tile) - 1;
+    const right = left + Math.ceil(cam.width / tile) + 2;
+    const bottom = top + Math.ceil(cam.height / tile) + 2;
+    g.lineStyle(1, 0xffffff, 0.18);
+    for (let x = left; x <= right; x++) {
+      g.lineBetween(x * tile, top * tile, x * tile, bottom * tile);
+    }
+    for (let y = top; y <= bottom; y++) {
+      g.lineBetween(left * tile, y * tile, right * tile, y * tile);
+    }
   }
 
   update(_realTime: number, delta: number) {
@@ -510,16 +536,22 @@ export class GameScene extends Phaser.Scene {
         this.ghost.setTint(this.canPlaceTower(ox, oy) ? 0x88ff88 : 0xff8888);
       } else {
         this.ghost.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2);
-        let valid = tx >= 0 && ty >= 0 && tx < CFG.worldCols && ty < CFG.worldRows && this.grid[ty][tx] === 0;
+        let valid = gridGet(this.grid, tx, ty) === 0;
         if (valid) {
           const pt = this.worldToTile(this.player.x, this.player.y);
-          this.grid[ty][tx] = 1;
-          valid = edgesCanReachPlayer(this.grid, pt.x, pt.y);
-          this.grid[ty][tx] = 0;
+          gridSet(this.grid, tx, ty, 1);
+          valid = canReachFromSpawnDirections(this.grid, pt.x, pt.y, CFG.spawnDist);
+          gridSet(this.grid, tx, ty, 0);
         }
         this.ghost.setTint(valid ? 0x88ff88 : 0xff8888);
       }
     }
+
+    // Generate ground chunks around player as they move
+    this.generateChunksAround(this.player.x, this.player.y);
+
+    // Redraw grid overlay around the camera if building
+    if (this.buildKind !== 'none') this.redrawGridOverlay();
 
     this.updatePlayer(time, vd);
     this.updateTowers(time);
@@ -737,9 +769,7 @@ export class GameScene extends Phaser.Scene {
     let safety = 200;
     while (safety-- > 0) {
       if (x === tx1 && y === ty1) return false;
-      if (y >= 0 && y < CFG.worldRows && x >= 0 && x < CFG.worldCols) {
-        if (this.grid[y][x] === 1 && !(x === tx0 && y === ty0)) return true;
-      }
+      if (gridGet(this.grid, x, y) === 1 && !(x === tx0 && y === ty0)) return true;
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
       if (e2 < dx) { err += dx; y += sy; }
@@ -788,10 +818,10 @@ export class GameScene extends Phaser.Scene {
         (e as any)._pv = this.gridVersion;
         const start = this.worldToTile(e.x, e.y);
         const goal = this.worldToTile(tx, ty);
-        const saved = this.grid[goal.y] && this.grid[goal.y][goal.x];
-        if (saved === 1) this.grid[goal.y][goal.x] = 0;
+        const saved = gridGet(this.grid, goal.x, goal.y);
+        if (saved === 1) gridSet(this.grid, goal.x, goal.y, 0);
         e.path = findPath(this.grid, start.x, start.y, goal.x, goal.y);
-        if (saved === 1) this.grid[goal.y][goal.x] = 1;
+        if (saved === 1) gridSet(this.grid, goal.x, goal.y, 1);
         e.pathIdx = 0;
       }
 
@@ -827,8 +857,7 @@ export class GameScene extends Phaser.Scene {
         for (let ox = -1; ox <= 1; ox++) {
           if (ox === 0 && oy === 0) continue;
           const gx = etx + ox, gy = ety + oy;
-          if (gx < 0 || gy < 0 || gx >= CFG.worldCols || gy >= CFG.worldRows) continue;
-          if (this.grid[gy][gx] !== 1) continue;
+          if (gridGet(this.grid, gx, gy) !== 1) continue;
           const wallCX = gx * CFG.tile + CFG.tile / 2;
           const wallCY = gy * CFG.tile + CFG.tile / 2;
           const rdx = e.x - wallCX, rdy = e.y - wallCY;
@@ -952,10 +981,10 @@ export class GameScene extends Phaser.Scene {
         b._pv = this.gridVersion;
         const start = this.worldToTile(b.x, b.y);
         const goal = this.worldToTile(px, py);
-        const saved = this.grid[goal.y] && this.grid[goal.y][goal.x];
-        if (saved === 1) this.grid[goal.y][goal.x] = 0;
+        const saved = gridGet(this.grid, goal.x, goal.y);
+        if (saved === 1) gridSet(this.grid, goal.x, goal.y, 0);
         b.path = findPath(this.grid, start.x, start.y, goal.x, goal.y);
-        if (saved === 1) this.grid[goal.y][goal.x] = 1;
+        if (saved === 1) gridSet(this.grid, goal.x, goal.y, 1);
         b.pathIdx = 0;
       }
 
@@ -990,8 +1019,7 @@ export class GameScene extends Phaser.Scene {
       for (let ox = -1; ox <= 1; ox++) {
         if (ox === 0 && oy === 0) continue;
         const gx = btx + ox, gy = bty + oy;
-        if (gx < 0 || gy < 0 || gx >= CFG.worldCols || gy >= CFG.worldRows) continue;
-        if (this.grid[gy][gx] !== 1) continue;
+        if (gridGet(this.grid, gx, gy) !== 1) continue;
         const wallCX = gx * CFG.tile + CFG.tile / 2;
         const wallCY = gy * CFG.tile + CFG.tile / 2;
         const rdx = b.x - wallCX, rdy = b.y - wallCY;
@@ -1230,7 +1258,7 @@ export class GameScene extends Phaser.Scene {
     if (idx >= 0) this.towers.splice(idx, 1);
     for (let j = 0; j < t.size; j++)
       for (let i = 0; i < t.size; i++)
-        this.grid[t.tileY + j][t.tileX + i] = 0;
+        gridSet(this.grid, t.tileX + i, t.tileY + j, 0);
     this.gridVersion++;
     const burst = this.add.sprite(t.x, t.y, 'fx_death_0').setDepth(15);
     burst.play('fx-death');
@@ -1240,7 +1268,7 @@ export class GameScene extends Phaser.Scene {
   destroyWall(w: Wall) {
     const idx = this.walls.indexOf(w);
     if (idx >= 0) this.walls.splice(idx, 1);
-    this.grid[w.tileY][w.tileX] = 0;
+    gridSet(this.grid, w.tileX, w.tileY, 0);
     this.gridVersion++;
     w.destroy();
   }
@@ -1258,16 +1286,18 @@ export class GameScene extends Phaser.Scene {
   spawnBoss() {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
-    const W = CFG.worldCols * CFG.tile;
-    const H = CFG.worldRows * CFG.tile;
-    // spawn at the edge furthest from the player
+    const spawnR = CFG.spawnDist * CFG.tile;
+    const px = this.player.x, py = this.player.y;
+    // spawn at one of the 4 cardinal edges relative to the player, pick furthest
     const corners = [
-      { x: 60, y: 60 }, { x: W - 60, y: 60 },
-      { x: 60, y: H - 60 }, { x: W - 60, y: H - 60 }
+      { x: px - spawnR, y: py - spawnR },
+      { x: px + spawnR, y: py - spawnR },
+      { x: px - spawnR, y: py + spawnR },
+      { x: px + spawnR, y: py + spawnR }
     ];
     let best = corners[0], bestD = 0;
     for (const c of corners) {
-      const d = (c.x - this.player.x) ** 2 + (c.y - this.player.y) ** 2;
+      const d = (c.x - px) ** 2 + (c.y - py) ** 2;
       if (d > bestD) { bestD = d; best = c; }
     }
     this.boss = new Boss(this, best.x, best.y);
@@ -1699,15 +1729,15 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnRunnerPack() {
-    const W = CFG.worldCols * CFG.tile;
-    const H = CFG.worldRows * CFG.tile;
+    const spawnR = CFG.spawnDist * CFG.tile;
     const waveSize = CFG.spawn.waveSize;
     const side = Phaser.Math.Between(0, 3);
+    const px = this.player.x, py = this.player.y;
     let cx = 0, cy = 0;
-    if (side === 0) { cx = Phaser.Math.Between(60, W - 60); cy = 8; }
-    if (side === 1) { cx = Phaser.Math.Between(60, W - 60); cy = H - 8; }
-    if (side === 2) { cx = 8; cy = Phaser.Math.Between(60, H - 60); }
-    if (side === 3) { cx = W - 8; cy = Phaser.Math.Between(60, H - 60); }
+    if (side === 0) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py - spawnR; }
+    if (side === 1) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py + spawnR; }
+    if (side === 2) { cx = px - spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
+    if (side === 3) { cx = px + spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
     const n = CFG.spawn.runnerPackSize;
     for (let i = 0; i < n && this.waveSpawned < waveSize; i++) {
       const ox = Phaser.Math.Between(-28, 28);
@@ -1719,14 +1749,14 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnEnemy() {
-    const W = CFG.worldCols * CFG.tile;
-    const H = CFG.worldRows * CFG.tile;
+    const spawnR = CFG.spawnDist * CFG.tile;
+    const px = this.player.x, py = this.player.y;
     const side = Phaser.Math.Between(0, 3);
     let x = 0, y = 0;
-    if (side === 0) { x = Phaser.Math.Between(0, W); y = 8; }
-    if (side === 1) { x = Phaser.Math.Between(0, W); y = H - 8; }
-    if (side === 2) { x = 8; y = Phaser.Math.Between(0, H); }
-    if (side === 3) { x = W - 8; y = Phaser.Math.Between(0, H); }
+    if (side === 0) { x = px + Phaser.Math.Between(-spawnR, spawnR); y = py - spawnR; }
+    if (side === 1) { x = px + Phaser.Math.Between(-spawnR, spawnR); y = py + spawnR; }
+    if (side === 2) { x = px - spawnR; y = py + Phaser.Math.Between(-spawnR, spawnR); }
+    if (side === 3) { x = px + spawnR; y = py + Phaser.Math.Between(-spawnR, spawnR); }
     const kind: EnemyKind = Math.random() < this.heavyChance ? 'heavy' : 'basic';
     const e = new Enemy(this, x, y, kind);
     this.enemies.add(e);

@@ -2,8 +2,10 @@ export const CFG = {
   width: 960,
   height: 640,
   tile: 32,
-  worldCols: 30,
-  worldRows: 20,
+  viewCols: 30,      // viewport width in tiles (for reference)
+  viewRows: 20,      // viewport height in tiles
+  spawnDist: 18,     // tiles from player where enemies spawn
+  chunkSize: 16,     // ground chunk size in tiles
 
   player: {
     hp: 100,
