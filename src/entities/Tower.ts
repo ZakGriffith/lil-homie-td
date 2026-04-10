@@ -27,6 +27,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     const wx = (tileX + size / 2) * CFG.tile;
     const wy = (tileY + size / 2) * CFG.tile;
     super(scene, wx, wy, 't_base');
+    this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this, true); // static
     this.kind = kind;
@@ -37,7 +38,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.StaticBody).setSize(bodySize, bodySize);
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
     const topTex = kind === 'cannon' ? 'c_top_0' : 't_top_0';
-    this.top = scene.add.sprite(wx, wy, topTex).setDepth(7);
+    this.top = scene.add.sprite(wx, wy, topTex).setDepth(7).setScale(0.5);
 
     this.hpBar = scene.add.graphics().setDepth(20);
 
@@ -71,7 +72,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     // pop fx
     this.scene.tweens.add({
       targets: [this, this.top],
-      scale: { from: 1.15, to: 1 },
+      scale: { from: 0.575, to: 0.5 },
       duration: 220,
       ease: 'Back.Out'
     });

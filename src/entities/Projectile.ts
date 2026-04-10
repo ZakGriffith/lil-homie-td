@@ -17,11 +17,12 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'arrow_0');
+    this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setDepth(9);
     this.play('arrow-spin');
-    this.setSize(10, 4).setOffset(10, 14);
+    this.setSize(20, 8).setOffset(20, 28);
   }
 
   fire(tx: number, ty: number, speed: number, damage: number, splashRadius = 0) {
@@ -44,25 +45,25 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
       this.setTexture('cball_0');
       this.play('cball-spin');
       this.setRotation(0);
-      this.setScale(1);
+      this.setScale(0.5);
       this.clearTint();
-      this.setSize(8, 8).setOffset(12, 12);
+      this.setSize(16, 16).setOffset(24, 24);
       this.setDepth(14);
 
       // Ground shadow
       this.shadow = this.scene.add.sprite(this.x, this.y, 'cball_shadow')
         .setDepth(5)
         .setAlpha(0.35)
-        .setScale(0.5);
+        .setScale(0.25);
     } else {
       // Arrow
       this.groundTarget = false;
       this.setTexture('arrow_0');
       this.play('arrow-spin');
       this.setRotation(angle);
-      this.setScale(1);
+      this.setScale(0.5);
       this.clearTint();
-      this.setSize(10, 4).setOffset(10, 14);
+      this.setSize(20, 8).setOffset(20, 28);
       this.setDepth(9);
       if (this.shadow) { this.shadow.destroy(); this.shadow = null; }
     }

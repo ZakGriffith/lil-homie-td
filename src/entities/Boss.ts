@@ -35,10 +35,11 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'boss_idle0');
+    this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this);
     this.setDepth(9);
-    this.setSize(22, 22).setOffset(21, 26);
+    this.setSize(44, 44).setOffset(42, 52);
     this.play('boss-idle');
 
     this.hpBar = scene.add.graphics().setDepth(20);

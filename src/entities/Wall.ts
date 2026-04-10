@@ -11,6 +11,7 @@ export class Wall extends Phaser.Physics.Arcade.Sprite {
     const wx = tileX * CFG.tile + CFG.tile / 2;
     const wy = tileY * CFG.tile + CFG.tile / 2;
     super(scene, wx, wy, 'wall');
+    this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
     this.tileX = tileX;

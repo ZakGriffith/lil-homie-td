@@ -26,26 +26,34 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     // Runner reuses basic's spritesheet/anims with a green tint + smaller scale.
     const texPrefix = kind === 'heavy' ? 'eh' : 'eb';
     super(scene, x, y, `${texPrefix}_move0`);
-    scene.add.existing(this);
-    scene.physics.add.existing(this);
     this.kind = kind;
     this.hp = data.hp;
     this.maxHp = data.hp;
     this.speed = data.speed;
     this.dmg = data.dmg;
     this.coin = data.coin;
+
+    if (kind === 'basic') {
+      this.setScale(0.5);
+    } else if (kind === 'heavy') {
+      this.setScale(0.5);
+    } else {
+      this.setScale(0.425);
+    }
+
+    scene.add.existing(this);
+    scene.physics.add.existing(this);
     this.setDepth(8);
 
     if (kind === 'basic') {
-      this.setSize(12, 12).setOffset(10, 12);
+      this.setSize(24, 24).setOffset(20, 24);
       this.play('eb-move');
     } else if (kind === 'heavy') {
-      this.setSize(16, 16).setOffset(8, 10);
+      this.setSize(32, 32).setOffset(16, 20);
       this.play('eh-move');
     } else {
       // runner
-      this.setSize(10, 10).setOffset(11, 13);
-      this.setScale(0.85);
+      this.setSize(20, 20).setOffset(22, 26);
       this.play('eb-move');
       this.baseTint = 0x6af078;
       this.setTint(this.baseTint);

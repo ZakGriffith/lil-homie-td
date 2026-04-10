@@ -1,5 +1,6 @@
-// Procedural pixel art at NATIVE resolution (1 drawn pixel = 1 screen pixel).
-// All gameplay sprites are 32x32 except the tower which is 64x64 (2x2 tiles).
+// Procedural pixel art drawn at logical resolution then Scale2x'd to 2× physical.
+// Logical sizes: gameplay sprites 32→64px, towers/boss 64→128px.
+// All sprites use setScale(0.5) to maintain the same world-space dimensions.
 // Every frame is registered as its own texture and animations reference them
 // in order via registerAnimations().
 
@@ -82,19 +83,79 @@ const P = {
 // ------------------------------------------------------------------
 //  Draw helpers
 // ------------------------------------------------------------------
+
+// Resolution scale — every sprite is drawn at logical res then Scale2x'd to 2× physical
+const S = 2;
+
+// Scale2x pixel-art upscaler: preserves hard edges while smoothing staircase diagonals
+function pxIdx(w: number, x: number, y: number) { return (y * w + x) * 4; }
+function pxEq(d: Uint8ClampedArray, w: number, x1: number, y1: number, x2: number, y2: number): boolean {
+  const i = pxIdx(w, x1, y1), j = pxIdx(w, x2, y2);
+  return d[i] === d[j] && d[i + 1] === d[j + 1] && d[i + 2] === d[j + 2] && d[i + 3] === d[j + 3];
+}
+function pxCopy(s: Uint8ClampedArray, sw: number, sx: number, sy: number,
+                d: Uint8ClampedArray, dw: number, dx: number, dy: number) {
+  const si = pxIdx(sw, sx, sy), di = pxIdx(dw, dx, dy);
+  d[di] = s[si]; d[di + 1] = s[si + 1]; d[di + 2] = s[si + 2]; d[di + 3] = s[si + 3];
+}
+function scale2x(src: Uint8ClampedArray, dst: Uint8ClampedArray, w: number, h: number) {
+  const dw = w * 2;
+  for (let y = 0; y < h; y++) {
+    for (let x = 0; x < w; x++) {
+      const ay = Math.max(0, y - 1);          // up
+      const bx = Math.min(w - 1, x + 1);      // right
+      const cx = Math.max(0, x - 1);           // left
+      const dy2 = Math.min(h - 1, y + 1);     // down
+
+      const ca = pxEq(src, w, cx, y, x, ay);
+      const ab = pxEq(src, w, x, ay, bx, y);
+      const cd = pxEq(src, w, cx, y, x, dy2);
+      const bd = pxEq(src, w, bx, y, x, dy2);
+
+      const ox = x * 2, oy = y * 2;
+
+      if (ca && !cd && !ab) pxCopy(src, w, x, ay, dst, dw, ox, oy);
+      else pxCopy(src, w, x, y, dst, dw, ox, oy);
+
+      if (ab && !ca && !bd) pxCopy(src, w, bx, y, dst, dw, ox + 1, oy);
+      else pxCopy(src, w, x, y, dst, dw, ox + 1, oy);
+
+      if (cd && !bd && !ca) pxCopy(src, w, cx, y, dst, dw, ox, oy + 1);
+      else pxCopy(src, w, x, y, dst, dw, ox, oy + 1);
+
+      if (bd && !ab && !cd) pxCopy(src, w, bx, y, dst, dw, ox + 1, oy + 1);
+      else pxCopy(src, w, x, y, dst, dw, ox + 1, oy + 1);
+    }
+  }
+}
+
 function makeCanvas(size: number, draw: (put: Put) => void): HTMLCanvasElement {
-  const c = document.createElement('canvas');
-  c.width = size; c.height = size;
-  const ctx = c.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
+  // Draw at logical resolution
+  const logCanvas = document.createElement('canvas');
+  logCanvas.width = size; logCanvas.height = size;
+  const logCtx = logCanvas.getContext('2d')!;
+  logCtx.imageSmoothingEnabled = false;
   const put: Put = (x, y, col) => {
     if (col == null) return;
     if (x < 0 || y < 0 || x >= size || y >= size) return;
-    ctx.fillStyle = col;
-    ctx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
+    logCtx.fillStyle = col;
+    logCtx.fillRect(Math.floor(x), Math.floor(y), 1, 1);
   };
   draw(put);
-  return c;
+
+  // Scale2x upscale to 2× physical resolution
+  const physSize = size * S;
+  const outCanvas = document.createElement('canvas');
+  outCanvas.width = physSize; outCanvas.height = physSize;
+  const outCtx = outCanvas.getContext('2d')!;
+  outCtx.imageSmoothingEnabled = false;
+
+  const srcData = logCtx.getImageData(0, 0, size, size);
+  const dstData = outCtx.createImageData(physSize, physSize);
+  scale2x(srcData.data, dstData.data, size, size);
+  outCtx.putImageData(dstData, 0, 0);
+
+  return outCanvas;
 }
 
 function rect(put: Put, x: number, y: number, w: number, h: number, c: string | null) {

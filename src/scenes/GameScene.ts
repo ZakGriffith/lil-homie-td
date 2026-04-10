@@ -108,7 +108,7 @@ export class GameScene extends Phaser.Scene {
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.handleClick(p));
 
     // build ghost
-    this.ghost = this.add.sprite(0, 0, 'wall').setAlpha(0.5).setDepth(20).setVisible(false).setOrigin(0.5);
+    this.ghost = this.add.sprite(0, 0, 'wall').setAlpha(0.5).setDepth(20).setVisible(false).setOrigin(0.5).setScale(0.5);
 
     // grid overlay (redrawn each frame while building)
     this.gridOverlay = this.add.graphics().setDepth(19).setVisible(false);
@@ -479,7 +479,7 @@ export class GameScene extends Phaser.Scene {
           for (let x = 0; x < cs; x++) {
             const gx = startX + x, gy = startY + y;
             const texKey = `ground_${((gx * 31 + gy * 17) % 4 + 4) % 4}`;
-            this.add.image(gx * tile + tile / 2, gy * tile + tile / 2, texKey).setDepth(0);
+            this.add.image(gx * tile + tile / 2, gy * tile + tile / 2, texKey).setDepth(0).setScale(0.5);
           }
         }
       }
@@ -533,7 +533,9 @@ export class GameScene extends Phaser.Scene {
           ? Math.round(p.worldY / CFG.tile) - s / 2
           : Math.floor(p.worldY / CFG.tile) - Math.floor(s / 2);
         this.ghost.setPosition((ox + s / 2) * CFG.tile, (oy + s / 2) * CFG.tile);
-        this.ghost.setTint(this.canPlaceTower(ox, oy) ? 0x88ff88 : 0xff8888);
+        const towerCost = CFG.tower.kinds[this.buildTowerKind].cost;
+        const canAffordTower = this.player.money >= towerCost;
+        this.ghost.setTint(this.canPlaceTower(ox, oy) && canAffordTower ? 0x88ff88 : 0xff8888);
       } else {
         this.ghost.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2);
         let valid = gridGet(this.grid, tx, ty) === 0;
@@ -543,7 +545,8 @@ export class GameScene extends Phaser.Scene {
           valid = canReachFromSpawnDirections(this.grid, pt.x, pt.y, CFG.spawnDist);
           gridSet(this.grid, tx, ty, 0);
         }
-        this.ghost.setTint(valid ? 0x88ff88 : 0xff8888);
+        const canAffordWall = this.player.money >= CFG.wall.cost;
+        this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
       }
     }
 
@@ -589,8 +592,8 @@ export class GameScene extends Phaser.Scene {
     // Bow follows player with offset based on aim direction
     const bow = this.player.bow;
 
-    // Find nearest enemy for aiming
-    const target = this.findNearestEnemy(this.player.x, this.player.y, CFG.player.range);
+    // Find most threatening enemy — prioritizes shortest path distance, not euclidean
+    const target = this.findMostThreateningEnemy(this.player.x, this.player.y, CFG.player.range);
 
     if (target) {
       // Aim bow at target
@@ -756,8 +759,42 @@ export class GameScene extends Phaser.Scene {
     return best;
   }
 
+  // Player targeting: pick the enemy closest to arriving (shortest remaining path).
+  // Enemies with direct LOS (no BFS path) use euclidean distance.
+  // Still filters to within shooting range.
+  findMostThreateningEnemy(x: number, y: number, range: number): Enemy | Boss | null {
+    let best: Enemy | Boss | null = null;
+    let bestPathDist = Infinity;
+    const r2 = range * range;
+    this.enemies.children.iterate((c: any) => {
+      const e = c as Enemy;
+      if (!e || !e.active || e.dying) return true;
+      const eucD2 = (e.x - x) ** 2 + (e.y - y) ** 2;
+      if (eucD2 > r2) return true; // out of shooting range
+      // Path distance: remaining BFS steps, or euclidean if direct LOS
+      const pathDist = e.path && e.path.length > 0
+        ? (e.path.length - e.pathIdx) * CFG.tile
+        : Math.sqrt(eucD2);
+      if (pathDist < bestPathDist) { bestPathDist = pathDist; best = e; }
+      return true;
+    });
+    if (this.boss && this.boss.active && !this.boss.dying) {
+      const eucD2 = (this.boss.x - x) ** 2 + (this.boss.y - y) ** 2;
+      if (eucD2 <= r2) {
+        const b = this.boss;
+        const pathDist = b.path && b.path.length > 0
+          ? (b.path.length - b.pathIdx) * CFG.tile
+          : Math.sqrt(eucD2);
+        if (pathDist < bestPathDist) { bestPathDist = pathDist; best = b; }
+      }
+    }
+    return best;
+  }
+
   // ---------- ENEMIES ----------
-  // Bresenham-style line check across the grid; true if any blocked tile is hit
+  // Bresenham-style line check across the grid; true if any blocked tile is hit.
+  // Also checks diagonal squeeze: if the line steps diagonally and both adjacent
+  // cardinal tiles are blocked, the gap is too tight for a physics body.
   lineBlocked(x0: number, y0: number, x1: number, y1: number): boolean {
     const tx0 = Math.floor(x0 / CFG.tile), ty0 = Math.floor(y0 / CFG.tile);
     const tx1 = Math.floor(x1 / CFG.tile), ty1 = Math.floor(y1 / CFG.tile);
@@ -770,9 +807,14 @@ export class GameScene extends Phaser.Scene {
     while (safety-- > 0) {
       if (x === tx1 && y === ty1) return false;
       if (gridGet(this.grid, x, y) === 1 && !(x === tx0 && y === ty0)) return true;
+      const prevX = x, prevY = y;
       const e2 = 2 * err;
       if (e2 > -dy) { err -= dy; x += sx; }
       if (e2 < dx) { err += dx; y += sy; }
+      // Diagonal step: check that both adjacent cardinals are clear (same rule as BFS)
+      if (x !== prevX && y !== prevY) {
+        if (gridGet(this.grid, prevX, y) === 1 || gridGet(this.grid, x, prevY) === 1) return true;
+      }
     }
     return false;
   }
@@ -1176,7 +1218,7 @@ export class GameScene extends Phaser.Scene {
         if (w.hp <= 0) this.destroyWall(w);
       }
     }
-    const burst = this.add.sprite(b.x, b.y, 'fx_death_0').setDepth(15).setScale(3);
+    const burst = this.add.sprite(b.x, b.y, 'fx_death_0').setDepth(15).setScale(1.5);
     burst.play('fx-death');
     burst.once('animationcomplete', () => burst.destroy());
 
@@ -1246,7 +1288,7 @@ export class GameScene extends Phaser.Scene {
       const body = e.body as Phaser.Physics.Arcade.Body;
       body.setVelocity(Math.cos(a) * 120, Math.sin(a) * 120 - 40);
       // birth pop fx
-      const pop = this.add.sprite(ex, ey, 'fx_pop_0').setDepth(15);
+      const pop = this.add.sprite(ex, ey, 'fx_pop_0').setDepth(15).setScale(0.5);
       pop.play('fx-pop');
       pop.once('animationcomplete', () => pop.destroy());
     }
@@ -1260,7 +1302,7 @@ export class GameScene extends Phaser.Scene {
       for (let i = 0; i < t.size; i++)
         gridSet(this.grid, t.tileX + i, t.tileY + j, 0);
     this.gridVersion++;
-    const burst = this.add.sprite(t.x, t.y, 'fx_death_0').setDepth(15);
+    const burst = this.add.sprite(t.x, t.y, 'fx_death_0').setDepth(15).setScale(0.5);
     burst.play('fx-death');
     burst.once('animationcomplete', () => burst.destroy());
     t.destroyTower();
@@ -1377,7 +1419,7 @@ export class GameScene extends Phaser.Scene {
         // Shadow follows on the ground
         if (p.shadow) {
           p.shadow.setPosition(p.x, p.y);
-          const shadowScale = 0.4 + Math.sin(t * Math.PI) * 0.5;
+          const shadowScale = 0.2 + Math.sin(t * Math.PI) * 0.25;
           p.shadow.setScale(shadowScale);
           p.shadow.setAlpha(0.4 - Math.sin(t * Math.PI) * 0.2);
         }
@@ -1394,7 +1436,7 @@ export class GameScene extends Phaser.Scene {
     // Cannonballs ignore direct hits — they explode on reaching their ground target
     if (pr.groundTarget) return;
     b.hurt(pr.damage);
-    const spark = this.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15);
+    const spark = this.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15).setScale(0.5);
     spark.play('fx-hit');
     spark.once('animationcomplete', () => spark.destroy());
     pr.destroy();
@@ -1417,7 +1459,7 @@ export class GameScene extends Phaser.Scene {
     if (pr.groundTarget) return;
 
     this.applyDamageToEnemy(e, pr.damage);
-    const spark = this.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15);
+    const spark = this.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15).setScale(0.5);
     spark.play('fx-hit');
     spark.once('animationcomplete', () => spark.destroy());
     pr.destroy();
@@ -1434,7 +1476,7 @@ export class GameScene extends Phaser.Scene {
                               'bronze';
       const coin = new Coin(this, e.x + Phaser.Math.Between(-4, 4), e.y + Phaser.Math.Between(-4, 4), tier);
       this.coins.add(coin);
-      const burst = this.add.sprite(e.x, e.y, 'fx_death_0').setDepth(15);
+      const burst = this.add.sprite(e.x, e.y, 'fx_death_0').setDepth(15).setScale(0.5);
       burst.play('fx-death');
       burst.once('animationcomplete', () => burst.destroy());
       this.player.kills++;
@@ -1623,7 +1665,7 @@ export class GameScene extends Phaser.Scene {
         // collect
         this.player.money += coin.value;
         this.pushHud();
-        const pop = this.add.sprite(coin.x, coin.y, 'fx_pop_0').setDepth(15);
+        const pop = this.add.sprite(coin.x, coin.y, 'fx_pop_0').setDepth(15).setScale(0.5);
         pop.play('fx-pop');
         pop.once('animationcomplete', () => pop.destroy());
         coin.destroy();
