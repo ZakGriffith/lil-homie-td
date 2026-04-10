@@ -70,3 +70,28 @@
 - Show XP progress bar on level select screen
 - Unlock thresholds clearly visible so players know what they're working toward
 - Replay earlier levels to farm XP if needed (but diminishing returns to prevent grinding)
+
+## 5. Tower Specialization (Branching Upgrades)
+- Current system: 3 linear upgrade tiers (Level 0 → 1 → 2)
+- New system: Levels 0 and 1 remain the same, but upgrading past Level 1 presents a **choice** between two specializations
+- Each specialization takes the tower in a distinct direction with unique attributes
+- Once chosen, the specialization is permanent for that tower (no respec)
+- Visual change to reflect the chosen path (tint, top sprite, or particle effect)
+
+### Arrow Tower Specializations (after Level 1)
+- **Marksman** — longer range, higher single-target damage, slower fire rate, piercing shots that hit multiple enemies in a line
+- **Rapid Fire** — shorter range, lower per-shot damage, much faster fire rate, slight spread to shots
+
+### Cannon Tower Specializations (after Level 1)
+- **Mortar** — massive splash radius, slower fire rate, leaves lingering fire zone that damages enemies over time
+- **Shrapnel** — tighter splash radius, but fragments fly outward on impact dealing secondary damage to a wider area
+
+### Future Tower Specializations
+- Design specializations for each new tower type as they are added
+- Each branch should feel meaningfully different in playstyle, not just stat tweaks
+- Encourage mixing specializations across towers for varied strategies
+
+### UI
+- When a Level 1 tower is upgraded, show a choice panel with both specialization options
+- Display name, icon, and brief description of each path
+- Highlight stat changes compared to the base Level 1 tower
