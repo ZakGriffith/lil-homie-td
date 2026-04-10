@@ -130,7 +130,7 @@ export class UIScene extends Phaser.Scene {
       { fontFamily: 'monospace', fontSize: '32px', color: s.win ? '#7cf29a' : '#ff6a6a' }).setOrigin(0.5);
     const sub = this.add.text(W / 2, H / 2 - 10, `${s.name}   Kills: ${s.kills}   $ ${s.money}`,
       { fontFamily: 'monospace', fontSize: '14px', color: '#ccd' }).setOrigin(0.5);
-    const btn = this.makeButton(W / 2 - 50, H / 2 + 40, 100, 32, 'RESTART', () => location.reload());
+    const btn = this.makeButton(W / 2, H / 2 + 40, 100, 32, 'RESTART', () => location.reload());
     this.endPanel = this.add.container(0, 0, [bg, box, title, sub, btn]);
   }
 }
