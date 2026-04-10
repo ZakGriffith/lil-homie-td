@@ -10,6 +10,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   maxHp: number;
   totalSpent: number;
   lastShot = 0;
+  stand: Phaser.GameObjects.Sprite | null = null; // static ballista stand (arrow only)
   top: Phaser.GameObjects.Sprite;
   hpBar: Phaser.GameObjects.Graphics;
   tileX: number;
@@ -34,11 +35,24 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.tileX = tileX;
     this.tileY = tileY;
     this.setDepth(6);
-    const bodySize = CFG.tile * this.size - 10;
-    (this.body as Phaser.Physics.Arcade.StaticBody).setSize(bodySize, bodySize);
+    const bodyRadius = (CFG.tile * this.size - 20) / 2;
+    (this.body as Phaser.Physics.Arcade.StaticBody).setCircle(bodyRadius);
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+
+    const topOffY = kind === 'arrow' ? -24 : 0;
+
+    if (kind === 'arrow') {
+      // Static archer body standing on tower
+      this.stand = scene.add.sprite(wx, wy + topOffY, 't_archer').setDepth(6.5).setScale(0.5);
+    }
+
+    // Rotating top (bow for arrow tower, barrel for cannon)
     const topTex = kind === 'cannon' ? 'c_top_0' : 't_top_0';
-    this.top = scene.add.sprite(wx, wy, topTex).setDepth(7).setScale(0.5);
+    this.top = scene.add.sprite(wx, wy + topOffY, topTex).setDepth(7).setScale(0.5);
+    if (kind === 'arrow') {
+      // Bow origin: further left so the bow extends out from the archer's body
+      this.top.setOrigin(0.0, 0.5);
+    }
 
     this.hpBar = scene.add.graphics().setDepth(20);
 
@@ -70,9 +84,12 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.hp = Math.ceil(s.hp * ratio);
     this.applyTierVisual();
     // pop fx
+    const scale = 0.5;
+    const targets = [this, this.top];
+    if (this.stand) targets.push(this.stand);
     this.scene.tweens.add({
-      targets: [this, this.top],
-      scale: { from: 0.575, to: 0.5 },
+      targets,
+      scale: { from: scale * 1.15, to: scale },
       duration: 220,
       ease: 'Back.Out'
     });
@@ -85,12 +102,14 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     // Cannon top is already dark pixel art — don't wash it with tint.
     if (this.kind === 'cannon') this.top.clearTint();
     else this.top.setTint(tint);
+    if (this.stand) this.stand.setTint(tint);
   }
 
   hurt(amount: number) {
     this.hp -= amount;
     this.setTintFill(0xffffff);
     this.top.setTintFill(0xffffff);
+    if (this.stand) this.stand.setTintFill(0xffffff);
     this.scene.time.delayedCall(60, () => { this.applyTierVisual(); });
   }
 
@@ -111,6 +130,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   destroyTower() {
     this.hpBar.destroy();
     this.top.destroy();
+    if (this.stand) this.stand.destroy();
     this.destroy();
   }
 }

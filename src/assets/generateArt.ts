@@ -77,7 +77,17 @@ const P = {
   // boss belly
   belly:   '#d89080',
   bellyD:  '#7a3a2a',
-  bellyM:  '#a8604a'
+  bellyM:  '#a8604a',
+
+  // archer tower extras
+  tunic:   '#2a7a3a',
+  tunicD:  '#1a4a24',
+  tunicL:  '#3a9a4a',
+  hood:    '#3a5a2a',
+  hoodD:   '#1a3a18',
+  stoneHL: '#d0d8e4',
+  banner:  '#c04040',
+  bannerL: '#e06060'
 };
 
 // ------------------------------------------------------------------
@@ -189,6 +199,11 @@ function line(put: Put, x0: number, y0: number, x1: number, y1: number, c: strin
     if (e2 > -dy) { err -= dy; x += sx; }
     if (e2 < dx) { err += dx; y += sy; }
   }
+}
+function ellipse(put: Put, cx: number, cy: number, rx: number, ry: number, c: string | null) {
+  for (let y = -ry; y <= ry; y++)
+    for (let x = -rx; x <= rx; x++)
+      if ((x * x) / (rx * rx) + (y * y) / (ry * ry) <= 1) put(cx + x, cy + y, c);
 }
 function flashOverlay(put: Put, size: number, within: (x: number, y: number) => boolean) {
   for (let y = 0; y < size; y++)
@@ -523,144 +538,251 @@ function drawEnemyHeavy(f: EFrame) {
 //  TOWER (64x64) — 2x2 tile crossbow turret
 // ==================================================================
 function drawTowerBase(put: Put) {
-  const cx = 32, cy = 36;
+  // 3/4 top-down Kingdom Rush style tower base — fills 64×64 canvas
+  // Camera ~35° from above: large top surface + front face below
+  // Intentionally bleeds past top edge for taller presence
+  const cx = 32;
+  const faceTop = 22; // where top surface ends, front face begins (shifted up)
+  const faceBot = 62; // bottom of visible front
+  const faceHW = 26;  // half-width of front
 
-  // big drop shadow below base
-  for (let dy = -3; dy <= 3; dy++)
-    for (let dx = -28; dx <= 28; dx++)
-      if ((dx * dx) / 784 + (dy * dy) / 9 <= 1) put(cx + dx, 58 + dy, P.shadow);
+  // Ground shadow
+  for (let dy = -5; dy <= 5; dy++)
+    for (let dx = -30; dx <= 30; dx++)
+      if ((dx * dx) / 900 + (dy * dy) / 25 <= 1) put(cx + dx, 60 + dy, P.shadow);
 
-  // outer stone ring
-  disc(put, cx, cy, 26, P.outline);
-  disc(put, cx, cy, 25, P.stoneD);
-  disc(put, cx, cy, 23, P.stoneM);
-  disc(put, cx, cy, 21, P.stone);
-
-  // brick seams (radial)
-  for (let i = 0; i < 16; i++) {
-    const a = (i / 16) * Math.PI * 2;
-    const x0 = Math.round(cx + Math.cos(a) * 21);
-    const y0 = Math.round(cy + Math.sin(a) * 21);
-    const x1 = Math.round(cx + Math.cos(a) * 25);
-    const y1 = Math.round(cy + Math.sin(a) * 25);
-    line(put, x0, y0, x1, y1, P.stoneD);
-  }
-
-  // upper rim highlight (top half only)
-  for (let a = Math.PI; a < Math.PI * 2; a += 0.03) {
-    const x = Math.round(cx + Math.cos(a) * 25);
-    const y = Math.round(cy + Math.sin(a) * 25);
-    put(x, y, P.stoneL);
-  }
-
-  // inner hollow (darker pit)
-  disc(put, cx, cy - 2, 18, P.stoneD);
-  disc(put, cx, cy - 2, 16, P.outline);
-
-  // battlements around the top
-  for (const a of [
-    -Math.PI / 2,
-    -Math.PI / 2 - 0.6, -Math.PI / 2 + 0.6,
-    -Math.PI / 2 - 1.2, -Math.PI / 2 + 1.2,
-    Math.PI, 0
-  ]) {
-    const x = Math.round(cx + Math.cos(a) * 23);
-    const y = Math.round(cy + Math.sin(a) * 23);
-    rect(put, x - 1, y - 2, 3, 3, P.stoneL);
-    put(x, y - 2, P.outline);
-  }
-
-  // wooden platform in the hollow
-  disc(put, cx, cy - 3, 13, P.woodD);
-  disc(put, cx, cy - 3, 12, P.woodM);
-  disc(put, cx, cy - 4, 10, P.wood);
-  disc(put, cx - 1, cy - 5, 7, P.woodL);
-  // plank seams
-  for (let x = -10; x <= 10; x += 4) {
-    for (let y = -6; y <= 4; y++) {
-      if ((x * x) / 144 + (y * y) / 100 <= 1) put(cx + x, cy - 3 + y, P.woodD);
+  // --- Front face (stone wall visible below the top surface) ---
+  for (let y = faceTop; y < faceBot; y++) {
+    const yPct = (y - faceTop) / (faceBot - faceTop);
+    const hw = Math.round(faceHW + yPct * 2);
+    for (let x = -hw; x <= hw; x++) {
+      const t = (x + hw) / (hw * 2);
+      let col: string;
+      if (t < 0.07)      col = P.outline;
+      else if (t < 0.2)  col = P.stoneD;
+      else if (t < 0.5)  col = P.stoneM;
+      else if (t < 0.78) col = P.stone;
+      else if (t < 0.93) col = P.stoneL;
+      else                col = P.outline;
+      put(cx + x, y, col);
     }
   }
-  // central rivet ring where the top mounts
-  ring(put, cx, cy - 4, 4, P.woodD);
-  put(cx, cy - 4, P.steelD);
+  // Bottom edge
+  for (let x = -29; x <= 29; x++) put(cx + x, faceBot, P.outline);
 
-  // moss / details on outer ring
-  put(cx - 20, cy + 5, P.grassL);
-  put(cx - 19, cy + 6, P.grassL);
-  put(cx + 21, cy - 2, P.grassL);
-  put(cx + 20, cy - 1, P.grassD);
-};
+  // Stone block seams on front
+  for (let row = 0; row < 5; row++) {
+    const by = faceTop + 2 + row * 6;
+    if (by >= faceBot - 1) break;
+    for (let x = -faceHW + 1; x < faceHW; x++) put(cx + x, by, P.stoneD);
+    const off = row % 2 === 0 ? 0 : 6;
+    for (let vx = -faceHW + 3 + off; vx < faceHW; vx += 11) {
+      for (let dy = 0; dy < 6 && by + dy < faceBot; dy++) put(cx + vx, by + dy, P.stoneD);
+    }
+  }
 
-function drawTowerTop(shoot = false) {
+  // Arrow slit on front
+  rect(put, cx - 1, faceTop + 8, 3, 10, P.outline);
+  put(cx - 2, faceTop + 13, P.outline);
+  put(cx + 2, faceTop + 13, P.outline);
+
+  // Door at base
+  rect(put, cx - 4, faceBot - 10, 8, 10, P.outline);
+  rect(put, cx - 3, faceBot - 9, 6, 8, '#1a1a2a');
+  put(cx - 3, faceBot - 10, P.stoneM); put(cx + 2, faceBot - 10, P.stoneM);
+  // Door arch
+  put(cx - 2, faceBot - 11, P.stoneM); put(cx + 1, faceBot - 11, P.stoneM);
+
+  // --- TOP SURFACE (large elliptical stone platform seen from above) ---
+  ellipse(put, cx, faceTop - 1, 28, 14, P.outline);
+  ellipse(put, cx, faceTop - 1, 27, 13, P.stoneD);
+  ellipse(put, cx, faceTop - 2, 25, 12, P.stoneM);
+  ellipse(put, cx, faceTop - 3, 21, 10, P.stone);
+  // Light highlight on upper-left
+  ellipse(put, cx - 4, faceTop - 7, 12, 6, P.stoneL);
+  ellipse(put, cx - 6, faceTop - 9, 6, 3, P.stoneHL);
+
+  // --- Crenellations around rim ---
+  const crenCount = 10;
+  for (let i = 0; i < crenCount; i++) {
+    const angle = (i / crenCount) * Math.PI * 2 - Math.PI * 0.1;
+    const mx = Math.round(cx + Math.cos(angle) * 26);
+    const my = Math.round(faceTop - 1 + Math.sin(angle) * 12);
+    // Each merlon is a small block
+    rect(put, mx - 2, my - 3, 4, 4, P.outline);
+    if (angle > Math.PI * 0.3 && angle < Math.PI * 1.3) {
+      rect(put, mx - 1, my - 2, 3, 3, P.stoneD);
+      put(mx, my - 3, P.stoneM);
+    } else {
+      rect(put, mx - 1, my - 2, 3, 2, P.stoneM);
+      put(mx, my - 3, P.stoneL);
+    }
+  }
+
+  // Inner floor (darker standing area)
+  ellipse(put, cx, faceTop - 2, 18, 8, P.stoneD);
+  ellipse(put, cx, faceTop - 3, 15, 6, '#4a4e58');
+}
+
+// Static ballista stand — drawn as its own sprite, does NOT rotate
+function drawBallistaStand(put: Put) {
+  const cx = 32, cy = 32;
+
+  // Center post
+  rect(put, cx - 2, cy - 2, 4, 12, P.outline);
+  rect(put, cx - 1, cy - 1, 2, 10, P.woodD);
+  put(cx - 1, cy - 1, P.woodM); put(cx, cy - 1, P.wood);
+  put(cx - 1, cy, P.woodD); put(cx, cy, P.woodM);
+
+  // Tripod legs
+  line(put, cx - 1, cy + 6, cx - 7, cy + 10, P.outline);
+  line(put, cx - 1, cy + 7, cx - 6, cy + 10, P.woodD);
+  rect(put, cx - 8, cy + 10, 3, 2, P.outline);
+  rect(put, cx - 7, cy + 10, 2, 1, P.woodM);
+  line(put, cx + 1, cy + 6, cx + 7, cy + 10, P.outline);
+  line(put, cx + 1, cy + 7, cx + 6, cy + 10, P.woodD);
+  rect(put, cx + 6, cy + 10, 3, 2, P.outline);
+  rect(put, cx + 6, cy + 10, 2, 1, P.woodM);
+  line(put, cx, cy + 7, cx, cy + 11, P.outline);
+  put(cx - 1, cy + 11, P.outline); put(cx + 1, cy + 11, P.outline);
+  put(cx, cy + 10, P.woodM);
+
+  // Pivot bracket (metal)
+  rect(put, cx - 3, cy - 4, 6, 4, P.outline);
+  rect(put, cx - 2, cy - 3, 4, 2, P.silverD);
+  put(cx - 1, cy - 3, P.silverM); put(cx, cy - 3, P.silver);
+  put(cx + 1, cy - 3, P.silverM);
+}
+
+// ------------------------------------------------------------------
+// Tower archer — green-robed archer standing on tower, same style as player
+// Static body sprite (32x32), bow is separate and rotatable
+// ------------------------------------------------------------------
+function drawTowerArcher(put: Put) {
+  const cx = 16;
+
+  // Shadow
+  for (let dy = -1; dy <= 1; dy++)
+    for (let dx = -5; dx <= 5; dx++)
+      if ((dx * dx) / 25 + (dy * dy) / 1.5 <= 1) put(cx + dx, 27 + dy, P.shadow);
+
+  // Legs
+  rect(put, cx - 3, 22, 3, 4, P.tunicD);
+  rect(put, cx - 3, 26, 3, 1, P.outline);
+  rect(put, cx + 1, 22, 3, 4, P.tunicD);
+  rect(put, cx + 1, 26, 3, 1, P.outline);
+
+  // Torso (green tunic)
+  const ty = 13;
+  rect(put, cx - 5, ty, 11, 9, P.tunic);
+  rect(put, cx - 5, ty, 11, 1, P.tunicL);
+  rect(put, cx - 5, ty + 1, 1, 8, P.tunicL);
+  rect(put, cx + 5, ty + 1, 1, 8, P.tunicD);
+  rect(put, cx - 4, ty + 8, 9, 1, P.tunicD);
+  // Belt
+  rect(put, cx - 5, ty + 6, 11, 1, P.woodD);
+  put(cx, ty + 6, P.goldL);
+
+  // Shoulder stubs
+  rect(put, cx - 6, ty + 2, 2, 3, P.tunic);
+  put(cx - 6, ty + 2, P.tunicL);
+  rect(put, cx + 5, ty + 2, 2, 3, P.tunic);
+
+  // Head with hood
+  const hx = cx, hy = 9;
+  disc(put, hx, hy, 4, P.skin);
+  // Hood
+  for (let y = -4; y <= -1; y++)
+    for (let x = -4; x <= 4; x++)
+      if (x * x + y * y <= 16) put(hx + x, hy + y, P.hood);
+  // Hood point
+  put(hx, hy - 5, P.hoodD); put(hx - 1, hy - 5, P.hoodD);
+  put(hx, hy - 6, P.outline);
+  // Hood highlight
+  put(hx - 2, hy - 3, P.tunic); put(hx - 1, hy - 4, P.tunic);
+  // Face
+  rect(put, hx - 2, hy, 5, 2, P.skin);
+  put(hx - 2, hy, P.skinL); put(hx - 1, hy, P.skinL);
+  put(hx + 1, hy, P.skinD); put(hx + 2, hy, P.skinD);
+  // Eyes
+  put(hx - 1, hy + 1, P.outline); put(hx + 1, hy + 1, P.outline);
+  // Neck
+  rect(put, cx - 1, hy + 4, 3, 1, P.skinD);
+
+  // Quiver on back
+  rect(put, cx - 4, ty + 1, 2, 6, P.woodD);
+  put(cx - 4, ty + 1, P.woodM); put(cx - 3, ty + 1, P.woodM);
+  // Arrow tips poking out
+  put(cx - 4, ty, P.steel); put(cx - 3, ty, P.steel);
+  put(cx - 4, ty - 1, P.steelD);
+}
+
+// Tower archer bow — same as player bow but green arms
+function drawTowerBow(shooting: boolean) {
   return (put: Put) => {
-    // ballista-style crossbow; pivot (32,32), pointing right (angle 0)
-    const cx = 32, cy = 32;
+    const gx = 8, gy = 16;
 
-    // ----- mounting pin
-    disc(put, cx, cy, 3, P.steelD);
-    disc(put, cx, cy, 2, P.steel);
-    put(cx, cy, P.outline);
-
-    // ----- stock (main wood beam) runs along x axis
-    rect(put, cx - 10, cy - 3, 24, 7, P.woodD);
-    rect(put, cx - 10, cy - 3, 24, 1, P.wood);
-    rect(put, cx - 10, cy - 2, 24, 1, P.woodL);
-    rect(put, cx - 10, cy + 3, 24, 1, P.outline);
-    // stock grain
-    rect(put, cx - 8, cy + 1, 20, 1, P.woodM);
-
-    // ----- back stock decoration
-    rect(put, cx - 12, cy - 2, 2, 5, P.woodD);
-    put(cx - 12, cy - 2, P.woodL);
-    put(cx - 13, cy, P.woodD);
-
-    // ----- front limb housing (steel cap)
-    rect(put, cx + 10, cy - 4, 3, 9, P.steelD);
-    rect(put, cx + 10, cy - 4, 3, 1, P.steel);
-    rect(put, cx + 12, cy - 3, 1, 7, P.outline);
-
-    // ----- the bow limbs (curved vertical arc across front)
-    const bowX = cx + 13;
-    for (let y = -10; y <= 10; y++) {
-      const off = Math.round((y * y) * 0.06); // mild curve back toward center
-      const px = bowX - off;
-      put(px - 1, cy + y, P.outline);
-      put(px, cy + y, P.wood);
-      put(px + 1, cy + y, P.woodL);
+    // Back arm (string hand)
+    const stringPullX = shooting ? gx - 4 : gx;
+    rect(put, gx - 6, gy - 1, 2, 3, P.tunic);
+    put(gx - 6, gy - 1, P.tunicL);
+    for (let x = gx - 4; x >= stringPullX; x--) {
+      rect(put, x, gy - 1, 1, 3, P.tunicD);
     }
-    // limb tips (metal caps)
-    rect(put, bowX - 1, cy - 11, 3, 2, P.steel);
-    rect(put, bowX - 1, cy + 10, 3, 2, P.steel);
+    rect(put, stringPullX - 1, gy - 1, 2, 3, P.skin);
+    put(stringPullX - 1, gy + 1, P.skinD);
 
-    // ----- bowstring (taut)
+    // Front arm (bow hand)
+    rect(put, gx - 6, gy - 2, 2, 3, P.tunic);
+    put(gx - 6, gy - 2, P.tunicL);
+    rect(put, gx - 4, gy - 2, 4, 3, P.tunicD);
+    rect(put, gx - 4, gy - 2, 4, 1, P.tunicL);
+    rect(put, gx, gy - 2, 3, 4, P.skin);
+    put(gx, gy - 2, P.skinL);
+    put(gx + 2, gy + 1, P.skinD);
+
+    // Bow (wooden arc)
     for (let y = -10; y <= 10; y++) {
-      const sx = bowX - Math.round((y * y) * 0.055);
-      put(sx - 2, cy + y, P.stoneL);
+      const curve = Math.round(y * y * 0.04);
+      const bx = gx + 4 - curve;
+      put(bx + 1, gy + y, P.woodD);
+      put(bx, gy + y, P.wood);
+      put(bx - 1, gy + y, P.woodL);
+    }
+    rect(put, gx + 3, gy - 10, 2, 2, P.steel);
+    rect(put, gx + 3, gy + 9, 2, 2, P.steel);
+
+    // Bowstring
+    for (let y = -9; y <= 9; y++) {
+      const pull = shooting ? Math.round((1 - (y * y) / 81) * 4) : 0;
+      put(gx + 1 - pull, gy + y, P.stoneL);
     }
 
-    // ----- nocked arrow on the stock
-    rect(put, cx - 8, cy, 18, 1, P.arrowD);
-    rect(put, cx + 10, cy, 3, 1, P.arrow);
-    // head
-    put(cx + 13, cy - 1, P.steel);
-    put(cx + 14, cy, P.steel);
-    put(cx + 13, cy + 1, P.steel);
-    // fletching at rear
-    put(cx - 9, cy - 1, P.white); put(cx - 8, cy - 1, P.white);
-    put(cx - 9, cy + 1, P.white); put(cx - 8, cy + 1, P.white);
-    put(cx - 10, cy, P.outline);
+    // Arrow
+    const arrowStartX = shooting ? gx - 4 : gx + 1;
+    for (let x = arrowStartX; x <= gx + 14; x++) {
+      put(x, gy, P.arrowD);
+    }
+    put(gx + 15, gy, P.steel);
+    put(gx + 16, gy - 1, P.steel);
+    put(gx + 16, gy, P.steel);
+    put(gx + 16, gy + 1, P.steel);
+    put(arrowStartX, gy - 1, P.white);
+    put(arrowStartX, gy + 1, P.white);
+    put(arrowStartX - 1, gy - 1, P.white);
+    put(arrowStartX - 1, gy + 1, P.white);
 
-    // shooting muzzle flash
-    if (shoot) {
-      disc(put, cx + 18, cy, 3, P.sparkL);
-      disc(put, cx + 18, cy, 2, P.white);
-      for (let i = 0; i < 6; i++) {
-        const a = (i / 6) * Math.PI * 2;
-        put(Math.round(cx + 18 + Math.cos(a) * 4), Math.round(cy + Math.sin(a) * 4), P.spark);
-      }
+    if (shooting) {
+      put(gx + 17, gy, P.sparkL);
+      put(gx + 18, gy - 1, P.spark);
+      put(gx + 18, gy + 1, P.spark);
     }
   };
+}
+
+// Legacy wrapper
+function drawTowerTop(shoot = false) {
+  return drawTowerBow(shoot);
 }
 
 // ==================================================================
@@ -1057,6 +1179,76 @@ function drawGround(seed: number) {
   };
 }
 
+function drawFoundation(put: Put) {
+  // Organic dirt patch for 2x2 tower footprint (64x64, rendered at 0.5 scale = 32x32 = 2 tiles)
+  // Stays within bounds but with rounded/noisy corners
+  const S = 64;
+
+  // Seeded RNG for deterministic noise
+  let seed = 42;
+  const rng = () => { seed = (seed * 16807 + 0) % 2147483647; return seed / 2147483647; };
+
+  // Dirt palette
+  const dirts = ['#6b4e32', '#7a5a3a', '#5e4228', '#8b6841', '#6f5030', '#544020', '#7e6238'];
+
+  // Corner rounding radius in pixels
+  const cornerR = 8;
+
+  for (let y = 0; y < S; y++) {
+    for (let x = 0; x < S; x++) {
+      // Distance from nearest corner (only matters in corner regions)
+      let skip = false;
+      // Check each corner
+      for (const [cx, cy] of [[cornerR, cornerR], [S - 1 - cornerR, cornerR], [cornerR, S - 1 - cornerR], [S - 1 - cornerR, S - 1 - cornerR]]) {
+        const inCornerX = (cx <= cornerR && x < cornerR) || (cx >= S - 1 - cornerR && x > S - 1 - cornerR);
+        const inCornerY = (cy <= cornerR && y < cornerR) || (cy >= S - 1 - cornerR && y > S - 1 - cornerR);
+        if (inCornerX && inCornerY) {
+          const dx = x - cx, dy = y - cy;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          // Wobbly corner edge
+          const angle = Math.atan2(dy, dx);
+          const wobble = Math.sin(angle * 6) * 2 + Math.cos(angle * 4) * 1.5;
+          if (dist > cornerR + wobble) {
+            skip = true;
+            break;
+          }
+          // Fade at corner edges
+          if (dist > cornerR + wobble - 4) {
+            const fade = (cornerR + wobble - dist) / 4;
+            if (rng() > fade * 0.7) { skip = true; break; }
+          }
+        }
+      }
+      if (skip) continue;
+
+      // Fade along straight edges too (1-2px scatter)
+      const edgeDist = Math.min(x, y, S - 1 - x, S - 1 - y);
+      if (edgeDist < 3) {
+        const fade = edgeDist / 3;
+        if (rng() > fade * 0.8) continue;
+      }
+
+      // Pick dirt color with noise
+      const ci = Math.floor(rng() * dirts.length);
+      put(x, y, dirts[ci]);
+    }
+  }
+
+  // Scatter some darker speckles for texture
+  for (let i = 0; i < 80; i++) {
+    const x = 2 + Math.floor(rng() * (S - 4));
+    const y = 2 + Math.floor(rng() * (S - 4));
+    const dark = ['#3d2a16', '#4a3420', '#33210f'];
+    put(x, y, dark[Math.floor(rng() * dark.length)]);
+  }
+  // A few lighter pebble highlights
+  for (let i = 0; i < 20; i++) {
+    const x = 3 + Math.floor(rng() * (S - 6));
+    const y = 3 + Math.floor(rng() * (S - 6));
+    put(x, y, '#a08060');
+  }
+}
+
 // ==================================================================
 //  BOSS — The Brood Mother (64x64, 2x2 tile footprint)
 // ==================================================================
@@ -1287,10 +1479,25 @@ export function generateAllArt(scene: Phaser.Scene) {
   for (const f of eFrames) add(scene, `eb_${f}`, makeCanvas(32, drawEnemyBasic(f)));
   for (const f of eFrames) add(scene, `eh_${f}`, makeCanvas(32, drawEnemyHeavy(f)));
 
-  // Tower (64x64 native = 2x2 tiles)
-  add(scene, 't_base',  makeCanvas(64, drawTowerBase));
-  add(scene, 't_top_0', makeCanvas(64, drawTowerTop(false)));
-  add(scene, 't_top_1', makeCanvas(64, drawTowerTop(true)));
+  // Tower — PNG base + procedural ballista top
+  if (scene.textures.exists('t_base_png')) {
+    const copyTex = (src: string, dst: string) => {
+      if (scene.textures.exists(dst)) scene.textures.remove(dst);
+      const srcTex = scene.textures.get(src);
+      const srcImg = srcTex.getSourceImage() as HTMLImageElement;
+      const c = document.createElement('canvas');
+      c.width = srcImg.width; c.height = srcImg.height;
+      c.getContext('2d')!.drawImage(srcImg, 0, 0);
+      scene.textures.addCanvas(dst, c);
+    };
+    copyTex('t_base_png', 't_base');
+  } else {
+    add(scene, 't_base',  makeCanvas(64, drawTowerBase));
+  }
+  // Arrow tower: static archer body + rotatable bow (same system as player)
+  add(scene, 't_archer', makeCanvas(32, drawTowerArcher));
+  add(scene, 't_top_0', makeCanvas(32, drawTowerBow(false)));
+  add(scene, 't_top_1', makeCanvas(32, drawTowerBow(true)));
   add(scene, 'c_top_0', makeCanvas(64, drawCannonTop(false)));
   add(scene, 'c_top_1', makeCanvas(64, drawCannonTop(true)));
 
@@ -1320,6 +1527,7 @@ export function generateAllArt(scene: Phaser.Scene) {
 
   // Ground tile variations
   for (let i = 0; i < 4; i++) add(scene, `ground_${i}`, makeCanvas(32, drawGround(i * 77 + 13)));
+  add(scene, 'foundation', makeCanvas(64, drawFoundation));
 
   // Boss (64x64 native — 2x2 tile footprint)
   const bossFrames: BossFrame[] = [

@@ -11,7 +11,7 @@
     "isolatedModules": true,
     "resolveJsonModule": true,
     "lib": ["ES2020", "DOM"],
-    "types": []
+    "types": ["vite/client"]
   },
   "include": ["src"]
 }

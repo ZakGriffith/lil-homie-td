@@ -563,7 +563,39 @@ export class GameScene extends Phaser.Scene {
     this.updateProjectiles(time);
     this.updateCoins(vd);
     this.updateSpawning(time, vd);
+    this.updateDepthSort();
     this.checkEndConditions();
+  }
+
+  // Y-based depth sort: objects lower on screen render in front
+  updateDepthSort() {
+    const yDepth = (y: number) => 100 + y * 0.1;
+
+    // Player
+    this.player.setDepth(yDepth(this.player.y));
+    this.player.bow.setDepth(yDepth(this.player.y) + 0.5);
+
+    // Towers: base, archer/stand, bow/top all sort by tower Y
+    for (const tower of this.towers) {
+      const d = yDepth(tower.y);
+      tower.setDepth(d);
+      if (tower.stand) tower.stand.setDepth(d + 0.1);
+      tower.top.setDepth(d + 0.2);
+    }
+
+    // Enemies
+    const enemies = this.enemies.getChildren() as Phaser.Physics.Arcade.Sprite[];
+    for (let i = 0; i < enemies.length; i++) {
+      const e = enemies[i];
+      if (e.active) e.setDepth(yDepth(e.y));
+    }
+
+    // Coins
+    const coins = this.coins.getChildren() as Phaser.Physics.Arcade.Sprite[];
+    for (let i = 0; i < coins.length; i++) {
+      const c = coins[i];
+      if (c.active) c.setDepth(yDepth(c.y));
+    }
   }
 
   // ---------- PLAYER ----------
@@ -680,8 +712,10 @@ export class GameScene extends Phaser.Scene {
         tower.top.setRotation(angle);
         if (time > tower.lastShot + st.fireRate) {
           tower.lastShot = time;
-          tower.top.play('tower-top-shoot', true);
+          tower.top.setTexture('t_top_1');
           this.spawnProjectile(tower.x, tower.y, aimX, aimY, st.projectileSpeed, st.damage);
+        } else if (time > tower.lastShot + 150) {
+          tower.top.setTexture('t_top_0');
         }
       }
     }
