@@ -1,12 +1,14 @@
 import Phaser from 'phaser';
 import { generateAllArt, registerAnimations } from '../assets/generateArt';
 import towerBaseImg from '../assets/sprites/tower_base.png';
+import cannonBaseImg from '../assets/sprites/cannon_base.png';
 
 export class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
 
   preload() {
     this.load.image('t_base_png', towerBaseImg);
+    this.load.image('c_base_png', cannonBaseImg);
   }
 
   create() {

@@ -31,7 +31,6 @@ export class Wall extends Phaser.Physics.Arcade.Sprite {
   updateTexture() {
     const dmg = this.hp < this.maxHp * 0.5;
     const key = dmg ? `wall_${this.neighborMask}_dmg` : `wall_${this.neighborMask}`;
-    console.log(`Wall(${this.tileX},${this.tileY}) mask=${this.neighborMask} key=${key} exists=${this.scene.textures.exists(key)}`);
     this.setTexture(key);
   }
 }

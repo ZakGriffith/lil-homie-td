@@ -20,14 +20,15 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   // visual tint per level per kind
   static readonly TIER_TINT: Record<TowerKind, number[]> = {
     arrow:  [0xffffff, 0x9fd9ff, 0xffd67a],
-    cannon: [0x6a6a78, 0xb07a3a, 0xd94a2a]
+    cannon: [0xffffff, 0xb07a3a, 0xd94a2a]
   };
 
   constructor(scene: Phaser.Scene, tileX: number, tileY: number, kind: TowerKind = 'arrow') {
     const size = CFG.tower.tiles;
     const wx = (tileX + size / 2) * CFG.tile;
     const wy = (tileY + size / 2) * CFG.tile;
-    super(scene, wx, wy, 't_base');
+    const baseTex = kind === 'cannon' ? 'c_base' : 't_base';
+    super(scene, wx, wy, baseTex);
     this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this, true); // static
@@ -39,7 +40,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.StaticBody).setCircle(bodyRadius);
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
 
-    const topOffY = kind === 'arrow' ? -24 : 0;
+    const topOffY = kind === 'arrow' ? -24 : -26;
 
     if (kind === 'arrow') {
       // Static archer body standing on tower

@@ -1,13 +1,13 @@
 # TODO
 
-## 1. Redo Tower Graphics (Isometric Perspective)
-- Current tower art is top-down, which clashes with the angled perspective of the player and enemies
-- Redraw tower base and top sprites at a 3/4 angle to match the rest of the game
-- Base should visually fill its 2x2 grid footprint so players can clearly see the collision boundary
-  - Avoids confusion when walking near tower corners and being blocked by invisible edges
-- Maintain the tier tinting system (arrow: white → blue → gold, cannon: grey → bronze → red)
-- Cannon and arrow tops should still rotate to aim but drawn from the angled perspective
-- Update hit flash and upgrade pop animations to match new art style
+## 1. ~~Redo Tower Graphics (Isometric Perspective)~~ ✅
+- ~~Redraw tower base and top sprites at a 3/4 angle to match the rest of the game~~
+- ~~Base should visually fill its 2x2 grid footprint~~
+- ~~Maintain the tier tinting system~~
+- ~~Arrow tower: archer + rotatable bow system~~
+- ~~Circular collision body for corner passthrough~~
+- ~~Y-based depth sorting for 3D occlusion~~
+- ~~WC2-style autotiling walls with 16 neighbor variants~~
 
 ## 2. Level Select Screen (Pick One Approach)
 - Levels unlock sequentially — beating one unlocks the next
@@ -42,18 +42,20 @@
 8. **Dark Fortress** — final level, all enemy types, multiple bosses
 
 ## 3. Improve Ground/Terrain Variety
-- Current ground is a single shade of green — looks flat and unpolished
 - Each biome needs varied terrain tiles that are all walkable but visually distinct
-- **Grasslands**: mix of grass shades, patches of dirt, sandy spots, small stones, tufts of tall grass
-- **Forest**: mossy ground, leaf litter, exposed roots, muddy patches
-- **Swamp**: murky water puddles, reeds, soggy earth tones
-- **Desert**: sand dunes, cracked earth, rock outcroppings, occasional scrub brush
-- **Mountains**: rocky ground, gravel patches, snow-dusted stone, cliff edges
-- **Volcanic**: charred rock, lava cracks (glowing), ash-covered ground
-- **Frozen Peaks**: snow, ice patches, frozen puddles, wind-swept stone
-- **Dark Fortress**: dark stone tiles, cracks, glowing runes
-- Use Perlin/simplex noise or random seeding to generate natural-looking terrain variation per level
+- World-space multi-octave noise for smooth gradient transitions between shades
+- Per-chunk canvas rendering (one 512px image per chunk)
 - Terrain is purely cosmetic — no gameplay effect on walkability (walls/towers still use the grid)
+
+### Biome Checklist
+- [x] **Grasslands** — 4 green shade gradient, scattered flowers/rocks/tufts
+- [ ] **Forest** — mossy ground, leaf litter, exposed roots, muddy patches
+- [ ] **Swamp** — murky water puddles, reeds, soggy earth tones
+- [ ] **Desert** — sand dunes, cracked earth, rock outcroppings, occasional scrub brush
+- [ ] **Mountains** — rocky ground, gravel patches, snow-dusted stone, cliff edges
+- [ ] **Volcanic** — charred rock, lava cracks (glowing), ash-covered ground
+- [ ] **Frozen Peaks** — snow, ice patches, frozen puddles, wind-swept stone
+- [ ] **Dark Fortress** — dark stone tiles, cracks, glowing runes
 
 ## 4. Unlock Progression System
 - Towers and content unlock through character experience earned by beating levels

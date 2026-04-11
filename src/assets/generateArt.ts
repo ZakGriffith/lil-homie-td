@@ -1655,6 +1655,21 @@ export function generateAllArt(scene: Phaser.Scene) {
   } else {
     add(scene, 't_base',  makeCanvas(64, drawTowerBase));
   }
+  // Cannon tower — PNG base (sprite #29)
+  if (scene.textures.exists('c_base_png')) {
+    const copyTex2 = (src: string, dst: string) => {
+      if (scene.textures.exists(dst)) scene.textures.remove(dst);
+      const srcTex = scene.textures.get(src);
+      const srcImg = srcTex.getSourceImage() as HTMLImageElement;
+      const c = document.createElement('canvas');
+      c.width = srcImg.width; c.height = srcImg.height;
+      c.getContext('2d')!.drawImage(srcImg, 0, 0);
+      scene.textures.addCanvas(dst, c);
+    };
+    copyTex2('c_base_png', 'c_base');
+  } else {
+    add(scene, 'c_base', makeCanvas(64, drawTowerBase));
+  }
   // Arrow tower: static archer body + rotatable bow (same system as player)
   add(scene, 't_archer', makeCanvas(32, drawTowerArcher));
   add(scene, 't_top_0', makeCanvas(32, drawTowerBow(false)));

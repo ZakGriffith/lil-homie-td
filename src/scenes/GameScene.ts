@@ -169,7 +169,7 @@ export class GameScene extends Phaser.Scene {
     this.ghost.setVisible(k !== 'none');
     if (this.gridOverlay) this.gridOverlay.setVisible(k !== 'none');
     if (k === 'tower') {
-      this.ghost.setTexture('t_base');
+      this.ghost.setTexture(this.buildTowerKind === 'cannon' ? 'c_base' : 't_base');
       // pre-tint the ghost so player sees which kind they're placing
       const baseTint = Tower.TIER_TINT[this.buildTowerKind][0];
       this.ghost.setTint(baseTint);
@@ -1872,9 +1872,11 @@ export class GameScene extends Phaser.Scene {
       // Start a 5s collection window so the player can grab coins
       if (this.winDelayUntil === 0) {
         this.winDelayUntil = this.vTime + 12000;
-        this.countdownText.setText('VICTORY! Collect your loot!');
         this.countdownText.setColor('#7cf29a');
-      } else if (this.vTime >= this.winDelayUntil || this.coins.countActive() === 0) {
+      }
+      const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
+      this.countdownText.setText(`VICTORY! Collect your loot! ${remaining}s`);
+      if (this.vTime >= this.winDelayUntil || this.coins.countActive() === 0) {
         this.win();
       }
     }
