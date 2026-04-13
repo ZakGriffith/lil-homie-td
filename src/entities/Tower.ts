@@ -40,11 +40,14 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     (this.body as Phaser.Physics.Arcade.StaticBody).setCircle(bodyRadius);
     (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
 
-    const topOffY = kind === 'arrow' ? -24 : -26;
+    const topOffY = kind === 'arrow' ? -24 : -20;
 
     if (kind === 'arrow') {
       // Static archer body standing on tower
       this.stand = scene.add.sprite(wx, wy + topOffY, 't_archer').setDepth(6.5).setScale(0.5);
+    } else if (kind === 'cannon') {
+      // Static cannon mount / carriage (doesn't rotate)
+      this.stand = scene.add.sprite(wx, wy + topOffY, 'c_mount').setDepth(6.5).setScale(0.5);
     }
 
     // Rotating top (bow for arrow tower, barrel for cannon)

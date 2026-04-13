@@ -25,6 +25,8 @@ export class GameScene extends Phaser.Scene {
   grid: SparseGrid = createSparseGrid();
   gridVersion = 0;
   generatedChunks = new Set<string>();
+  pendingChunks: { cx: number; cy: number }[] = [];
+  loadingDone = false;
 
   keys!: any;
   buildKind: BuildKind = 'none';
@@ -85,8 +87,9 @@ export class GameScene extends Phaser.Scene {
     this.player = new Player(this, 0, 0);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
-    // Generate initial ground chunks around player
+    // Generate all initial ground chunks before the game starts
     this.generateChunksAround(0, 0);
+    this.processChunkQueue(this.pendingChunks.length);
 
     // collisions
     this.physics.add.collider(this.player, this.wallGroup);
@@ -136,8 +139,14 @@ export class GameScene extends Phaser.Scene {
       stroke: '#0b0f1a', strokeThickness: 4
     }).setOrigin(0.5).setDepth(30).setScrollFactor(0);
 
-    // Signal to the main page that loading is done
-    this.game.events.emit('game-ready');
+    // Delay game-ready by a few frames so the browser can composite
+    // and the UI scene has time to finish its own create()
+    this.loadingDone = false;
+    this.time.delayedCall(100, () => {
+      this.loadingDone = true;
+      this.pushHud();
+      this.game.events.emit('game-ready');
+    });
   }
 
   hudState() {
@@ -468,23 +477,38 @@ export class GameScene extends Phaser.Scene {
     return { x: Math.floor(x / CFG.tile), y: Math.floor(y / CFG.tile) };
   }
 
-  // Generate ground chunks around a world position
+  // Queue ground chunks around a world position (deferred generation)
   generateChunksAround(wx: number, wy: number) {
     const cs = CFG.chunkSize;
     const tile = CFG.tile;
     const cx = Math.floor(wx / (cs * tile));
     const cy = Math.floor(wy / (cs * tile));
-    const radius = 2; // generate chunks within 2 chunks of the player
+    const radius = 3; // generate well ahead of viewport
     for (let dy = -radius; dy <= radius; dy++) {
       for (let dx = -radius; dx <= radius; dx++) {
         const key = `${cx + dx},${cy + dy}`;
         if (this.generatedChunks.has(key)) continue;
         this.generatedChunks.add(key);
-        const ccx = cx + dx, ccy = cy + dy;
-        const texKey = createGroundChunk(this, ccx, ccy, cs, 32);
-        const chunkPx = cs * tile;
-        this.add.image(ccx * chunkPx + chunkPx / 2, ccy * chunkPx + chunkPx / 2, texKey).setDepth(0);
+        this.pendingChunks.push({ cx: cx + dx, cy: cy + dy });
       }
+    }
+    // Sort by distance to player chunk so nearest chunks render first
+    this.pendingChunks.sort((a, b) =>
+      ((a.cx - cx) ** 2 + (a.cy - cy) ** 2) - ((b.cx - cx) ** 2 + (b.cy - cy) ** 2)
+    );
+  }
+
+  // Process up to N pending chunks per frame
+  processChunkQueue(max: number) {
+    const cs = CFG.chunkSize;
+    const tile = CFG.tile;
+    const chunkPx = cs * tile;
+    let n = 0;
+    while (this.pendingChunks.length > 0 && n < max) {
+      const { cx: ccx, cy: ccy } = this.pendingChunks.shift()!;
+      const texKey = createGroundChunk(this, ccx, ccy, cs, 32);
+      this.add.image(ccx * chunkPx + chunkPx / 2, ccy * chunkPx + chunkPx / 2, texKey).setDepth(0);
+      n++;
     }
   }
 
@@ -509,6 +533,7 @@ export class GameScene extends Phaser.Scene {
 
   update(_realTime: number, delta: number) {
     if (this.gameOver) return;
+    if (!this.loadingDone) return;
 
     // Virtual time advances at timeMult speed; all downstream systems use it.
     const vd = delta * this.timeMult;
@@ -554,6 +579,7 @@ export class GameScene extends Phaser.Scene {
 
     // Generate ground chunks around player as they move
     this.generateChunksAround(this.player.x, this.player.y);
+    this.processChunkQueue(2);
 
     // Redraw grid overlay around the camera if building
     if (this.buildKind !== 'none') this.redrawGridOverlay();
@@ -873,6 +899,7 @@ export class GameScene extends Phaser.Scene {
         if (time > e.attackCd) {
           e.attackCd = time + 800;
           this.player.hurt(e.dmg, this);
+          this.pushHud();
           if (this.player.hp <= 0) this.lose();
         }
         return true;
@@ -1007,6 +1034,7 @@ export class GameScene extends Phaser.Scene {
           Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < 40) {
         const chargeDmg = Math.floor(CFG.player.hp * 0.55); // ~55% max HP
         this.player.hurt(chargeDmg, this);
+        this.pushHud();
         b.contactCd = time + 600; // don't double-tap within the same charge
         if (this.player.hp <= 0) this.lose();
       }
@@ -1126,6 +1154,7 @@ export class GameScene extends Phaser.Scene {
     ) {
       b.contactCd = time + 700;
       this.player.hurt(b.dmg, this);
+      this.pushHud();
       if (this.player.hp <= 0) this.lose();
     }
   }
@@ -1134,6 +1163,7 @@ export class GameScene extends Phaser.Scene {
     const r = 56;
     if (Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < r) {
       this.player.hurt(30, this);
+      this.pushHud();
       if (this.player.hp <= 0) this.lose();
     }
     for (const t of [...this.towers]) {
@@ -1240,6 +1270,7 @@ export class GameScene extends Phaser.Scene {
     if (Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < r) {
       const chargeDmg = Math.floor(CFG.player.hp * 0.55);
       this.player.hurt(chargeDmg, this);
+      this.pushHud();
       if (this.player.hp <= 0) this.lose();
     }
     // Towers caught in the impact zone are instantly destroyed
@@ -1434,6 +1465,7 @@ export class GameScene extends Phaser.Scene {
     if (this.vTime > e.attackCd) {
       e.attackCd = this.vTime + 700;
       this.player.hurt(e.dmg, this);
+      this.pushHud();
       if (this.player.hp <= 0) this.lose();
     }
   }

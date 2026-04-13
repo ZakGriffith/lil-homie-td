@@ -788,26 +788,38 @@ function drawTowerTop(shoot = false) {
 // ==================================================================
 //  CANNON TURRET TOP (64x64) — fat dark cannon, pivot (32,32), aims right
 // ==================================================================
-function drawCannonTop(shoot = false) {
+// Static cannon mount / carriage — does not rotate
+function drawCannonMount() {
   return (put: Put) => {
     const cx = 32, cy = 32;
 
-    // shadow under the whole assembly
+    // shadow under the mount
     for (let dy = -4; dy <= 4; dy++)
-      for (let dx = -12; dx <= 18; dx++)
-        if ((dx * dx) / 324 + (dy * dy) / 20 <= 1) put(cx + dx, cy + 7 + dy, P.shadow);
+      for (let dx = -12; dx <= 12; dx++)
+        if ((dx * dx) / 144 + (dy * dy) / 20 <= 1) put(cx + dx, cy + 7 + dy, P.shadow);
 
-    // ----- trunnion mount / carriage (wide dark block under the barrel)
+    // trunnion mount / carriage (wide dark block)
     rect(put, cx - 9, cy + 2, 18, 6, P.outline);
     rect(put, cx - 8, cy + 2, 16, 5, P.stoneD);
     rect(put, cx - 8, cy + 2, 16, 1, P.stoneM);
-    // iron bands on the carriage
+    // iron bands
     rect(put, cx - 4, cy + 2, 1, 5, P.outline);
     rect(put, cx + 3,  cy + 2, 1, 5, P.outline);
     // rivets
     put(cx - 6, cy + 4, P.steel);
     put(cx + 1, cy + 4, P.steel);
     put(cx + 6, cy + 4, P.steel);
+
+    // center mounting pin (pivot)
+    disc(put, cx, cy, 3, P.outline);
+    disc(put, cx, cy, 2, P.steelD);
+    put(cx, cy, P.steel);
+  };
+}
+
+function drawCannonTop(shoot = false) {
+  return (put: Put) => {
+    const cx = 32, cy = 32;
 
     // ----- barrel (thick dark cylinder running along x)
     // outline first
@@ -848,11 +860,6 @@ function drawCannonTop(shoot = false) {
     put(cx + 22, cy,     P.outline);
     put(cx + 22, cy + 1, P.outline);
     put(cx + 22, cy + 2, P.outline);
-
-    // ----- center mounting pin (pivot)
-    disc(put, cx, cy, 3, P.outline);
-    disc(put, cx, cy, 2, P.steelD);
-    put(cx, cy, P.steel);
 
     // ----- muzzle flash + smoke when firing
     if (shoot) {
@@ -1585,6 +1592,17 @@ function add(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement) {
 }
 
 /** Create and register a ground chunk texture covering chunkSize×chunkSize tiles */
+// Parse a hex color string to [r, g, b]
+const _colorCache = new Map<string, [number, number, number]>();
+function hexToRgb(hex: string): [number, number, number] {
+  let c = _colorCache.get(hex);
+  if (c) return c;
+  const h = hex.startsWith('#') ? hex.slice(1) : hex;
+  c = [parseInt(h.slice(0, 2), 16), parseInt(h.slice(2, 4), 16), parseInt(h.slice(4, 6), 16)];
+  _colorCache.set(hex, c);
+  return c;
+}
+
 export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: number, chunkSize: number, tileSize: number): string {
   const key = `gnd_chunk_${chunkX}_${chunkY}`;
   if (scene.textures.exists(key)) return key;
@@ -1592,24 +1610,30 @@ export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: n
   const canvas = document.createElement('canvas');
   canvas.width = pxSize; canvas.height = pxSize;
   const ctx = canvas.getContext('2d')!;
-  ctx.imageSmoothingEnabled = false;
+  // Use ImageData for bulk pixel writes — orders of magnitude faster than fillRect
+  const imageData = ctx.createImageData(pxSize, pxSize);
+  const buf = imageData.data;
   const startTX = chunkX * chunkSize;
   const startTY = chunkY * chunkSize;
-  // Draw each tile into the chunk canvas
   for (let ty = 0; ty < chunkSize; ty++) {
     for (let tx = 0; tx < chunkSize; tx++) {
       const worldTX = startTX + tx;
       const worldTY = startTY + ty;
       const draw = drawGroundWorld(worldTX, worldTY);
+      const ox = tx * tileSize;
+      const oy = ty * tileSize;
       const put: Put = (x, y, col) => {
         if (col == null) return;
-        if (x < 0 || y < 0 || x >= tileSize || y >= tileSize) return;
-        ctx.fillStyle = col;
-        ctx.fillRect(tx * tileSize + Math.floor(x), ty * tileSize + Math.floor(y), 1, 1);
+        const px = Math.floor(x), py = Math.floor(y);
+        if (px < 0 || py < 0 || px >= tileSize || py >= tileSize) return;
+        const idx = ((oy + py) * pxSize + (ox + px)) * 4;
+        const [r, g, b] = hexToRgb(col);
+        buf[idx] = r; buf[idx + 1] = g; buf[idx + 2] = b; buf[idx + 3] = 255;
       };
       draw(put);
     }
   }
+  ctx.putImageData(imageData, 0, 0);
   if (scene.textures.exists(key)) scene.textures.remove(key);
   scene.textures.addCanvas(key, canvas);
   return key;
@@ -1657,16 +1681,27 @@ export function generateAllArt(scene: Phaser.Scene) {
   }
   // Cannon tower — PNG base (sprite #29)
   if (scene.textures.exists('c_base_png')) {
-    const copyTex2 = (src: string, dst: string) => {
+    const cleanAndCopy = (src: string, dst: string) => {
       if (scene.textures.exists(dst)) scene.textures.remove(dst);
       const srcTex = scene.textures.get(src);
       const srcImg = srcTex.getSourceImage() as HTMLImageElement;
       const c = document.createElement('canvas');
       c.width = srcImg.width; c.height = srcImg.height;
-      c.getContext('2d')!.drawImage(srcImg, 0, 0);
+      const ctx = c.getContext('2d')!;
+      ctx.drawImage(srcImg, 0, 0);
+      // Strip magenta fringe: any pixel where R and B are high but G is low
+      const id = ctx.getImageData(0, 0, c.width, c.height);
+      const d = id.data;
+      for (let i = 0; i < d.length; i += 4) {
+        const r = d[i], g = d[i + 1], b = d[i + 2];
+        if (r > 180 && b > 180 && g < 100) {
+          d[i + 3] = 0; // make transparent
+        }
+      }
+      ctx.putImageData(id, 0, 0);
       scene.textures.addCanvas(dst, c);
     };
-    copyTex2('c_base_png', 'c_base');
+    cleanAndCopy('c_base_png', 'c_base');
   } else {
     add(scene, 'c_base', makeCanvas(64, drawTowerBase));
   }
@@ -1674,6 +1709,7 @@ export function generateAllArt(scene: Phaser.Scene) {
   add(scene, 't_archer', makeCanvas(32, drawTowerArcher));
   add(scene, 't_top_0', makeCanvas(32, drawTowerBow(false)));
   add(scene, 't_top_1', makeCanvas(32, drawTowerBow(true)));
+  add(scene, 'c_mount', makeCanvas(64, drawCannonMount()));
   add(scene, 'c_top_0', makeCanvas(64, drawCannonTop(false)));
   add(scene, 'c_top_1', makeCanvas(64, drawCannonTop(true)));
 
