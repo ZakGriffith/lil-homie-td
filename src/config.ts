@@ -48,7 +48,7 @@ export const CFG = {
   enemy: {
     basic:  { hp: 20, speed: 60,  dmg: 8,  coin: 1, color: 0xd9412b },
     heavy:  { hp: 30, speed: 40,  dmg: 10, coin: 2, color: 0x7a1d14 },
-    runner: { hp: 12, speed: 160, dmg: 5,  coin: 1, color: 0x6af078 }
+    runner: { hp: 12, speed: 150, dmg: 5,  coin: 1, color: 0x6af078 }
   },
 
   coin: { magnetRange: 90, magnetSpeed: 420 },
