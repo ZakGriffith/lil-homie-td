@@ -106,7 +106,14 @@
 - Display name, icon, and brief description of each path
 - Highlight stat changes compared to the base Level 1 tower
 
-## 6. Character Abilities (Purchasable Upgrades)
+## 6. Leaderboard
+- Show a leaderboard on the victory/defeat screen or accessible from the main menu
+- Score = f(completion time, remaining money) — faster clears with more money = higher score
+- Store top scores in localStorage per level per difficulty
+- Display: rank, player name, score, time, money
+- Highlight the player's current run if it made the board
+
+## 7. Character Abilities (Purchasable Upgrades)
 - Spend XP or in-game currency to permanently upgrade the player character
 - Upgrades persist across levels (part of the progression system)
 

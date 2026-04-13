@@ -1419,6 +1419,7 @@ export class GameScene extends Phaser.Scene {
       const ey = b.y + Math.sin(a) * dist - 6;
       const kind: EnemyKind = Math.random() < 0.4 ? 'heavy' : 'basic';
       const e = new Enemy(this, ex, ey, kind);
+      e.noCoinDrop = true;
       this.enemies.add(e);
       const body = e.body as Phaser.Physics.Arcade.Body;
       body.setVelocity(Math.cos(a) * 120, Math.sin(a) * 120 - 40);
@@ -1634,12 +1635,14 @@ export class GameScene extends Phaser.Scene {
     if (!e || !e.active || e.dying) return;
     e.hurt(dmg);
     if (e.hp <= 0) {
-      const tier =
-        e.kind === 'heavy'  ? 'silver' :
-        e.kind === 'runner' ? 'bronze' :
-                              'bronze';
-      const coin = new Coin(this, e.x + Phaser.Math.Between(-4, 4), e.y + Phaser.Math.Between(-4, 4), tier);
-      this.coins.add(coin);
+      if (!e.noCoinDrop) {
+        const tier =
+          e.kind === 'heavy'  ? 'silver' :
+          e.kind === 'runner' ? 'bronze' :
+                                'bronze';
+        const coin = new Coin(this, e.x + Phaser.Math.Between(-4, 4), e.y + Phaser.Math.Between(-4, 4), tier);
+        this.coins.add(coin);
+      }
       const burst = this.add.sprite(e.x, e.y, 'fx_death_0').setDepth(15).setScale(0.5);
       burst.play('fx-death');
       burst.once('animationcomplete', () => burst.destroy());
@@ -1957,12 +1960,23 @@ export class GameScene extends Phaser.Scene {
   spawnEnemy() {
     const spawnR = CFG.spawnDist * CFG.tile;
     const px = this.player.x, py = this.player.y;
-    const side = Phaser.Math.Between(0, 3);
-    let x = 0, y = 0;
-    if (side === 0) { x = px + Phaser.Math.Between(-spawnR, spawnR); y = py - spawnR; }
-    if (side === 1) { x = px + Phaser.Math.Between(-spawnR, spawnR); y = py + spawnR; }
-    if (side === 2) { x = px - spawnR; y = py + Phaser.Math.Between(-spawnR, spawnR); }
-    if (side === 3) { x = px + spawnR; y = py + Phaser.Math.Between(-spawnR, spawnR); }
+    const vx = (this.player.body as Phaser.Physics.Arcade.Body).velocity.x;
+    const vy = (this.player.body as Phaser.Physics.Arcade.Body).velocity.y;
+
+    // Spawn on a random angle around the player, biased toward movement direction
+    // so enemies appear ahead when running
+    let angle = Math.random() * Math.PI * 2;
+    const speed = Math.sqrt(vx * vx + vy * vy);
+    if (speed > 20) {
+      const moveAngle = Math.atan2(vy, vx);
+      // 60% chance to spawn in the forward hemisphere
+      if (Math.random() < 0.6) {
+        angle = moveAngle + (Math.random() - 0.5) * Math.PI; // ±90° of move dir
+      }
+    }
+
+    const x = px + Math.cos(angle) * spawnR;
+    const y = py + Math.sin(angle) * spawnR;
     const kind: EnemyKind = Math.random() < this.heavyChance ? 'heavy' : 'basic';
     const e = new Enemy(this, x, y, kind);
     this.enemies.add(e);

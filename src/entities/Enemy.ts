@@ -16,6 +16,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   lastPath = 0;
   attackCd = 0;
   dying = false;
+  noCoinDrop = false; // boss-spawned enemies don't drop coins
   targetRef: any = null; // current target object (player, tower, wall)
 
   constructor(scene: Phaser.Scene, x: number, y: number, kind: EnemyKind) {
