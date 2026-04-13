@@ -17,7 +17,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this);
-    this.setSize(28, 36).setOffset(18, 20);
+    (this.body as Phaser.Physics.Arcade.Body).setCircle(14, 18, 22);
     this.setDepth(10);
     this.play('player-idle');
 

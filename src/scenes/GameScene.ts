@@ -56,6 +56,7 @@ export class GameScene extends Phaser.Scene {
   selectionRing!: Phaser.GameObjects.Graphics;
   towerPanel!: Phaser.GameObjects.Container;
   towerPanelBounds = { x: 0, y: 0, w: 0, h: 0 };
+  towerIndicators = new Map<Tower, { bg: Phaser.GameObjects.Sprite; ptr: Phaser.GameObjects.Sprite }>();
 
   boss: Boss | null = null;
   bossSpawned = false;
@@ -592,7 +593,74 @@ export class GameScene extends Phaser.Scene {
     this.updateCoins(vd);
     this.updateSpawning(time, vd);
     this.updateDepthSort();
+    this.updateTowerIndicators();
     this.checkEndConditions();
+  }
+
+  updateTowerIndicators() {
+    const cam = this.cameras.main;
+    const pad = 28; // distance from screen edge
+    const cx = cam.width / 2;
+    const cy = cam.height / 2;
+
+    // Track which towers are still alive for cleanup
+    const alive = new Set(this.towers);
+
+    for (const t of this.towers) {
+      // Tower screen position
+      const sx = t.x - cam.scrollX;
+      const sy = t.y - cam.scrollY;
+
+      // Is tower on screen? (with margin)
+      const margin = 40;
+      const onScreen = sx > -margin && sx < cam.width + margin &&
+                       sy > -margin && sy < cam.height + margin;
+
+      // Get or create indicator
+      let ind = this.towerIndicators.get(t);
+      if (!ind) {
+        const texKey = t.kind === 'arrow' ? 'ind_arrow' : 'ind_cannon';
+        const bg = this.add.sprite(0, 0, texKey)
+          .setScrollFactor(0).setDepth(25).setScale(0.5).setAlpha(0.85).setVisible(false);
+        const ptr = this.add.sprite(0, 0, 'ind_ptr')
+          .setScrollFactor(0).setDepth(25.1).setScale(0.5).setAlpha(0.85).setVisible(false);
+        ind = { bg, ptr };
+        this.towerIndicators.set(t, ind);
+      }
+
+      if (onScreen) {
+        ind.bg.setVisible(false);
+        ind.ptr.setVisible(false);
+        continue;
+      }
+
+      // Ray from screen center to tower screen pos, intersect with screen rect
+      const dx = sx - cx;
+      const dy = sy - cy;
+      if (dx === 0 && dy === 0) continue;
+
+      const scaleX = dx !== 0 ? (cx - pad) / Math.abs(dx) : Infinity;
+      const scaleY = dy !== 0 ? (cy - pad) / Math.abs(dy) : Infinity;
+      const s = Math.min(scaleX, scaleY);
+
+      const edgeX = cx + dx * s;
+      const edgeY = cy + dy * s;
+      const angle = Math.atan2(dy, dx);
+
+      ind.bg.setPosition(edgeX, edgeY).setVisible(true);
+      // Pointer offset from bg center, pointing toward tower
+      ind.ptr.setPosition(edgeX + Math.cos(angle) * 18, edgeY + Math.sin(angle) * 18)
+        .setRotation(angle).setVisible(true);
+    }
+
+    // Cleanup destroyed towers
+    for (const [t, ind] of this.towerIndicators) {
+      if (!alive.has(t)) {
+        ind.bg.destroy();
+        ind.ptr.destroy();
+        this.towerIndicators.delete(t);
+      }
+    }
   }
 
   // Y-based depth sort: objects lower on screen render in front
@@ -1363,6 +1431,8 @@ export class GameScene extends Phaser.Scene {
 
   destroyTower(t: Tower) {
     if (this.selectedTower === t) this.deselectTower();
+    const ind = this.towerIndicators.get(t);
+    if (ind) { ind.bg.destroy(); ind.ptr.destroy(); this.towerIndicators.delete(t); }
     const idx = this.towers.indexOf(t);
     if (idx >= 0) this.towers.splice(idx, 1);
     for (let j = 0; j < t.size; j++)

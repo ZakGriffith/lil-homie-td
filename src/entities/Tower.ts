@@ -37,8 +37,11 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.tileY = tileY;
     this.setDepth(6);
     const bodyRadius = (CFG.tile * this.size - 20) / 2;
-    (this.body as Phaser.Physics.Arcade.StaticBody).setCircle(bodyRadius);
-    (this.body as Phaser.Physics.Arcade.StaticBody).updateFromGameObject();
+    const body = this.body as Phaser.Physics.Arcade.StaticBody;
+    body.setCircle(bodyRadius);
+    body.updateFromGameObject();
+    // Force body center to grid center regardless of sprite dimensions
+    body.position.set(wx - bodyRadius, wy - bodyRadius);
 
     const topOffY = kind === 'arrow' ? -24 : -20;
 

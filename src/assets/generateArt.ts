@@ -1591,6 +1591,69 @@ function add(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement) {
   scene.textures.addCanvas(key, canvas);
 }
 
+// ==================================================================
+//  OFF-SCREEN TOWER INDICATORS (32x32 logical → 64 physical)
+// ==================================================================
+function drawIndicatorArrow() {
+  return (put: Put) => {
+    const cx = 16, cy = 16;
+    // Dark circle background
+    disc(put, cx, cy, 13, P.outline);
+    disc(put, cx, cy, 12, P.blueD);
+    disc(put, cx, cy, 11, P.blueM);
+    // Arrow icon in center
+    // shaft
+    rect(put, cx - 5, cy - 1, 10, 2, P.arrow);
+    rect(put, cx - 5, cy, 10, 1, P.arrowD);
+    // arrowhead
+    put(cx + 5, cy - 3, P.stone); put(cx + 6, cy - 2, P.stone);
+    put(cx + 7, cy - 1, P.stoneL); put(cx + 7, cy, P.stoneL);
+    put(cx + 6, cy + 1, P.stone); put(cx + 5, cy + 2, P.stone);
+    // fletching
+    put(cx - 5, cy - 2, P.white); put(cx - 6, cy - 3, P.white);
+    put(cx - 5, cy + 1, P.white); put(cx - 6, cy + 2, P.white);
+  };
+}
+
+function drawIndicatorCannon() {
+  return (put: Put) => {
+    const cx = 16, cy = 16;
+    // Dark circle background
+    disc(put, cx, cy, 13, P.outline);
+    disc(put, cx, cy, 12, '#2a1a0e');
+    disc(put, cx, cy, 11, '#3e2a18');
+    // Cannonball icon
+    disc(put, cx, cy, 5, P.outline);
+    disc(put, cx, cy, 4, P.stoneD);
+    disc(put, cx, cy, 3, P.stoneM);
+    // highlight
+    put(cx - 1, cy - 2, P.stone);
+    put(cx, cy - 2, P.stoneL);
+    put(cx - 2, cy - 1, P.stone);
+  };
+}
+
+function drawIndicatorPointer() {
+  return (put: Put) => {
+    // 16x16 — small triangle/chevron pointing right
+    // Will be rotated at runtime to point toward the tower
+    const cx = 8, cy = 8;
+    // Triangle pointing right
+    for (let row = 0; row < 7; row++) {
+      const w = 7 - row;
+      for (let col = 0; col < w; col++) {
+        const px = cx + col;
+        const py = cy - 3 + row;
+        if (row === 0 || row === 6 || col >= w - 1) {
+          put(px, py, P.outline);
+        } else {
+          put(px, py, P.white);
+        }
+      }
+    }
+  };
+}
+
 /** Create and register a ground chunk texture covering chunkSize×chunkSize tiles */
 // Parse a hex color string to [r, g, b]
 const _colorCache = new Map<string, [number, number, number]>();
@@ -1712,6 +1775,11 @@ export function generateAllArt(scene: Phaser.Scene) {
   add(scene, 'c_mount', makeCanvas(64, drawCannonMount()));
   add(scene, 'c_top_0', makeCanvas(64, drawCannonTop(false)));
   add(scene, 'c_top_1', makeCanvas(64, drawCannonTop(true)));
+
+  // Off-screen tower indicators
+  add(scene, 'ind_arrow',  makeCanvas(32, drawIndicatorArrow()));
+  add(scene, 'ind_cannon', makeCanvas(32, drawIndicatorCannon()));
+  add(scene, 'ind_ptr',    makeCanvas(16, drawIndicatorPointer()));
 
   // Wall
   // Walls — 16 autotile variants (N=1, E=2, S=4, W=8) × normal/damaged
