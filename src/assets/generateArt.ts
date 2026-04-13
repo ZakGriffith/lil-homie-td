@@ -1777,6 +1777,13 @@ export function generateAllArt(scene: Phaser.Scene) {
   } else {
     add(scene, 'c_base', makeCanvas(64, drawTowerBase));
   }
+  // Cannon tower upgrade bases (level 1 = sprite #11, level 2 = sprite #32)
+  if (scene.textures.exists('c_base_1_png')) {
+    copyTex('c_base_1_png', 'c_base_1');
+  }
+  if (scene.textures.exists('c_base_2_png')) {
+    copyTex('c_base_2_png', 'c_base_2');
+  }
   // Arrow tower: static archer body + rotatable bow (same system as player)
   add(scene, 't_archer', makeCanvas(32, drawTowerArcher));
   add(scene, 't_top_0', makeCanvas(32, drawTowerBow(false)));

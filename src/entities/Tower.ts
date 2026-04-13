@@ -19,8 +19,8 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
 
   // visual tint per level per kind
   static readonly TIER_TINT: Record<TowerKind, number[]> = {
-    arrow:  [0xffffff, 0x9fd9ff, 0xffd67a],
-    cannon: [0xffffff, 0xb07a3a, 0xd94a2a]
+    arrow:  [0xffffff, 0xffffff, 0xffffff],
+    cannon: [0xffffff, 0xffffff, 0xffffff]
   };
 
   constructor(scene: Phaser.Scene, tileX: number, tileY: number, kind: TowerKind = 'arrow') {
@@ -111,10 +111,17 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     else this.top.setTint(tint);
     if (this.stand) this.stand.setTint(tint);
 
-    // Swap arrow tower base sprite per upgrade level
+    // Swap tower base sprite per upgrade level
     if (this.kind === 'arrow') {
       const baseKey = this.level === 2 ? 't_base_2' :
                       this.level === 1 ? 't_base_1' : 't_base';
+      if (this.scene.textures.exists(baseKey)) {
+        this.setTexture(baseKey);
+        this.setTint(tint);
+      }
+    } else if (this.kind === 'cannon') {
+      const baseKey = this.level === 2 ? 'c_base_2' :
+                      this.level === 1 ? 'c_base_1' : 'c_base';
       if (this.scene.textures.exists(baseKey)) {
         this.setTexture(baseKey);
         this.setTint(tint);

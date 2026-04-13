@@ -25,7 +25,7 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
     this.setSize(20, 8).setOffset(20, 28);
   }
 
-  fire(tx: number, ty: number, speed: number, damage: number, splashRadius = 0) {
+  fire(tx: number, ty: number, speed: number, damage: number, splashRadius = 0, scale = 0.5, tint = 0) {
     this.damage = damage;
     this.splashRadius = splashRadius;
     this.born = (this.scene as any).vTime ?? this.scene.time.now;
@@ -45,8 +45,8 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
       this.setTexture('cball_0');
       this.play('cball-spin');
       this.setRotation(0);
-      this.setScale(0.5);
-      this.clearTint();
+      this.setScale(scale);
+      if (tint) this.setTint(tint); else this.clearTint();
       this.setSize(16, 16).setOffset(24, 24);
       this.setDepth(14);
 
@@ -54,15 +54,15 @@ export class Projectile extends Phaser.Physics.Arcade.Sprite {
       this.shadow = this.scene.add.sprite(this.x, this.y, 'cball_shadow')
         .setDepth(5)
         .setAlpha(0.35)
-        .setScale(0.25);
+        .setScale(scale * 0.5);
     } else {
       // Arrow
       this.groundTarget = false;
       this.setTexture('arrow_0');
       this.play('arrow-spin');
       this.setRotation(angle);
-      this.setScale(0.5);
-      this.clearTint();
+      this.setScale(scale);
+      if (tint) this.setTint(tint); else this.clearTint();
       this.setSize(20, 8).setOffset(20, 28);
       this.setDepth(9);
       if (this.shadow) { this.shadow.destroy(); this.shadow = null; }

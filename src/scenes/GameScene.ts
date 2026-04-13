@@ -791,7 +791,8 @@ export class GameScene extends Phaser.Scene {
         if (time > tower.lastShot + st.fireRate) {
           tower.lastShot = time;
           tower.top.play('cannon-top-shoot', true);
-          this.spawnProjectile(tower.x, launchY, aim.x, aim.y, st.projectileSpeed, st.damage, st.splashRadius);
+          const cScale = 0.5 + tower.level * 0.15;
+          this.spawnProjectile(tower.x, launchY, aim.x, aim.y, st.projectileSpeed, st.damage, st.splashRadius, cScale);
         }
       } else {
         // Arrow: shoot at nearest enemy with lead targeting
@@ -811,7 +812,9 @@ export class GameScene extends Phaser.Scene {
         if (time > tower.lastShot + st.fireRate) {
           tower.lastShot = time;
           tower.top.setTexture('t_top_1');
-          this.spawnProjectile(tower.x, launchY, aimX, aimY, st.projectileSpeed, st.damage);
+          const aScale = 0.5 + tower.level * 0.12;
+          const aTint = tower.level === 2 ? 0xffd67a : tower.level === 1 ? 0x9fd9ff : 0;
+          this.spawnProjectile(tower.x, launchY, aimX, aimY, st.projectileSpeed, st.damage, 0, aScale, aTint);
         } else if (time > tower.lastShot + 150) {
           tower.top.setTexture('t_top_0');
         }
@@ -1552,10 +1555,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   // ---------- PROJECTILES ----------
-  spawnProjectile(x: number, y: number, tx: number, ty: number, speed: number, dmg: number, splashRadius = 0) {
+  spawnProjectile(x: number, y: number, tx: number, ty: number, speed: number, dmg: number, splashRadius = 0, scale = 0.5, tint = 0) {
     const pr = new Projectile(this, x, y);
     this.projectiles.add(pr);
-    pr.fire(tx, ty, speed, dmg, splashRadius);
+    pr.fire(tx, ty, speed, dmg, splashRadius, scale, tint);
   }
 
   updateProjectiles(time: number) {
@@ -1986,6 +1989,7 @@ export class GameScene extends Phaser.Scene {
 
   // ---------- END ----------
   winDelayUntil = 0;
+  winCollectedAt = 0;
 
   checkEndConditions() {
     // Level is won by defeating the boss, not by a kill count.
@@ -1997,7 +2001,12 @@ export class GameScene extends Phaser.Scene {
       }
       const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
       this.countdownText.setText(`VICTORY! Collect your loot! ${remaining}s`);
-      if (this.vTime >= this.winDelayUntil || this.coins.countActive() === 0) {
+      if (this.vTime >= this.winDelayUntil) {
+        this.win();
+      } else if (this.coins.countActive() === 0 && this.winCollectedAt === 0) {
+        // All loot collected — start a short pause before the victory screen
+        this.winCollectedAt = this.vTime;
+      } else if (this.winCollectedAt > 0 && this.vTime >= this.winCollectedAt + 2000) {
         this.win();
       }
     }
