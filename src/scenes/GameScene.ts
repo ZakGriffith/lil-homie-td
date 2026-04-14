@@ -1344,13 +1344,20 @@ export class GameScene extends Phaser.Scene {
       // Always target the player — enemies never attack structures
       const tx = this.player.x, ty = this.player.y;
       e.targetRef = this.player;
-      const prefix = Enemy.texPrefix(e.kind);
+      const prefix = e.dirPrefix();
       const dist2 = (tx - e.x) ** 2 + (ty - e.y) ** 2;
 
       // Melee attack when close to player
       if (dist2 < 30 * 30) {
         e.setVelocity(0, 0);
-        if (e.anims.currentAnim?.key !== `${prefix}-atk`) e.play(`${prefix}-atk`);
+        // Face the player while attacking
+        if (e.kind === 'bear') {
+          const dirChanged = e.updateFacing(tx - e.x);
+          const atkAnim = `${e.dirPrefix()}-atk`;
+          if (dirChanged || e.anims.currentAnim?.key !== atkAnim) e.play(atkAnim);
+        } else {
+          if (e.anims.currentAnim?.key !== `${prefix}-atk`) e.play(`${prefix}-atk`);
+        }
         if (time > e.attackCd) {
           e.attackCd = time + 800;
           this.player.hurt(e.dmg, this);
@@ -1366,9 +1373,15 @@ export class GameScene extends Phaser.Scene {
         const dx = tx - e.x, dy = ty - e.y;
         const d = Math.hypot(dx, dy) || 1;
         e.setVelocity((dx / d) * e.speed, (dy / d) * e.speed);
-        e.setFlipX(dx < 0);
+        if (e.kind === 'bear') {
+          const dirChanged = e.updateFacing(dx);
+          const moveAnim = `${e.dirPrefix()}-move`;
+          if (dirChanged || e.anims.currentAnim?.key !== moveAnim) e.play(moveAnim);
+        } else {
+          e.setFlipX(dx < 0);
+          if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
+        }
         e.path = [];
-        if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
         return true;
       }
 
@@ -1455,8 +1468,16 @@ export class GameScene extends Phaser.Scene {
         moveX /= ml; moveY /= ml;
       }
       e.setVelocity(moveX * e.speed, moveY * e.speed);
-      e.setFlipX(moveX < 0);
-      if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
+      if (e.kind === 'bear') {
+        if (moveX !== 0) {
+          const dirChanged = e.updateFacing(moveX);
+          const moveAnim = `${e.dirPrefix()}-move`;
+          if (dirChanged || e.anims.currentAnim?.key !== moveAnim) e.play(moveAnim);
+        }
+      } else {
+        e.setFlipX(moveX < 0);
+        if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
+      }
       return true;
     });
   }
@@ -1929,19 +1950,15 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = true;
     const spawnR = CFG.spawnDist * CFG.tile;
     const px = this.player.x, py = this.player.y;
-    // spawn at one of the 4 cardinal edges relative to the player, pick furthest
+    // spawn at a random corner at spawnDist from the player
     const corners = [
       { x: px - spawnR, y: py - spawnR },
       { x: px + spawnR, y: py - spawnR },
       { x: px - spawnR, y: py + spawnR },
       { x: px + spawnR, y: py + spawnR }
     ];
-    let best = corners[0], bestD = 0;
-    for (const c of corners) {
-      const d = (c.x - px) ** 2 + (c.y - py) ** 2;
-      if (d > bestD) { bestD = d; best = c; }
-    }
-    this.boss = new Boss(this, best.x, best.y, this.biome);
+    const pick = corners[Math.floor(Math.random() * corners.length)];
+    this.boss = new Boss(this, pick.x, pick.y, this.biome);
     this.pushHud();
     this.physics.add.overlap(this.projectiles, this.boss, (a: any, b: any) => {
       const pr = (a instanceof Projectile ? a : b) as Projectile;
