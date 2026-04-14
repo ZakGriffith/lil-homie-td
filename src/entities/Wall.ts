@@ -15,6 +15,10 @@ export class Wall extends Phaser.Physics.Arcade.Sprite {
     this.setScale(0.5);
     scene.add.existing(this);
     scene.physics.add.existing(this, true);
+    // Force body to fill the full tile regardless of sprite scale
+    const body = this.body as Phaser.Physics.Arcade.StaticBody;
+    body.setSize(CFG.tile, CFG.tile);
+    body.position.set(wx - CFG.tile / 2, wy - CFG.tile / 2);
     this.tileX = tileX;
     this.tileY = tileY;
     this.setDepth(5);

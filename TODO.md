@@ -113,7 +113,48 @@
 - Display: rank, player name, score, time, money
 - Highlight the player's current run if it made the board
 
-## 7. Character Abilities (Purchasable Upgrades)
+## 7. Hero Selection
+- Replace the name-input screen with a hero select screen
+- Multiple hero characters, each with a unique skin/sprite and a small passive bonus
+- Players click to select a hero before entering a level
+
+### Hero Roster (examples)
+- **Archer** — default hero, balanced stats (current character)
+- **Ranger** — +5% attack speed
+- **Knight** — +10% max HP, slightly slower move speed
+- **Scout** — +10% movement speed
+- **Mage** — +8% tower damage aura (towers in range deal more)
+- **Engineer** — -10% tower build cost
+- **Berserker** — +10% damage, -5% max HP
+- More heroes unlockable through progression (medals, XP, etc.)
+
+### Design Notes
+- Each hero has a distinct sprite/color palette so they're visually identifiable
+- Passive bonuses should be small but meaningful — not game-breaking
+- Hero select screen shows: hero portrait, name, passive description, stats
+- Selected hero is highlighted; click "Confirm" or proceed to level select
+- Could tie into unlock progression (some heroes locked behind medal counts)
+
+## 8. Overall Upgrades (Medal Shop)
+- Accessible from the level select map screen via an "UPGRADES" button
+- Spend medals earned from completing levels on permanent global upgrades
+- Upgrades apply to ALL heroes, ALL towers, and ALL maps
+
+### Upgrade Categories
+- **Player Stats** — max HP, attack damage, attack speed, movement speed, coin magnet range
+- **Tower Stats** — tower damage %, tower fire rate %, tower range %, tower HP %
+- **Economy** — starting gold bonus, coin drop value %, build cost reduction %
+- **Defense** — wall HP %, damage reduction %
+
+### Design Notes
+- Each upgrade has multiple tiers (e.g. 5 levels), each tier costs progressively more medals
+- Show current level, next level bonus, and medal cost clearly
+- Upgrades are permanent and persist across all sessions (localStorage)
+- Balance so upgrades provide meaningful progression without trivializing content
+- Medals are earned from completing difficulties (4 per level), so replaying on harder difficulties fuels upgrades
+- UI: grid or list of upgrade cards, each showing an icon, name, current tier, and cost to upgrade
+
+## 9. Character Abilities (Purchasable Upgrades)
 - Spend XP or in-game currency to permanently upgrade the player character
 - Upgrades persist across levels (part of the progression system)
 

@@ -1062,6 +1062,27 @@ export class GameScene extends Phaser.Scene {
         if (saved === 1) gridSet(this.grid, goal.x, goal.y, 0);
         e.path = findPath(this.grid, start.x, start.y, goal.x, goal.y);
         if (saved === 1) gridSet(this.grid, goal.x, goal.y, 1);
+
+        // If direct path failed (player may be in an unreachable pocket),
+        // search expanding rings for the nearest reachable tile near the player
+        if (e.path.length === 0) {
+          for (let r = 1; r <= 6; r++) {
+            let bestPath: { x: number; y: number }[] = [];
+            for (let dy = -r; dy <= r; dy++) {
+              for (let dx = -r; dx <= r; dx++) {
+                if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                const nx = goal.x + dx, ny = goal.y + dy;
+                if (gridGet(this.grid, nx, ny) === 1) continue;
+                const p = findPath(this.grid, start.x, start.y, nx, ny);
+                if (p.length > 0 && (bestPath.length === 0 || p.length < bestPath.length)) {
+                  bestPath = p;
+                }
+              }
+            }
+            if (bestPath.length > 0) { e.path = bestPath; break; }
+          }
+        }
+
         e.pathIdx = 0;
       }
 
@@ -1084,10 +1105,8 @@ export class GameScene extends Phaser.Scene {
         if (d < 4 && e.pathIdx < e.path.length - 1) e.pathIdx++;
         if (d > 0.01) { moveX = dx / d; moveY = dy / d; }
       } else {
-        // No path found — direct chase as fallback
-        const dx = tx - e.x, dy = ty - e.y;
-        const d = Math.hypot(dx, dy) || 1;
-        moveX = dx / d; moveY = dy / d;
+        // No reachable tile found — stop instead of walking into walls
+        moveX = 0; moveY = 0;
       }
 
       // Wall avoidance: push away from nearby blocked tiles to prevent corner sticking
@@ -1226,6 +1245,26 @@ export class GameScene extends Phaser.Scene {
         if (saved === 1) gridSet(this.grid, goal.x, goal.y, 0);
         b.path = findPath(this.grid, start.x, start.y, goal.x, goal.y);
         if (saved === 1) gridSet(this.grid, goal.x, goal.y, 1);
+
+        // If direct path failed, search nearby reachable tiles
+        if (b.path.length === 0) {
+          for (let r = 1; r <= 6; r++) {
+            let bestPath: { x: number; y: number }[] = [];
+            for (let dy = -r; dy <= r; dy++) {
+              for (let dx = -r; dx <= r; dx++) {
+                if (Math.abs(dx) !== r && Math.abs(dy) !== r) continue;
+                const nx = goal.x + dx, ny = goal.y + dy;
+                if (gridGet(this.grid, nx, ny) === 1) continue;
+                const p = findPath(this.grid, start.x, start.y, nx, ny);
+                if (p.length > 0 && (bestPath.length === 0 || p.length < bestPath.length)) {
+                  bestPath = p;
+                }
+              }
+            }
+            if (bestPath.length > 0) { b.path = bestPath; break; }
+          }
+        }
+
         b.pathIdx = 0;
       }
 
@@ -1247,9 +1286,7 @@ export class GameScene extends Phaser.Scene {
         if (d < 4 && b.pathIdx < b.path.length - 1) b.pathIdx++;
         if (d > 0.01) { moveX = dx / d; moveY = dy / d; }
       } else {
-        const dx = px - b.x, dy = py - b.y;
-        const d = Math.hypot(dx, dy) || 1;
-        moveX = dx / d; moveY = dy / d;
+        moveX = 0; moveY = 0;
       }
     }
 
