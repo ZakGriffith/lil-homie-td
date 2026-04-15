@@ -185,3 +185,18 @@
 - Encourages diverse tower builds rather than spamming one type
 - UI: show resistance icons on enemy info or as subtle tint/shield indicators
 - Ties into Tower Specialization (TODO #5) — specialization branches could shift damage types
+
+## 12. Player Character & Enemy Sprites Full Redo
+- Complete visual overhaul of all player character sprites (idle, move, shoot, hit, die)
+- Complete visual overhaul of all enemy sprites (basic, heavy, runner, wolf, bear, spider)
+- Consistent art style across all characters
+- Improved animations and directional sprites
+
+## 13. Tutorial Level
+- Single player only, guided walkthrough
+- Pauses action and dims screen except for the highlighted area at each step
+- Steps:
+  1. Show character auto-shooting an enemy — explain basic combat
+  2. Tell player they shoot at half speed while moving (stand still to maximize DPS)
+  3. Walk through building an arrow tower (open build menu → select arrow → place)
+  4. Walk through upgrading the arrow tower (click tower → upgrade panel)
