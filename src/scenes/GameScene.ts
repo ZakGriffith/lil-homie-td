@@ -2016,13 +2016,18 @@ export class GameScene extends Phaser.Scene {
       if (time - p.born > p.lifetime) { p.destroy(); return true; }
 
       // Homing arrows: steer toward target each frame
-      if (p.homingTarget && p.homingTarget.active && !p.groundTarget) {
-        const dx = p.homingTarget.x - p.x;
-        const dy = p.homingTarget.y - p.y;
-        const d = Math.hypot(dx, dy) || 1;
-        const angle = Math.atan2(dy, dx);
-        p.setVelocity((dx / d) * p.speed, (dy / d) * p.speed);
-        p.setRotation(angle);
+      if (p.homingTarget && !p.groundTarget) {
+        if (p.homingTarget.active && !(p.homingTarget as any).dying) {
+          const dx = p.homingTarget.x - p.x;
+          const dy = p.homingTarget.y - p.y;
+          const d = Math.hypot(dx, dy) || 1;
+          const angle = Math.atan2(dy, dx);
+          p.setVelocity((dx / d) * p.speed, (dy / d) * p.speed);
+          p.setRotation(angle);
+        } else {
+          // Target dead — stop homing, fly straight with current velocity
+          p.homingTarget = null;
+        }
       }
 
       if (p.groundTarget) {
@@ -2473,10 +2478,14 @@ export class GameScene extends Phaser.Scene {
   checkEndConditions() {
     // Level is won by defeating the boss, not by a kill count.
     if (this.bossSpawned && (!this.boss || this.boss.dying || !this.boss.active)) {
-      // Start a 5s collection window so the player can grab coins
+      // Start a collection window so the player can grab coins
       if (this.winDelayUntil === 0) {
         this.winDelayUntil = this.vTime + 12000;
         this.countdownText.setColor('#7cf29a');
+        // Kill all remaining enemies when the boss dies
+        for (const e of this.enemies.getChildren() as Enemy[]) {
+          if (!e.dying && e.active) e.hurt(9999);
+        }
       }
       const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
       this.countdownText.setText(`VICTORY! Collect your loot! ${remaining}s`);

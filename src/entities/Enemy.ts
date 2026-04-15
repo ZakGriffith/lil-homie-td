@@ -18,6 +18,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
   dying = false;
   noCoinDrop = false; // boss-spawned enemies don't drop coins
   targetRef: any = null; // current target object (player, tower, wall)
+  facing: 'r' | 'l' = 'r'; // directional facing for bear
 
   constructor(scene: Phaser.Scene, x: number, y: number, kind: EnemyKind) {
     const dataMap: Record<EnemyKind, typeof CFG.enemy.basic> = {
@@ -59,7 +60,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         break;
       case 'bear':
         this.setScale(0.55).setSize(30, 30).setOffset(17, 20);
-        this.play('ea-move');
+        this.play('ear-move');
         break;
       case 'spider':
         this.setScale(0.45).setSize(24, 22).setOffset(20, 24);
@@ -72,16 +73,32 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
     switch (kind) {
       case 'heavy': return 'eh';
       case 'wolf': return 'ew';
-      case 'bear': return 'ea';
+      case 'bear': return 'ear'; // default to right-facing
       case 'spider': return 'es';
       default: return 'eb';
     }
   }
 
+  /** For bears: get the current directional prefix based on facing */
+  dirPrefix(): string {
+    if (this.kind === 'bear') return this.facing === 'l' ? 'eal' : 'ear';
+    return Enemy.texPrefix(this.kind);
+  }
+
+  /** Update bear facing direction based on velocity. Returns true if direction changed. */
+  updateFacing(vx: number): boolean {
+    if (this.kind !== 'bear') return false;
+    const newFacing = vx < 0 ? 'l' : 'r';
+    if (newFacing !== this.facing) {
+      this.facing = newFacing;
+      return true;
+    }
+    return false;
+  }
+
   hurt(amount: number) {
     if (this.dying) return;
     this.hp -= amount;
-    const prefix = Enemy.texPrefix(this.kind);
     this.setTintFill(0xffffff);
     this.scene.time.delayedCall(60, () => {
       if (this.dying) return;
@@ -92,6 +109,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       this.dying = true;
       this.setVelocity(0, 0);
       (this.body as Phaser.Physics.Arcade.Body).enable = false;
+      const prefix = this.dirPrefix();
       this.play(`${prefix}-die`);
       this.once('animationcomplete', () => this.destroy());
     }

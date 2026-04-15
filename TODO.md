@@ -9,37 +9,13 @@
 - ~~Y-based depth sorting for 3D occlusion~~
 - ~~WC2-style autotiling walls with 16 neighbor variants~~
 
-## 2. Level Select Screen (Pick One Approach)
-- Levels unlock sequentially — beating one unlocks the next
-- Each level has 3 difficulties: Easy, Medium, Hard
-- Save/load progress (localStorage) to track completion per level per difficulty
-
-### Option A: Card-Based Select
-- Each biome is a card (e.g. Grasslands, Alien Planet, Mountains, Dungeon, etc.)
-- Multiple cards per biome for Easy / Medium / Hard difficulties
-- Cards show completion status — green checkmark (or similar) for each difficulty beaten
-- Cards could show a preview image of the biome, level number, and difficulty stars
-- Locked levels shown as greyed-out/face-down cards
-- Clean grid layout, easy to scan at a glance
-
-### Option B: Map-Based Select
-- Connected world map with dotted paths between level nodes
-- Levels are clickable circles on the map — click for more info or to play
-- Path dots light up / animate as levels are beaten, showing progression
-- Each level node shows biome art and completion status
-- Clicking a level opens a detail panel where you select difficulty (Easy / Medium / Hard)
-- Difficulty completion shown as 3 stars or colored pips on the node
-- Locked levels shown greyed out with a lock icon on the node
-
-### Level Biomes (shared by both options)
-1. **Grasslands** (Level 1) — current level, green fields, basic enemies
-2. **Forest** — denser terrain, tree obstacles, faster enemy waves
-3. **Swamp** — muddy ground slows player, poison enemies
-4. **Desert** — open terrain, long sight lines, sandstorm events
-5. **Mountains** — narrow paths, elevation advantage, tougher heavies
-6. **Volcanic** — fire hazards, lava rivers as natural walls, elite enemies
-7. **Frozen Peaks** — ice slows projectiles, blizzard reduces visibility
-8. **Dark Fortress** — final level, all enemy types, multiple bosses
+## ~~2. Level Select Screen~~ ✅
+- ~~Map-based select with connected world map, dotted paths between level nodes~~
+- ~~4 difficulties per level: Easy, Medium, Hard, 1-HP~~
+- ~~Medal-based progression (Bronze/Silver/Gold/Diamond), localStorage persistence~~
+- ~~12 levels across 4 biomes: Grasslands, Desert, Tundra, Volcanic~~
+- ~~Difficulty panel overlay on node click, locked nodes show medal requirements~~
+- ~~Level 1 (Meadow) and Level 2 (Forest) fully playable with unique enemies, terrain, and bosses~~
 
 ## 3. Improve Ground/Terrain Variety
 - Each biome needs varied terrain tiles that are all walkable but visually distinct
@@ -197,3 +173,15 @@
 - Vercel serverless + Upstash Redis
 - Supabase (free Postgres + REST API)
 - Firebase Realtime DB
+
+## 11. Damage Types & Enemy Resistances
+- Define attack/damage types: Arrow (physical/piercing), Magic, Cannon (AoE/explosive), etc.
+- Each tower deals a specific damage type
+- Enemies have resistances (or weaknesses) to certain damage types
+  - e.g. armored enemies resist Arrow but are weak to Cannon AoE
+  - e.g. magic-immune enemies shrug off Magic towers but take full Arrow damage
+- Resistance = % damage reduction (e.g. 50% Arrow resistance = takes half damage from arrows)
+- Weakness = % damage bonus (e.g. -25% resistance = takes 1.25x damage)
+- Encourages diverse tower builds rather than spamming one type
+- UI: show resistance icons on enemy info or as subtle tint/shield indicators
+- Ties into Tower Specialization (TODO #5) — specialization branches could shift damage types

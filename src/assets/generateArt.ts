@@ -655,76 +655,257 @@ function drawEnemyWolf(f: EFrame) {
 // ==================================================================
 //  ENEMY BEAR (32x32) — tanky brown brute
 // ==================================================================
-function drawEnemyBear(f: EFrame) {
+// Bear frame type — Option C Bulky Brute, 8-frame walk, 5-frame attack
+type BearFrame =
+  | 'move0' | 'move1' | 'move2' | 'move3' | 'move4' | 'move5' | 'move6' | 'move7'
+  | 'atk0' | 'atk1' | 'atk2' | 'atk3' | 'atk4'
+  | 'hit'
+  | 'die0' | 'die1' | 'die2' | 'die3';
+
+const bearFrames: BearFrame[] = [
+  'move0','move1','move2','move3','move4','move5','move6','move7',
+  'atk0','atk1','atk2','atk3','atk4',
+  'hit',
+  'die0','die1','die2','die3'
+];
+
+// Warm bear palette (Option C)
+const PB = {
+  outline: '#000000',
+  body:    '#C1673D',
+  bodyD:   '#9E5533',
+  bodyM:   '#D27549',
+  bodyL:   '#DF9F7E',
+  nose:    '#4A2311',
+  eye:     '#ff2222',
+  mouth:   '#4a1008',
+};
+
+// Draw bear facing RIGHT — Option C Bulky Brute style
+function drawBearRight(f: BearFrame) {
   return (put: Put) => {
     if (f.startsWith('die')) {
       const step = parseInt(f.slice(3));
       const r = 10 - step * 2;
       if (r <= 0) return;
-      disc(put, 16, 18, r, P.bear);
-      disc(put, 16, 18, Math.max(0, r - 1), P.bearL);
+      disc(put, 16, 18, r, PB.body);
+      disc(put, 16, 18, Math.max(0, r - 1), PB.bodyM);
       for (let i = 0; i < 8; i++) {
         const a = (i / 8) * Math.PI * 2 + step * 0.3;
         const d = step * 3 + 4;
-        put(Math.round(16 + Math.cos(a) * d), Math.round(18 + Math.sin(a) * d), P.bearD);
+        put(Math.round(16 + Math.cos(a) * d), Math.round(18 + Math.sin(a) * d), PB.bodyD);
       }
       return;
     }
+
     const flash = f === 'hit';
-    const body = flash ? P.white : P.bear;
-    const bodyD = flash ? P.white : P.bearD;
-    const bodyM = flash ? P.white : P.bearM;
-    const bodyL = flash ? P.white : P.bearL;
+    const o  = flash ? P.white : PB.outline;
+    const b  = flash ? P.white : PB.body;
+    const bd = flash ? P.white : PB.bodyD;
+    const bm = flash ? P.white : PB.bodyM;
+    const bl = flash ? P.white : PB.bodyL;
 
-    // shadow
-    for (let dy = -2; dy <= 2; dy++)
-      for (let dx = -9; dx <= 9; dx++)
-        if ((dx * dx) / 81 + (dy * dy) / 4 <= 1) put(16 + dx, 29 + dy, P.shadow);
+    // Walk params
+    const isMove = f.startsWith('move');
+    const moveIdx = isMove ? parseInt(f.slice(4)) : 0;
+    const phase = isMove ? (moveIdx / 8) * Math.PI * 2 : 0;
+    const bodyBob = isMove ? Math.round(Math.sin(phase * 2) * 1) : 0;
+    // Leg offsets — sinusoidal, front/back pairs offset by half cycle
+    const fl = isMove ? Math.round(Math.sin(phase) * 3) : 0;
+    const fr = isMove ? Math.round(Math.sin(phase + Math.PI) * 3) : 0;
+    const blg = isMove ? Math.round(Math.sin(phase + Math.PI) * 3) : 0;
+    const br = isMove ? Math.round(Math.sin(phase) * 3) : 0;
 
-    // feet (thick paws)
-    let footY = 0;
-    if (f === 'move1') footY = -1;
-    if (f === 'move3') footY = 1;
-    rect(put, 8, 26 + footY, 5, 3, bodyD);
-    rect(put, 19, 26 - footY, 5, 3, bodyD);
-    // claws
-    put(8, 28 + footY, P.outline); put(12, 28 + footY, P.outline);
-    put(19, 28 - footY, P.outline); put(23, 28 - footY, P.outline);
+    // Attack params: 0=windup, 1=lunge, 2=bite, 3=hold, 4=recover
+    const isAtk = f.startsWith('atk');
+    const atkStage = isAtk ? parseInt(f.slice(3)) : -1;
+    const headLunge = atkStage === 1 ? 3 : atkStage === 2 ? 4 : atkStage === 3 ? 2 : atkStage === 0 ? -1 : 0;
+    const jawOpen = atkStage >= 1 && atkStage <= 3;
+    const bigBite = atkStage === 2;
+    const bodyRecoil = atkStage === 0 ? 1 : atkStage === 4 ? -1 : 0;
 
-    // main body (large disc)
-    disc(put, 16, 17, 11, bodyD);
-    disc(put, 16, 17, 10, body);
-    disc(put, 16, 16, 8, bodyL);
-    // fur texture lines
-    rect(put, 10, 18, 12, 1, bodyM);
-    rect(put, 11, 21, 10, 1, bodyM);
+    const by = 18 + bodyBob + bodyRecoil;
 
-    // rounded ears
-    disc(put, 9, 9, 3, bodyD); disc(put, 9, 9, 2, body);
-    disc(put, 23, 9, 3, bodyD); disc(put, 23, 9, 2, body);
+    // Shadow
+    for (let dx = -10; dx <= 10; dx++)
+      for (let dy = -1; dy <= 1; dy++)
+        if ((dx * dx) / 100 + (dy * dy) / 1 <= 1) put(16 + dx, 29 + dy, P.shadow);
 
-    // face
-    // snout mound
-    disc(put, 16, 16, 4, bodyM);
-    // eyes — small beady
-    put(12, 13, P.outline); put(12, 12, bodyL);
-    put(20, 13, P.outline); put(20, 12, bodyL);
-    // nose
-    put(15, 15, P.outline); put(16, 15, P.outline); put(17, 15, P.outline);
+    // === FAR LEGS (behind body, darker) ===
+    // Far back leg
+    rect(put, 7, by + 5 + blg, 5, 6, o); rect(put, 8, by + 6 + blg, 3, 4, bd);
+    // Far front leg
+    rect(put, 20 + headLunge, by + 5 + fl, 5, 6, o); rect(put, 21 + headLunge, by + 6 + fl, 3, 4, bd);
 
-    // mouth / fangs
-    if (f === 'atk0' || f === 'atk1') {
-      rect(put, 13, 17, 7, 3, P.outline);
-      put(14, 18, P.white); put(18, 18, P.white);
-      if (f === 'atk1') { put(15, 19, P.white); put(17, 19, P.white); }
+    // === BODY — big oval ===
+    for (let y = -8; y <= 7; y++)
+      for (let x = -12; x <= 10; x++)
+        if ((x * x) / 144 + (y * y) / 64 <= 1) put(16 + x, by + y, o);
+    for (let y = -7; y <= 6; y++)
+      for (let x = -11; x <= 9; x++)
+        if ((x * x) / 121 + (y * y) / 49 <= 1) put(16 + x, by + y, bd);
+    for (let y = -6; y <= 5; y++)
+      for (let x = -10; x <= 8; x++)
+        if ((x * x) / 100 + (y * y) / 36 <= 1) put(16 + x, by + y, b);
+    // Upper highlight
+    for (let y = -5; y <= -1; y++)
+      for (let x = -8; x <= 2; x++)
+        if ((x * x) / 64 + (y * y) / 25 <= 1) put(15 + x, by - 1 + y, bm);
+
+    // === NEAR LEGS (in front of body, lighter) ===
+    // Near back leg
+    rect(put, 10, by + 5 + br, 5, 6, o); rect(put, 11, by + 6 + br, 3, 4, b);
+    put(11, by + 6 + br, bm); put(12, by + 6 + br, bm);
+    // Near front leg
+    rect(put, 18 + headLunge, by + 5 + fr, 5, 6, o); rect(put, 19 + headLunge, by + 6 + fr, 3, 4, b);
+    put(19 + headLunge, by + 6 + fr, bm); put(20 + headLunge, by + 6 + fr, bm);
+
+    // === HEAD ===
+    const hx = 24 + headLunge, hy = by - 5;
+    disc(put, hx, hy, 5, o);
+    disc(put, hx, hy, 4, bd);
+    disc(put, hx, hy, 3, b);
+    disc(put, hx + 1, hy - 1, 2, bm);
+    // Ears
+    disc(put, hx - 2, hy - 5, 2, o); put(hx - 2, hy - 5, bd);
+    disc(put, hx + 2, hy - 5, 2, o); put(hx + 2, hy - 5, bd);
+    // Snout
+    rect(put, hx + 4, hy - 1, 3, 3, o);
+    rect(put, hx + 4, hy, 2, 2, bl);
+    put(hx + 6, hy, flash ? P.white : PB.nose); // nose
+    // Eye
+    put(hx + 1, hy - 2, flash ? P.white : PB.eye);
+
+    // Mouth
+    if (jawOpen) {
+      const jawH = bigBite ? 3 : 2;
+      rect(put, hx + 3, hy + 2, 5, jawH, o);
+      rect(put, hx + 4, hy + 2, 3, jawH - 1, flash ? P.white : PB.mouth);
+      // Upper fangs
+      put(hx + 4, hy + 2, P.white);
+      put(hx + 6, hy + 2, P.white);
+      // Lower fangs on big bite
+      if (bigBite) {
+        put(hx + 4, hy + 4, P.white);
+        put(hx + 6, hy + 4, P.white);
+      }
     } else {
-      rect(put, 14, 17, 5, 1, P.outline);
+      rect(put, hx + 3, hy + 2, 4, 1, o);
+      if (atkStage === 0) {
+        // Snarl on windup
+        put(hx + 4, hy + 3, P.white); put(hx + 6, hy + 3, P.white);
+      }
     }
 
-    // big arms
-    rect(put, 4, 15, 4, 4, bodyD); put(5, 15, bodyM);
-    rect(put, 24, 15, 4, 4, bodyD); put(26, 15, bodyM);
+    // Tail stub
+    put(3 - bodyRecoil, by - 2, bd);
+    put(2 - bodyRecoil, by - 3, bd);
   };
+}
+
+// Mirror a canvas horizontally for left-facing version
+function mirrorCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const dst = document.createElement('canvas');
+  dst.width = src.width;
+  dst.height = src.height;
+  const ctx = dst.getContext('2d')!;
+  ctx.translate(dst.width, 0);
+  ctx.scale(-1, 1);
+  ctx.drawImage(src, 0, 0);
+  return dst;
+}
+
+// Extract a 32x32 cell from the bear sprite sheet, strip grey bg, return canvas
+function extractBearCell(sheet: HTMLCanvasElement | HTMLImageElement, row: number, col: number): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = 32; c.height = 32;
+  const ctx = c.getContext('2d')!;
+  ctx.drawImage(sheet, col * 32, row * 32, 32, 32, 0, 0, 32, 32);
+  // Strip grey background (#4D4D4D) — make transparent
+  const id = ctx.getImageData(0, 0, 32, 32);
+  const d = id.data;
+  for (let i = 0; i < d.length; i += 4) {
+    const r = d[i], g = d[i + 1], b = d[i + 2];
+    // Match the grey bg (77,77,77) with some tolerance
+    if (Math.abs(r - 77) < 8 && Math.abs(g - 77) < 8 && Math.abs(b - 77) < 8) {
+      d[i + 3] = 0; // make transparent
+    }
+  }
+  ctx.putImageData(id, 0, 0);
+  return c;
+}
+
+// Scale2x upscale a small canvas (for consistency with other sprites)
+function scale2xCanvas(src: HTMLCanvasElement): HTMLCanvasElement {
+  const sw = src.width, sh = src.height;
+  const dst = document.createElement('canvas');
+  dst.width = sw * 2; dst.height = sh * 2;
+  const ctx = dst.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+  ctx.drawImage(src, 0, 0, sw * 2, sh * 2);
+  return dst;
+}
+
+// Extract all bear frames from the loaded spritesheet and register as textures
+function extractBearFrames(scene: Phaser.Scene) {
+  const sheetTex = scene.textures.get('bearsheet');
+  const sheetImg = sheetTex.getSourceImage() as HTMLImageElement;
+
+  // Frame map: spritesheet [row, col] -> animation frame
+  // Walk right: row1-col0, row1-col2, row2-col2, row2-col3 (4 frames)
+  const walkRight: [number, number][] = [[1,0], [1,2], [2,2], [2,3]];
+  // Walk left: row1-col1, row1-col3, row2-col1, row2-col0 (4 frames)
+  const walkLeft: [number, number][] = [[1,1], [1,3], [2,1], [2,0]];
+  // Attack right: row3-col0 (rear up), row0-col2 (mid), row3-col2 (lunge) (3 frames)
+  const atkRight: [number, number][] = [[3,0], [0,2], [3,2]];
+  // Attack left: row3-col3 (rear up), row0-col1 (mid), row3-col1 (lunge) (3 frames)
+  const atkLeft: [number, number][] = [[3,3], [0,1], [3,1]];
+  // Hit: row0-col0 (standing front)
+  const hitFrame: [number, number] = [0,0];
+
+  // Extract, scale, and register each frame
+  const reg = (key: string, row: number, col: number) => {
+    const cell = extractBearCell(sheetImg, row, col);
+    const scaled = scale2xCanvas(cell);
+    add(scene, key, scaled);
+  };
+
+  // Walk right frames
+  walkRight.forEach((rc, i) => reg(`ear_move${i}`, rc[0], rc[1]));
+  // Duplicate as move4-7 for an 8-frame cycle (ping-pong: 0,1,2,3,2,1,0,3)
+  reg('ear_move4', walkRight[2][0], walkRight[2][1]);
+  reg('ear_move5', walkRight[1][0], walkRight[1][1]);
+  reg('ear_move6', walkRight[0][0], walkRight[0][1]);
+  reg('ear_move7', walkRight[3][0], walkRight[3][1]);
+
+  // Walk left frames
+  walkLeft.forEach((rc, i) => reg(`eal_move${i}`, rc[0], rc[1]));
+  reg('eal_move4', walkLeft[2][0], walkLeft[2][1]);
+  reg('eal_move5', walkLeft[1][0], walkLeft[1][1]);
+  reg('eal_move6', walkLeft[0][0], walkLeft[0][1]);
+  reg('eal_move7', walkLeft[3][0], walkLeft[3][1]);
+
+  // Attack right frames
+  atkRight.forEach((rc, i) => reg(`ear_atk${i}`, rc[0], rc[1]));
+  // Pad to 5 frames: hold + recover
+  reg('ear_atk3', atkRight[2][0], atkRight[2][1]); // hold = repeat lunge
+  reg('ear_atk4', atkRight[0][0], atkRight[0][1]); // recover = back to rear
+
+  // Attack left frames
+  atkLeft.forEach((rc, i) => reg(`eal_atk${i}`, rc[0], rc[1]));
+  reg('eal_atk3', atkLeft[2][0], atkLeft[2][1]);
+  reg('eal_atk4', atkLeft[0][0], atkLeft[0][1]);
+
+  // Hit frame (same for both directions)
+  reg('ear_hit', hitFrame[0], hitFrame[1]);
+  reg('eal_hit', hitFrame[0], hitFrame[1]);
+
+  // Die frames — use procedural (the bear dissolves, direction doesn't matter)
+  for (let i = 0; i < 4; i++) {
+    const rightCanvas = makeCanvas(32, drawBearRight(`die${i}` as BearFrame));
+    add(scene, `ear_die${i}`, rightCanvas);
+    add(scene, `eal_die${i}`, rightCanvas);
+  }
 }
 
 // ==================================================================
@@ -1534,25 +1715,56 @@ function wnoise(wx: number, wy: number, scale: number): number {
 // Dark green → medium green → light green → yellow-green in large smooth zones
 function drawGroundWorld(tileX: number, tileY: number) {
   return (put: Put) => {
-    // 4 grass shades from dark to light (close colors, smooth gradient feel)
-    const shades = ['#2a4826', '#32522e', '#3c5e36', '#486a3e'];
+    // 4 grass shades from dark to light
+    const shades = [
+      [0x2a, 0x48, 0x26],
+      [0x32, 0x52, 0x2e],
+      [0x3c, 0x5e, 0x36],
+      [0x48, 0x6a, 0x3e],
+    ];
+    // Pre-compute hex strings for the 4 base shades
+    const shadeHex = shades.map(([r, g, b]) =>
+      '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + b.toString(16).padStart(2, '0')
+    );
+    // Lerp helper for transition bands
+    const lerpCol = (a: number[], b: number[], t: number): string => {
+      const r = Math.round(a[0] + (b[0] - a[0]) * t);
+      const g = Math.round(a[1] + (b[1] - a[1]) * t);
+      const bl = Math.round(a[2] + (b[2] - a[2]) * t);
+      return '#' + r.toString(16).padStart(2, '0') + g.toString(16).padStart(2, '0') + bl.toString(16).padStart(2, '0');
+    };
 
     // Per-tile RNG for small detail placement
     let s = ((tileX * 73856093 + tileY * 19349669) >>> 0) % 2147483647;
     const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+
+    // Transition band width (fraction of each shade's range)
+    const bandW = 0.08;
 
     for (let py = 0; py < 32; py++) {
       for (let px = 0; px < 32; px++) {
         const wx = tileX * 32 + px;
         const wy = tileY * 32 + py;
 
-        // World-space noise → continuous 0..1 value → pick shade
-        // This creates huge smooth regions that gradually transition
         const n = wnoise(wx + 8000, wy + 1000, 400);
 
-        // Map noise to shade index (0-3) with smooth transitions
-        const idx = Math.min(3, Math.floor(n * 4));
-        put(px, py, shades[idx]);
+        // Continuous position within shade space (0..4 mapped to 4 shades)
+        const pos = Math.min(3.999, n * 4);
+        const idx = Math.floor(pos);
+        const frac = pos - idx; // 0..1 within this shade
+
+        // Check if we're near a boundary and blend
+        if (idx < 3 && frac > (1 - bandW)) {
+          // Near upper boundary — blend toward next shade
+          const t = (frac - (1 - bandW)) / bandW;
+          put(px, py, lerpCol(shades[idx], shades[idx + 1], t));
+        } else if (idx > 0 && frac < bandW) {
+          // Near lower boundary — blend from previous shade
+          const t = frac / bandW;
+          put(px, py, lerpCol(shades[idx - 1], shades[idx], t));
+        } else {
+          put(px, py, shadeHex[idx]);
+        }
       }
     }
 
@@ -2522,7 +2734,8 @@ export function generateAllArt(scene: Phaser.Scene) {
   for (const f of eFrames) add(scene, `eb_${f}`, makeCanvas(32, drawEnemyBasic(f)));
   for (const f of eFrames) add(scene, `eh_${f}`, makeCanvas(32, drawEnemyHeavy(f)));
   for (const f of eFrames) add(scene, `ew_${f}`, makeCanvas(32, drawEnemyWolf(f)));
-  for (const f of eFrames) add(scene, `ea_${f}`, makeCanvas(32, drawEnemyBear(f)));
+  // Bear: extract frames from sprite sheet, strip grey bg, register as textures
+  extractBearFrames(scene);
   for (const f of eFrames) add(scene, `es_${f}`, makeCanvas(32, drawEnemySpider(f)));
 
   // Shared helper to copy a loaded PNG texture to a new key
@@ -2747,10 +2960,15 @@ export function registerAnimations(scene: Phaser.Scene) {
   mk('ew-hit',  ['ew_hit'], 10, 0);
   mk('ew-die',  ['ew_die0','ew_die1','ew_die2','ew_die3'], 10, 0);
 
-  mk('ea-move', ['ea_move0','ea_move1','ea_move2','ea_move3'], 6, -1);
-  mk('ea-atk',  ['ea_atk0','ea_atk1'], 6, -1);
-  mk('ea-hit',  ['ea_hit'], 8, 0);
-  mk('ea-die',  ['ea_die0','ea_die1','ea_die2','ea_die3'], 8, 0);
+  // Bear: directional animations (right-facing and left-facing)
+  mk('ear-move', ['ear_move0','ear_move1','ear_move2','ear_move3','ear_move4','ear_move5','ear_move6','ear_move7'], 10, -1);
+  mk('ear-atk',  ['ear_atk0','ear_atk1','ear_atk2','ear_atk3','ear_atk4'], 6, 0);
+  mk('ear-hit',  ['ear_hit'], 8, 0);
+  mk('ear-die',  ['ear_die0','ear_die1','ear_die2','ear_die3'], 8, 0);
+  mk('eal-move', ['eal_move0','eal_move1','eal_move2','eal_move3','eal_move4','eal_move5','eal_move6','eal_move7'], 10, -1);
+  mk('eal-atk',  ['eal_atk0','eal_atk1','eal_atk2','eal_atk3','eal_atk4'], 6, 0);
+  mk('eal-hit',  ['eal_hit'], 8, 0);
+  mk('eal-die',  ['eal_die0','eal_die1','eal_die2','eal_die3'], 8, 0);
 
   mk('es-move', ['es_move0','es_move1','es_move2','es_move3'], 8, -1);
   mk('es-atk',  ['es_atk0','es_atk1'], 8, -1);
