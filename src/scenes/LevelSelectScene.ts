@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import {
   LEVELS, LevelDef, Difficulty, DIFFICULTY_ORDER, DIFFICULTY_LABELS,
-  MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, MedalStore
+  MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, isLevelUnlocked, MedalStore
 } from '../levels';
 
 export class LevelSelectScene extends Phaser.Scene {
@@ -75,7 +75,7 @@ export class LevelSelectScene extends Phaser.Scene {
         const target = levelMap.get(targetId);
         if (!target) continue;
 
-        const unlocked = this.medalCount >= target.unlockCost;
+        const unlocked = isLevelUnlocked(this.medalStore, target.id);
 
         // Draw path with dark outline + lighter inner
         const dx = target.x - level.x;
@@ -164,7 +164,7 @@ export class LevelSelectScene extends Phaser.Scene {
   // ---- LEVEL NODES ----
   drawNodes() {
     for (const level of LEVELS) {
-      const unlocked = this.medalCount >= level.unlockCost;
+      const unlocked = isLevelUnlocked(this.medalStore, level.id);
       const biomeColor = BIOME_COLORS[level.biome];
       const medals = this.medalStore[String(level.id)];
 
@@ -251,8 +251,9 @@ export class LevelSelectScene extends Phaser.Scene {
 
       hitZone.on('pointerdown', () => {
         if (!unlocked) {
-          const needed = level.unlockCost - this.medalCount;
-          this.showTooltip(cx, cy - R - 14, `Need ${needed} more medal${needed !== 1 ? 's' : ''}`);
+          const prevLevel = LEVELS.find(l => l.id === level.id - 1);
+          const prevName = prevLevel ? prevLevel.name : `Level ${level.id - 1}`;
+          this.showTooltip(cx, cy - R - 14, `Complete ${prevName} first`);
           return;
         }
         if (!level.implemented) {

@@ -73,6 +73,17 @@ export function saveMedal(levelId: number, diff: Difficulty): void {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(store));
 }
 
+export function hasMedal(store: MedalStore, levelId: number): boolean {
+  const medals = store[String(levelId)];
+  if (!medals) return false;
+  return Object.values(medals).some(v => v);
+}
+
+export function isLevelUnlocked(store: MedalStore, levelId: number): boolean {
+  if (levelId <= 1) return true;
+  return hasMedal(store, levelId - 1);
+}
+
 export function totalMedals(store?: MedalStore): number {
   const s = store ?? loadMedals();
   let count = 0;
