@@ -60,8 +60,6 @@ export class LevelSelectScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 2
     }).setOrigin(0.5).setDepth(2);
 
-    // Hide loading overlay
-    this.game.events.emit('game-ready');
   }
 
   // ---- PATH LINES ----
@@ -546,13 +544,21 @@ export class LevelSelectScene extends Phaser.Scene {
 
   startMission() {
     if (!this.selectedLevel || !this.selectedDiff) return;
-    this.scene.start('Game', {
-      levelId: this.selectedLevel.id,
-      difficulty: this.selectedDiff
-    });
-    this.scene.launch('UI', {
-      levelId: this.selectedLevel.id,
-      difficulty: this.selectedDiff
+
+    // Show the "Generating world..." loading overlay
+    const overlay = document.getElementById('overlay');
+    const panel = overlay?.querySelector('.panel') as HTMLDivElement | null;
+    if (overlay && panel) {
+      panel.classList.add('loading');
+      overlay.classList.remove('hidden');
+    }
+
+    // Delay scene start by a frame so the browser can paint the overlay first
+    const levelId = this.selectedLevel.id;
+    const difficulty = this.selectedDiff;
+    requestAnimationFrame(() => {
+      this.scene.start('Game', { levelId, difficulty });
+      this.scene.launch('UI', { levelId, difficulty });
     });
   }
 }

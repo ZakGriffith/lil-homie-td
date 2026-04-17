@@ -2817,7 +2817,10 @@ export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: n
   return key;
 }
 
+let artGenerated = false;
 export function generateAllArt(scene: Phaser.Scene) {
+  if (artGenerated) return;
+  artGenerated = true;
   // Player
   const pFrames: { k: string; f: PFrame }[] = [
     { k: 'p_idle_0',  f: 'idle0' },

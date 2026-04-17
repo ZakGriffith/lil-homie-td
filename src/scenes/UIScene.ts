@@ -7,7 +7,6 @@ export class UIScene extends Phaser.Scene {
   hpBar!: Phaser.GameObjects.Rectangle;
   nameText!: Phaser.GameObjects.Text;
   moneyText!: Phaser.GameObjects.Text;
-  buildText!: Phaser.GameObjects.Text;
   btnTower!: Phaser.GameObjects.Container;
   btnCannon!: Phaser.GameObjects.Container;
   btnWall!: Phaser.GameObjects.Container;
@@ -53,8 +52,6 @@ export class UIScene extends Phaser.Scene {
     const arrowCost = CFG.tower.kinds.arrow.cost;
     const cannonCost = CFG.tower.kinds.cannon.cost;
     const H = this.scale.height;
-
-    this.buildText = this.add.text(W - 12, T, '', { fontFamily: 'monospace', fontSize: '13px', color: '#7cc4ff' }).setOrigin(1, 0);
 
     // Top-right gold badge (WoW-style)
     const coinX = W - 60;
@@ -143,7 +140,7 @@ export class UIScene extends Phaser.Scene {
     // Wave progress bar (centered, same position as boss bar)
     const barW = 420;
     const barX = (W - barW) / 2;
-    const barY = T + 58;
+    const barY = T + 38;
     this.waveLabel = this.add.text(W / 2, barY - 16, 'WAVE 1', {
       fontFamily: 'monospace', fontSize: '14px', color: '#7cc4ff',
       stroke: '#0b0f1a', strokeThickness: 3
@@ -162,7 +159,7 @@ export class UIScene extends Phaser.Scene {
     const W = this.scale.width;
     const barW = 420;
     const x = (W - barW) / 2;
-    const y = 78; // 20 (top pad) + 58
+    const y = 58; // 20 (top pad) + 38
     if (this.bossBarBg) return;
     const bossName = s?.biome === 'forest' ? 'THE FOREST GUARDIAN' : 'THE BROOD MOTHER';
     this.bossLabel = this.add.text(W / 2, y - 16, bossName, {
@@ -237,7 +234,6 @@ export class UIScene extends Phaser.Scene {
     this.hpBar.width = 178 * pct;
     this.hpBar.fillColor = pct > 0.5 ? 0x4ad96a : pct > 0.25 ? 0xd9a84a : 0xd94a4a;
     this.moneyText.setText(`${s.money}`);
-    this.buildText.setText(s.build === 'none' ? 'Build: —' : `Build: ${s.build.toUpperCase()}`);
 
     // Toggle countdown text vs progress graphic
     if (s.countdownMsg) {

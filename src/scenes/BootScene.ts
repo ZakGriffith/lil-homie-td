@@ -1,5 +1,4 @@
 import Phaser from 'phaser';
-import { generateAllArt, registerAnimations } from '../assets/generateArt';
 import towerBaseImg from '../assets/sprites/tower_base.png';
 import arrowBase1Img from '../assets/sprites/arrow_base_1.png';
 import arrowBase2Img from '../assets/sprites/arrow_base_2.png';
@@ -23,8 +22,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
-    generateAllArt(this);
-    registerAnimations(this);
+    // Art generation deferred to GameScene — go straight to level select
     this.scene.start('LevelSelect');
   }
 }

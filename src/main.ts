@@ -35,9 +35,8 @@ function start() {
   if (started) return;
   started = true;
 
-  // Switch overlay to loading state (keep it visible)
-  const panel = overlay.querySelector('.panel') as HTMLDivElement;
-  panel.classList.add('loading');
+  // Hide overlay immediately — level select appears fast since art is deferred
+  overlay.classList.add('hidden');
   requestWakeLock();
 
   const game = new Phaser.Game({
@@ -58,9 +57,11 @@ function start() {
     scene: [BootScene, LevelSelectScene, GameScene, UIScene]
   });
 
-  // Hide overlay once the game scene is ready
+  // Hide overlay once GameScene is ready (after "Generating world..." from level select)
   game.events.on('game-ready', () => {
     overlay.classList.add('hidden');
+    const panel = overlay.querySelector('.panel');
+    if (panel) panel.classList.remove('loading');
   });
 }
 

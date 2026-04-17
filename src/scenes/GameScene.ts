@@ -8,7 +8,7 @@ import { Projectile } from '../entities/Projectile';
 import { Coin } from '../entities/Coin';
 import { Boss } from '../entities/Boss';
 import { createSparseGrid, findPath, canReachFromSpawnDirections, gridGet, gridSet, SparseGrid } from '../systems/Pathfinding';
-import { createGroundChunk, TREE_PATTERNS } from '../assets/generateArt';
+import { createGroundChunk, TREE_PATTERNS, generateAllArt, registerAnimations } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
 
 type BuildKind = 'none' | 'tower' | 'wall';
@@ -147,6 +147,10 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    // Generate art on first game start (deferred from boot for instant level select)
+    generateAllArt(this);
+    registerAnimations(this);
+
     // Resume physics in case previous run ended with physics.pause()
     this.physics.resume();
 
@@ -281,6 +285,7 @@ export class GameScene extends Phaser.Scene {
     this.time.delayedCall(100, () => {
       this.loadingDone = true;
       this.pushHud();
+      this.game.events.emit('game-ready');
     });
   }
 
