@@ -3304,7 +3304,7 @@ function hexToRgb(hex: string): [number, number, number] {
 }
 
 export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: number, chunkSize: number, tileSize: number, biome = 'grasslands'): string {
-  const key = `gnd_chunk_${chunkX}_${chunkY}`;
+  const key = `gnd_chunk_${biome}_${chunkX}_${chunkY}`;
   if (scene.textures.exists(key)) return key;
   const pxSize = chunkSize * tileSize; // e.g. 16 * 32 = 512
   const canvas = document.createElement('canvas');
