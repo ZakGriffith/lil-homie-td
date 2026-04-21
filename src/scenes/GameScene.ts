@@ -85,6 +85,7 @@ export class GameScene extends Phaser.Scene {
   boulders: { sprite: Phaser.GameObjects.Sprite; shadow: Phaser.GameObjects.Sprite; sx: number; sy: number; tx: number; ty: number; totalDist: number; speed: number; dmg: number; splashRadius: number; born: number }[] = [];
   webs: { x: number; y: number; sprite: Phaser.GameObjects.Sprite; expireAt: number }[] = [];
   gasClouds: { x: number; y: number; sprites: Phaser.GameObjects.Arc[]; expireAt: number; dmgCd: number }[] = [];
+  birdPoops: { sprite: Phaser.GameObjects.Image; expireAt: number; dmgCd: number }[] = [];
   treeSprites: Phaser.GameObjects.GameObject[] = [];
   treeChunksGenerated = new Set<string>();
   riverChunksGenerated = new Set<string>();
@@ -139,6 +140,7 @@ export class GameScene extends Phaser.Scene {
     this.boulders = [];
     this.webs = [];
     this.gasClouds = [];
+    this.birdPoops = [];
     this.treeSprites = [];
     this.treeChunksGenerated = new Set();
     this.riverChunksGenerated = new Set();
@@ -961,6 +963,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemies(time, vd);
     this.updateBoss(time);
     this.updateGasClouds(time);
+    this.updateBirdPoops(time);
     this.updateProjectiles(time);
     this.updateEnemyDarts();
     this.updateBoulders(time);
@@ -1645,6 +1648,11 @@ export class GameScene extends Phaser.Scene {
       const prefix = e.dirPrefix();
       const dist2 = (tx - e.x) ** 2 + (ty - e.y) ** 2;
 
+      // Birds randomly poop while flying
+      if ((e.kind === 'crow' || e.kind === 'bat') && Math.random() < 0.0006) {
+        this.spawnBirdPoop(e.x, e.y);
+      }
+
       // Mosquito ranged attack — stops at range and fires darts
       if (e.kind === 'mosquito') {
         const mqRange = CFG.river.mosquitoRange;
@@ -2229,6 +2237,60 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  // ---------- BIRD POOP (river biome hazard) ----------
+  spawnBirdPoop(x: number, y: number) {
+    // Don't stack poops too close
+    for (const bp of this.birdPoops) {
+      if (Phaser.Math.Distance.Between(x, y, bp.sprite.x, bp.sprite.y) < 24) return;
+    }
+    // Cap total poops on screen
+    if (this.birdPoops.length >= 30) return;
+    const spr = this.add.image(x, y + 12, 'bird_poop').setScale(0.5).setDepth(2).setAlpha(0);
+    // Falling animation: start small and transparent above, land and splat
+    this.tweens.add({
+      targets: spr,
+      alpha: 0.85,
+      scaleX: 0.6,
+      scaleY: 0.45,
+      duration: 300,
+      ease: 'Bounce.Out'
+    });
+    this.birdPoops.push({
+      sprite: spr,
+      expireAt: this.vTime + 12000,
+      dmgCd: 0
+    });
+  }
+
+  updateBirdPoops(time: number) {
+    for (let i = this.birdPoops.length - 1; i >= 0; i--) {
+      const bp = this.birdPoops[i];
+      if (time >= bp.expireAt) {
+        // Fade out and destroy
+        this.tweens.add({
+          targets: bp.sprite, alpha: 0, duration: 800,
+          onComplete: () => bp.sprite.destroy()
+        });
+        this.birdPoops.splice(i, 1);
+        continue;
+      }
+      // Start fading when close to expiry
+      if (bp.expireAt - time < 2000 && bp.sprite.alpha > 0.3) {
+        bp.sprite.setAlpha(0.3 + 0.55 * ((bp.expireAt - time) / 2000));
+      }
+      // Damage player if they step in it
+      if (time > bp.dmgCd) {
+        const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, bp.sprite.x, bp.sprite.y);
+        if (dist < 16) {
+          this.player.hurt(4, this);
+          this.pushHud();
+          bp.dmgCd = time + 800;
+          if (this.player.hp <= 0) this.lose();
+        }
+      }
+    }
+  }
+
   bossChargeImpact(b: Boss) {
     const r = 80;
     if (Phaser.Math.Distance.Between(b.x, b.y, this.player.x, this.player.y) < r) {
@@ -2522,7 +2584,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.boss, this.wallGroup, onStructureHit, () => this.biome !== 'river');
     this.physics.add.collider(this.boss, this.towerGroup, onStructureHit, () => this.biome !== 'river');
     this.game.events.emit('boss-spawn', { hp: this.boss.hp, maxHp: this.boss.maxHp, biome: this.biome });
-    const bossTitle = this.biome === 'forest' ? 'THE FOREST GUARDIAN'
+    const bossTitle = this.biome === 'forest' ? 'THE WENDIGO'
                     : this.biome === 'infected' ? 'THE BLIGHTED ONE'
                     : this.biome === 'river' ? 'THE FOG PHANTOM'
                     : 'THE ANCIENT RAM';
@@ -2949,7 +3011,7 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         const secs = Math.ceil((this.bossCountdownUntil - time) / 1000);
-        const bossName = this.biome === 'forest' ? 'FOREST GUARDIAN' : this.biome === 'infected' ? 'BLIGHTED ONE' : this.biome === 'river' ? 'FOG PHANTOM' : 'ANCIENT RAM';
+        const bossName = this.biome === 'forest' ? 'WENDIGO' : this.biome === 'infected' ? 'BLIGHTED ONE' : this.biome === 'river' ? 'FOG PHANTOM' : 'ANCIENT RAM';
         this.countdownMsg = `${bossName} SPAWNING IN ${secs}`;
         this.countdownColor = '#ff5050';
         this.pushHud();

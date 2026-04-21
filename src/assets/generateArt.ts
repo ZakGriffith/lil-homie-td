@@ -145,7 +145,7 @@ const P = {
   spiderL: '#4a4a4a',
   spiderEye: '#ff2020',
 
-  // Forest boss (Ent)
+  // Forest boss (Wendigo) + shared bark/leaf for boulders etc.
   bark:    '#4a3420',
   barkD:   '#2a1808',
   barkM:   '#3a2814',
@@ -157,6 +157,15 @@ const P = {
   leafB:   '#4a7e3a',
   entEye:  '#60ff60',
   entEyeD: '#208020',
+
+  // Wendigo bone/spectral colors
+  wBone:   '#c8c0a8',
+  wBoneD:  '#8a8068',
+  wBoneL:  '#e8e0d0',
+  wGhost:  '#1a3a20',   // solid equivalent of translucent green mist
+  wGhostD: '#0e2410',   // darker mist
+  wGhostL: '#2a5a30',   // lighter mist edge
+  wGhostB: '#3a7a40',   // bright mist highlight
 
   // Ancient Ram boss
   ram:     '#8a8078',
@@ -1775,6 +1784,30 @@ function drawMosquitoDart(f: 'dart0' | 'dart1') {
     // Trail
     put(4, 8, tail); put(5, 8, tail);
     put(3, 7, tail); put(3, 9, tail);
+  };
+}
+
+// ==================================================================
+//  BIRD POOP (16x16) — white splat with dark speckles
+// ==================================================================
+function drawBirdPoop() {
+  return (put: Put) => {
+    // White irregular blob
+    disc(put, 8, 8, 4, '#e8e8e0');
+    disc(put, 8, 8, 3, '#f4f4ec');
+    disc(put, 7, 9, 2, '#e0e0d8');
+    disc(put, 9, 7, 2, '#f0f0e8');
+    // Splat edges — irregular
+    put(4, 8, '#deded6'); put(12, 8, '#deded6');
+    put(8, 4, '#deded6'); put(8, 12, '#deded6');
+    put(5, 6, '#e8e8e0'); put(11, 10, '#e8e8e0');
+    put(6, 11, '#e0e0d8'); put(10, 5, '#e0e0d8');
+    // Dark speckles
+    put(7, 7, '#3a3a30'); put(9, 9, '#2a2a20');
+    put(6, 8, '#3a3a30'); put(10, 7, '#2a2a20');
+    put(8, 10, '#444438');
+    // Slight highlight
+    put(7, 6, '#ffffff'); put(8, 7, '#fafaf4');
   };
 }
 
@@ -4406,185 +4439,181 @@ function drawInfectedBoss(frame: BossFrame) {
 }
 
 // ==================================================================
-//  FOREST BOSS — Ent / Tree Guardian
+//  FOREST BOSS — The Wendigo (Corrupted Stag Spirit)
 // ==================================================================
-interface EntOpts {
+interface WendigoOpts {
   bob?: number;
   flash?: boolean;
   chargeGlow?: boolean;
   pockets?: number;
-  rearUp?: boolean;
-  legStep?: number;
-  armSwing?: number; // -1 to 1 for arm pose
+  phase?: number;      // 0-3 for mist animation
+  armSway?: number;    // -1 to 1
 }
 
-function drawEntBody(put: Put, opts: EntOpts) {
+function drawWendigoBody(put: Put, opts: WendigoOpts) {
   const cx = 32;
-  const baseCy = 34 + (opts.bob ?? 0) + (opts.rearUp ? -2 : 0);
-  const armSwing = opts.armSwing ?? 0;
+  const bob = opts.bob ?? 0;
+  const cy = 30 + bob;
+  const phase = opts.phase ?? 0;
+  const armSway = opts.armSway ?? 0;
+  const flash = opts.flash ?? false;
+  const chargeGlow = opts.chargeGlow ?? false;
 
-  const col = {
-    out:  opts.flash ? P.white : P.outline,
-    d:    opts.flash ? P.white : P.barkD,
-    m:    opts.flash ? P.white : P.barkM,
-    b:    opts.flash ? P.white : P.bark,
-    l:    opts.flash ? P.white : P.barkL,
-    lfD:  opts.flash ? P.white : P.leafD,
-    lf:   opts.flash ? P.white : P.leaf,
-    lfM:  opts.flash ? P.white : P.leafM,
-    lfL:  opts.flash ? P.white : P.leafL,
-    lfB:  opts.flash ? P.white : P.leafB,
-  };
+  const bone  = flash ? P.white : P.wBone;
+  const boneD = flash ? P.white : P.wBoneD;
+  const boneL = flash ? P.white : P.wBoneL;
+  const ghost = flash ? P.white : P.wGhost;
+  const ghostD= flash ? P.white : P.wGhostD;
+  const ghostL= flash ? P.white : P.wGhostL;
+  const ghostB= flash ? P.white : P.wGhostB;
+  const out   = flash ? P.white : P.outline;
 
-  // Drop shadow
-  for (let dy = -2; dy <= 2; dy++)
-    for (let dx = -22; dx <= 22; dx++)
-      if ((dx * dx) / 484 + (dy * dy) / 5 <= 1) put(cx + dx, 59 + dy, P.shadow);
+  // Ghostly ground glow instead of shadow
+  for (let dx = -16; dx <= 16; dx++)
+    for (let dy = -1; dy <= 1; dy++)
+      if ((dx * dx) / 256 + (dy * dy) / 2 <= 1) put(cx + dx, 58 + dy, P.wGhostD);
 
-  // Root-legs — thick, gnarled
-  const legStep = opts.legStep ?? 0;
-  // Left root
-  rect(put, cx - 16, baseCy + 12 + legStep, 8, 10, col.d);
-  rect(put, cx - 15, baseCy + 13 + legStep, 6, 8, col.b);
-  rect(put, cx - 14, baseCy + 14 + legStep, 3, 5, col.l);
-  // Root tendrils
-  put(cx - 18, baseCy + 20 + legStep, col.d);
-  put(cx - 17, baseCy + 21 + legStep, col.d);
-  put(cx - 9, baseCy + 21 + legStep, col.d);
-  put(cx - 8, baseCy + 20 + legStep, col.d);
-  // Right root
-  rect(put, cx + 8, baseCy + 12 - legStep, 8, 10, col.d);
-  rect(put, cx + 9, baseCy + 13 - legStep, 6, 8, col.b);
-  rect(put, cx + 11, baseCy + 14 - legStep, 3, 5, col.l);
-  put(cx + 17, baseCy + 20 - legStep, col.d);
-  put(cx + 16, baseCy + 21 - legStep, col.d);
-  put(cx + 7, baseCy + 21 - legStep, col.d);
-
-  // Main trunk — wider, richly textured bark
-  rect(put, cx - 12, baseCy - 16, 24, 32, col.out);
-  rect(put, cx - 11, baseCy - 15, 22, 30, col.d);
-  rect(put, cx - 10, baseCy - 14, 20, 28, col.b);
-  // Left bark highlight
-  rect(put, cx - 10, baseCy - 14, 7, 26, col.m);
-  rect(put, cx - 9, baseCy - 12, 3, 20, col.l);
-  // Bark grooves — horizontal
-  for (let y = -10; y <= 12; y += 3)
-    for (let x = -8; x <= 8; x++)
-      put(cx + x, baseCy + y, col.d);
-  // Deep vertical cracks
-  for (let y = -12; y <= 12; y++) {
-    if (y % 2 === 0) { put(cx - 5, baseCy + y, col.d); put(cx + 6, baseCy + y, col.d); }
-    if (y % 3 === 0) put(cx + 1, baseCy + y, col.d);
-  }
-  // Knotholes
-  disc(put, cx - 4, baseCy + 6, 2, col.d);
-  put(cx - 4, baseCy + 6, col.out);
-  disc(put, cx + 7, baseCy + 2, 1, col.d);
-
-  // Branch arms
-  const lOff = Math.floor(armSwing * 3);
-  const rOff = Math.floor(-armSwing * 3);
-  // Left branch
-  rect(put, cx - 22, baseCy - 8 + lOff, 11, 6, col.out);
-  rect(put, cx - 21, baseCy - 7 + lOff, 9, 4, col.b);
-  rect(put, cx - 20, baseCy - 7 + lOff, 4, 3, col.l);
-  // Twigs + leaves on left arm
-  put(cx - 24, baseCy - 10 + lOff, col.lfM); put(cx - 23, baseCy - 11 + lOff, col.lf);
-  put(cx - 25, baseCy - 9 + lOff, col.lfL); put(cx - 22, baseCy - 10 + lOff, col.lfB);
-  put(cx - 24, baseCy - 8 + lOff, col.lfD);
-  // Right branch
-  rect(put, cx + 11, baseCy - 8 + rOff, 11, 6, col.out);
-  rect(put, cx + 12, baseCy - 7 + rOff, 9, 4, col.b);
-  rect(put, cx + 17, baseCy - 7 + rOff, 4, 3, col.l);
-  put(cx + 23, baseCy - 10 + rOff, col.lfM); put(cx + 24, baseCy - 11 + rOff, col.lf);
-  put(cx + 25, baseCy - 9 + rOff, col.lfL); put(cx + 22, baseCy - 10 + rOff, col.lfB);
-
-  // Hanging moss / vines
-  const moss = opts.flash ? P.white : '#2a5a1a';
-  const mossL = opts.flash ? P.white : '#3a7a2a';
-  for (let i = 0; i < 3; i++) {
-    const vx = cx - 20 + i * 4;
-    const vLen = 3 + (i % 2) * 2;
-    for (let vy = 0; vy < vLen; vy++)
-      put(vx, baseCy - 2 + lOff + vy, vy % 2 === 0 ? moss : mossL);
-  }
-  for (let i = 0; i < 3; i++) {
-    const vx = cx + 13 + i * 4;
-    const vLen = 2 + (i % 2) * 3;
-    for (let vy = 0; vy < vLen; vy++)
-      put(vx, baseCy - 2 + rOff + vy, vy % 2 === 0 ? moss : mossL);
+  // Spectral mist body — wispy lower body (no legs, it floats)
+  for (let y = 8; y <= 26; y++) {
+    const spread = Math.floor(14 - (y - 8) * 0.4);
+    const sway = Math.round(Math.sin((y * 0.3) + phase * 1.2) * 2);
+    for (let x = -spread; x <= spread; x++) {
+      const dist = Math.abs(x) / (spread || 1);
+      // Dithered mist: skip some edge pixels based on position + phase
+      if (dist > 0.8 && ((x + y + phase) % 3 === 0)) continue;
+      put(cx + x + sway, cy + y, dist > 0.7 ? ghostD : dist > 0.4 ? ghost : ghostL);
+    }
   }
 
-  // CANOPY — dense, layered
-  const crownY = baseCy - 22;
-  disc(put, cx, crownY, 18, col.out);
-  disc(put, cx, crownY, 17, col.lfD);
-  disc(put, cx, crownY, 15, col.lf);
-  disc(put, cx, crownY, 13, col.lfM);
-  // Highlight blob upper-left
-  disc(put, cx - 4, crownY - 4, 8, col.lfL);
-  disc(put, cx - 5, crownY - 5, 5, col.lfB);
-  // Dark undercanopy
-  for (let x = -13; x <= 13; x++)
-    for (let y = 4; y <= 8; y++)
-      if (x * x + y * y <= 169) put(cx + x, crownY + y, col.lfD);
-  // Leaf edge clusters
-  for (let a = 0; a < 24; a++) {
-    const angle = (a / 24) * Math.PI * 2;
-    const r = 15 + (a % 3);
-    const lx = Math.round(cx + Math.cos(angle) * r);
-    const ly = Math.round(crownY + Math.sin(angle) * r);
-    put(lx, ly, a % 3 === 0 ? col.lfB : a % 3 === 1 ? col.lfM : col.lfD);
-    if (a % 4 === 0) put(lx, ly + 1, col.lfD);
+  // Wisp tendrils trailing down
+  for (let t = 0; t < 5; t++) {
+    const tx = cx - 8 + t * 4;
+    const sway = Math.round(Math.sin((t + phase) * 1.5) * 2);
+    for (let j = 0; j < 4 + (t % 2) * 2; j++)
+      put(tx + sway, cy + 26 + j, ghostD);
   }
 
-  // Eyes — glowing green, set in bark hollows
-  const eyeY = baseCy - 4;
-  const glow = opts.chargeGlow ? P.sparkL : P.entEye;
-  const glowD = opts.chargeGlow ? P.spark : P.entEyeD;
-  disc(put, cx - 5, eyeY, 2, col.out);
-  put(cx - 5, eyeY, glow); put(cx - 4, eyeY, glow);
-  put(cx - 5, eyeY - 1, opts.chargeGlow ? P.white : '#a0ffa0');
-  disc(put, cx + 5, eyeY, 2, col.out);
-  put(cx + 5, eyeY, glow); put(cx + 6, eyeY, glow);
-  put(cx + 5, eyeY - 1, opts.chargeGlow ? P.white : '#a0ffa0');
+  // Torso — spine visible through mist
+  for (let y = -4; y <= 8; y++)
+    put(cx, cy + y, bone);
 
-  // Mouth — dark hollow
-  rect(put, cx - 3, baseCy + 1, 6, 3, col.out);
-  rect(put, cx - 2, baseCy + 1, 4, 2, col.d);
-  // Mossy beard below mouth
-  put(cx - 2, baseCy + 4, moss); put(cx, baseCy + 5, mossL);
-  put(cx + 2, baseCy + 4, moss);
+  // Ribs
+  for (let r = 0; r < 4; r++) {
+    const ry = cy - 2 + r * 3;
+    for (let x = 1; x <= 6 - r; x++) {
+      put(cx - x, ry, boneD);
+      put(cx + x, ry, boneD);
+    }
+    put(cx - (6 - r), ry + 1, boneD);
+    put(cx + (6 - r), ry + 1, boneD);
+  }
 
-  // Birth pockets — mossy bulges on trunk
+  // Shoulder bones
+  rect(put, cx - 10, cy - 4, 4, 3, boneD);
+  rect(put, cx + 6, cy - 4, 4, 3, boneD);
+
+  // Arms — skeletal, dangling
+  const aOff = Math.floor(armSway * 2);
+  // Left arm bones
+  rect(put, cx - 12, cy - 2 + aOff, 2, 8, boneD);
+  put(cx - 13, cy + 6 + aOff, bone);
+  put(cx - 12, cy + 7 + aOff, boneD);
+  put(cx - 11, cy + 7 + aOff, boneD);
+  // Right arm
+  rect(put, cx + 10, cy - 2 - aOff, 2, 8, boneD);
+  put(cx + 11, cy + 6 - aOff, bone);
+  put(cx + 10, cy + 7 - aOff, boneD);
+  put(cx + 12, cy + 7 - aOff, boneD);
+
+  // Skull — deer skull
+  disc(put, cx, cy - 10, 8, out);
+  disc(put, cx, cy - 10, 7, boneD);
+  disc(put, cx, cy - 10, 6, bone);
+  disc(put, cx, cy - 11, 4, boneL);
+  // Snout — elongated
+  rect(put, cx - 3, cy - 8, 6, 6, bone);
+  rect(put, cx - 2, cy - 6, 4, 5, boneL);
+  // Eye sockets — glowing green fire
+  const eyeCol = chargeGlow ? P.sparkL : P.entEye;
+  const eyeHL = chargeGlow ? P.white : '#a0ffa0';
+  const eyeDk = chargeGlow ? P.spark : P.entEyeD;
+  disc(put, cx - 3, cy - 12, 2, out);
+  put(cx - 3, cy - 12, eyeCol); put(cx - 2, cy - 12, eyeHL);
+  put(cx - 3, cy - 13, eyeDk);
+  disc(put, cx + 3, cy - 12, 2, out);
+  put(cx + 3, cy - 12, eyeCol); put(cx + 4, cy - 12, eyeHL);
+  put(cx + 3, cy - 13, eyeDk);
+  // Nose holes
+  put(cx - 1, cy - 6, out); put(cx + 1, cy - 6, out);
+  // Teeth
+  for (let x = -2; x <= 2; x++) {
+    put(cx + x, cy - 3, bone);
+    if (x % 2 === 0) put(cx + x, cy - 2, boneD);
+  }
+  // Jaw line
+  rect(put, cx - 3, cy - 3, 6, 1, boneD);
+
+  // ANTLERS — massive bone antlers
+  const al = cy - 18;
+  // Left antler
+  rect(put, cx - 4, al, 2, 6, bone);
+  rect(put, cx - 6, al - 6, 2, 6, bone);
+  rect(put, cx - 8, al - 10, 2, 4, boneL);
+  put(cx - 9, al - 12, boneL);
+  rect(put, cx - 2, al - 2, 2, 3, bone);
+  put(cx - 1, al - 4, boneD);
+  rect(put, cx - 8, al - 4, 2, 3, bone);
+  put(cx - 10, al - 4, boneD);
+  // Right antler
+  rect(put, cx + 2, al, 2, 6, bone);
+  rect(put, cx + 4, al - 6, 2, 6, bone);
+  rect(put, cx + 6, al - 10, 2, 4, boneL);
+  put(cx + 7, al - 12, boneL);
+  rect(put, cx, al - 2, 2, 3, bone);
+  put(cx - 1, al - 4, boneD);
+  rect(put, cx + 6, al - 4, 2, 3, bone);
+  put(cx + 8, al - 4, boneD);
+
+  // Spectral glow around antlers
+  if (!flash) {
+    for (let a = 0; a < 12; a++) {
+      const angle = (a / 12) * Math.PI * 2 + phase * 0.5;
+      const r = 10 + Math.sin(a * 2) * 3;
+      const gx = Math.round(cx + Math.cos(angle) * r);
+      const gy = Math.round(cy - 22 + Math.sin(angle) * r);
+      put(gx, gy, ghostB);
+    }
+  }
+
+  // Birth pockets — spectral bulges on torso
   if (opts.pockets !== undefined) {
     const stage = opts.pockets;
     const pockets: Array<[number, number]> = [
-      [-6, -10], [0, -12], [6, -10]
+      [-4, -6], [0, -8], [4, -6]
     ];
     for (const [px, py] of pockets) {
-      const ox = cx + px, oy = baseCy + py;
+      const ox = cx + px, oy = cy + py;
       if (stage === 0) {
-        disc(put, ox, oy, 3, col.lfM);
-        disc(put, ox, oy, 2, col.lf);
+        disc(put, ox, oy, 3, ghostL);
+        disc(put, ox, oy, 2, ghost);
       } else if (stage === 1) {
-        disc(put, ox, oy, 3, col.lfD);
-        disc(put, ox, oy, 2, col.out);
-        put(ox, oy, col.lfL);
+        disc(put, ox, oy, 3, ghostL);
+        disc(put, ox, oy, 2, out);
+        put(ox, oy, P.entEye);
       } else if (stage === 2) {
-        disc(put, ox, oy, 3, col.lfD);
-        disc(put, ox, oy, 2, P.wolfL);
+        disc(put, ox, oy, 3, ghostL);
+        disc(put, ox, oy, 2, P.wolfM);
         put(ox - 1, oy, P.white);
         put(ox + 1, oy, P.white);
       } else if (stage === 3) {
-        disc(put, ox, oy - 1, 4, col.lfD);
-        disc(put, ox, oy - 1, 3, P.wolfL);
+        disc(put, ox, oy - 1, 4, ghostD);
+        disc(put, ox, oy - 1, 3, P.wolfM);
         disc(put, ox, oy - 2, 2, P.wolf);
         put(ox - 1, oy - 1, P.white);
         put(ox + 1, oy - 1, P.white);
       } else if (stage === 4) {
-        disc(put, ox, oy, 3, col.out);
-        disc(put, ox, oy, 2, col.d);
+        disc(put, ox, oy, 3, out);
+        disc(put, ox, oy, 2, ghostD);
       }
     }
   }
@@ -4611,50 +4640,50 @@ const forestBossFrames: ForestBossFrame[] = [
 function drawForestBoss(frame: ForestBossFrame) {
   return (put: Put) => {
     switch (frame) {
-      case 'idle0':      return drawEntBody(put, { bob: 0 });
-      case 'idle1':      return drawEntBody(put, { bob: 1 });
-      case 'move0':      return drawEntBody(put, { bob: 0, legStep: 1, armSwing: 0.5 });
-      case 'move1':      return drawEntBody(put, { bob: 1, legStep: 0, armSwing: 0 });
-      case 'move2':      return drawEntBody(put, { bob: 0, legStep: -1, armSwing: -0.5 });
-      case 'move3':      return drawEntBody(put, { bob: 1, legStep: 0, armSwing: 0 });
-      case 'atk0':       return drawEntBody(put, { rearUp: true, bob: -1, armSwing: 1 });
-      case 'atk1':       return drawEntBody(put, { bob: 2, armSwing: -1 });
-      case 'chargeWind': return drawEntBody(put, { chargeGlow: true, bob: 0 });
-      case 'hit':        return drawEntBody(put, { flash: true });
-      case 'birth0':     return drawEntBody(put, { pockets: 0 });
-      case 'birth1':     return drawEntBody(put, { pockets: 1 });
-      case 'birth2':     return drawEntBody(put, { pockets: 2 });
-      case 'birth3':     return drawEntBody(put, { pockets: 3 });
-      case 'birth4':     return drawEntBody(put, { pockets: 4 });
-      case 'die0':       return drawForestBossDie(put, 0);
-      case 'die1':       return drawForestBossDie(put, 1);
-      case 'die2':       return drawForestBossDie(put, 2);
-      case 'die3':       return drawForestBossDie(put, 3);
-      case 'die4':       return drawForestBossDie(put, 4);
+      case 'idle0':      return drawWendigoBody(put, { bob: 0, phase: 0 });
+      case 'idle1':      return drawWendigoBody(put, { bob: -2, phase: 1 });
+      case 'move0':      return drawWendigoBody(put, { bob: 0, phase: 0, armSway: 0.5 });
+      case 'move1':      return drawWendigoBody(put, { bob: -2, phase: 1, armSway: 0 });
+      case 'move2':      return drawWendigoBody(put, { bob: 0, phase: 2, armSway: -0.5 });
+      case 'move3':      return drawWendigoBody(put, { bob: -2, phase: 3, armSway: 0 });
+      case 'atk0':       return drawWendigoBody(put, { bob: -2, armSway: 1, phase: 0 });
+      case 'atk1':       return drawWendigoBody(put, { bob: 2, armSway: -1, phase: 1 });
+      case 'chargeWind': return drawWendigoBody(put, { chargeGlow: true, bob: 0, phase: 0 });
+      case 'hit':        return drawWendigoBody(put, { flash: true });
+      case 'birth0':     return drawWendigoBody(put, { pockets: 0, phase: 0 });
+      case 'birth1':     return drawWendigoBody(put, { pockets: 1, phase: 1 });
+      case 'birth2':     return drawWendigoBody(put, { pockets: 2, phase: 2 });
+      case 'birth3':     return drawWendigoBody(put, { pockets: 3, phase: 3 });
+      case 'birth4':     return drawWendigoBody(put, { pockets: 4, phase: 0 });
+      case 'die0':       return drawWendigoDie(put, 0);
+      case 'die1':       return drawWendigoDie(put, 1);
+      case 'die2':       return drawWendigoDie(put, 2);
+      case 'die3':       return drawWendigoDie(put, 3);
+      case 'die4':       return drawWendigoDie(put, 4);
     }
   };
 }
 
-function drawForestBossDie(put: Put, step: number) {
-  const cx = 32, cy = 36;
-  const r = Math.max(0, 24 - step * 5);
+function drawWendigoDie(put: Put, step: number) {
+  const cx = 32, cy = 30;
+  const r = Math.max(0, 20 - step * 4);
   if (r > 0) {
-    disc(put, cx, cy, r, P.barkD);
-    disc(put, cx, cy, Math.max(0, r - 1), P.bark);
-    disc(put, cx, cy, Math.max(0, r - 3), P.barkL);
+    disc(put, cx, cy, r, P.wGhostD);
+    disc(put, cx, cy, Math.max(0, r - 1), P.wGhost);
+    disc(put, cx, cy, Math.max(0, r - 3), P.wBone);
   }
-  // Leaves and bark chunks flying out
-  for (let i = 0; i < 12; i++) {
-    const a = (i / 12) * Math.PI * 2 + step * 0.3;
-    const d = step * 6 + 6;
+  // Bone shards + wisps flying out
+  for (let i = 0; i < 14; i++) {
+    const a = (i / 14) * Math.PI * 2 + step * 0.35;
+    const d = step * 7 + 5;
     const x = Math.round(cx + Math.cos(a) * d);
     const y = Math.round(cy + Math.sin(a) * d);
-    put(x, y, i % 2 === 0 ? P.barkD : P.leafD);
-    put(x + 1, y, i % 2 === 0 ? P.leaf : P.leafM);
-    if (i % 3 === 0) put(x, y + 1, P.barkL);
+    put(x, y, i % 3 === 0 ? P.wBoneD : i % 3 === 1 ? P.wBone : P.wGhostL);
+    put(x + 1, y, i % 2 === 0 ? P.wBoneL : P.wGhostD);
+    if (i % 4 === 0) put(x, y + 1, P.entEye);
   }
-  // Green flash instead of white
-  if (step < 2) disc(put, cx, cy, 6, P.entEye);
+  // Green spectral flash
+  if (step < 2) disc(put, cx, cy, 5, P.entEye);
 }
 
 function add(scene: Phaser.Scene, key: string, canvas: HTMLCanvasElement) {
@@ -4850,6 +4879,8 @@ export function generateAllArt(scene: Phaser.Scene) {
   // Mosquito dart projectile
   add(scene, 'mdart_0', makeCanvas(16, drawMosquitoDart('dart0')));
   add(scene, 'mdart_1', makeCanvas(16, drawMosquitoDart('dart1')));
+  // Bird poop splat
+  add(scene, 'bird_poop', makeCanvas(16, drawBirdPoop()));
 
   // Shared helper to copy a loaded PNG texture to a new key
   const copyTex = (src: string, dst: string) => {
