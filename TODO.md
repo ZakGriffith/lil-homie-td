@@ -1,234 +1,112 @@
 # TODO
 
-## 1. ~~Redo Tower Graphics (Isometric Perspective)~~ ✅
-- ~~Redraw tower base and top sprites at a 3/4 angle to match the rest of the game~~
-- ~~Base should visually fill its 2x2 grid footprint~~
-- ~~Maintain the tier tinting system~~
-- ~~Arrow tower: archer + rotatable bow system~~
-- ~~Circular collision body for corner passthrough~~
-- ~~Y-based depth sorting for 3D occlusion~~
-- ~~WC2-style autotiling walls with 16 neighbor variants~~
+---
 
-## ~~2. Level Select Screen~~ ✅
-- ~~Map-based select with connected world map, dotted paths between level nodes~~
-- ~~4 difficulties per level: Easy, Medium, Hard, 1-HP~~
-- ~~Medal-based progression (Bronze/Silver/Gold/Diamond), localStorage persistence~~
-- ~~12 levels across 4 biomes: Grasslands, Desert, Tundra, Volcanic~~
-- ~~Difficulty panel overlay on node click, locked nodes show medal requirements~~
-- ~~Level 1 (Meadow) and Level 2 (Forest) fully playable with unique enemies, terrain, and bosses~~
+## Bugs
 
-## 3. Improve Ground/Terrain Variety
-- Each biome needs varied terrain tiles that are all walkable but visually distinct
-- World-space multi-octave noise for smooth gradient transitions between shades
-- Per-chunk canvas rendering (one 512px image per chunk)
-- Terrain is purely cosmetic — no gameplay effect on walkability (walls/towers still use the grid)
+- [ ] **No way to exit build mode without ESC** — pressing 1/2/3 enters build mode but the only way out is ESC, which isn't obvious. Need a visible cancel button or click-to-deselect, and a hint in the UI.
+- [ ] **No feedback when placement is blocked** — placing a tower or wall on an invalid tile silently fails. Show an error message (e.g. "Can't build here", "Not enough gold", "Would block enemy paths").
+- [ ] **Wall placement false positives near dense trees** — walls sometimes show red on valid tiles when forests already block some spawn directions. Partially fixed with caching + relaxed reachability check, but edge cases may remain.
 
-### Biome Checklist
-- [x] **Grasslands** — 4 green shade gradient, scattered flowers/rocks/tufts
-- [ ] **Forest** — mossy ground, leaf litter, exposed roots, muddy patches
-- [ ] **Swamp** — murky water puddles, reeds, soggy earth tones
-- [ ] **Desert** — sand dunes, cracked earth, rock outcroppings, occasional scrub brush
-- [ ] **Mountains** — rocky ground, gravel patches, snow-dusted stone, cliff edges
-- [ ] **Volcanic** — charred rock, lava cracks (glowing), ash-covered ground
-- [ ] **Frozen Peaks** — snow, ice patches, frozen puddles, wind-swept stone
-- [ ] **Dark Fortress** — dark stone tiles, cracks, glowing runes
+---
 
-## 4. Unlock Progression System
-- Towers and content unlock through character experience earned by beating levels
-- Leftover money at end of a level converts to experience (ties into loot collection window)
+## UX / Polish
 
-### Tower Unlock Order
-1. **Arrow Tower** — available from the start (Level 1 acts as a tutorial with only arrows)
-2. **Cannon Tower** — unlocked after beating Level 1
-3. **TBD Tower 3** — unlocked after beating Level 2
-4. **TBD Tower 4** — unlocked after further progression
-- Each new tower unlock should feel like a meaningful power spike
+- [ ] **Build mode cancel UX** — add a right-click or re-press hotkey to cancel build mode. Show "ESC to cancel" hint near the ghost cursor.
+- [ ] **Flying enemy tutorial tooltip** — first time a river flying enemy spawns, show a brief message that they can't be blocked by walls/towers.
+- [ ] **Flying enemy visual indicator** — small shadow underneath and/or slight hover bob to distinguish from ground enemies.
+- [ ] **Mosquito dart hit feedback** — brief green flash on the player when hit by a venom dart.
+- [ ] **Untracked file cleanup** — preview HTML files and loose PNGs in repo root should be gitignored or removed.
 
-### Enemy / Tower Synergy
-- As each tower type unlocks, new enemy types weak to that tower are introduced in subsequent levels
-  - e.g. Cannon unlocks → next level introduces clustered swarm enemies vulnerable to AoE
-  - e.g. Tower 3 unlocks → next level introduces enemies with a weakness matching that tower's specialty
-- Encourages players to use newly unlocked towers rather than spamming one type
-- Earlier enemy types still appear but in different mixes to keep variety
+---
 
-### Experience & Persistence
-- Track total XP earned across all levels (localStorage)
-- Show XP progress bar on level select screen
-- Unlock thresholds clearly visible so players know what they're working toward
-- Replay earlier levels to farm XP if needed (but diminishing returns to prevent grinding)
+## New Content
 
-## 5. Tower Specialization (Branching Upgrades)
-- Current system: 3 linear upgrade tiers (Level 0 → 1 → 2)
-- New system: Levels 0 and 1 remain the same, but upgrading past Level 1 presents a **choice** between two specializations
-- Each specialization takes the tower in a distinct direction with unique attributes
-- Once chosen, the specialization is permanent for that tower (no respec)
-- Visual change to reflect the chosen path (tint, top sprite, or particle effect)
+### Biomes & Levels
+- [ ] **Desert biome** (Levels 5-6) — new enemy types, terrain, and boss
+- [ ] **Tundra biome** (Levels 7-8) — new enemy types, terrain, and boss
+- [ ] **Volcanic biome** (Levels 9-10) — new enemy types, terrain, and boss
+- [ ] **Terrain variety per biome** — varied walkable ground tiles (cosmetic only)
+  - [x] Grasslands — green gradient, flowers/rocks/tufts
+  - [ ] Forest — mossy ground, leaf litter, muddy patches
+  - [ ] Desert — sand dunes, cracked earth, rock outcroppings
+  - [ ] Tundra — snow, ice patches, frozen puddles
+  - [ ] Volcanic — charred rock, lava cracks (glowing), ash
 
-### Arrow Tower Specializations (after Level 1)
-- **Marksman** — longer range, higher single-target damage, slower fire rate, piercing shots that hit multiple enemies in a line
-- **Rapid Fire** — shorter range, lower per-shot damage, much faster fire rate, slight spread to shots
+### Towers
+- [ ] **Mage/Wizard Tower** — new tower type (UI slot exists with lock overlay)
+- [ ] **4th tower type** — TBD, unlocked through later progression
 
-### Cannon Tower Specializations (after Level 1)
-- **Mortar** — massive splash radius, slower fire rate, leaves lingering fire zone that damages enemies over time
-- **Shrapnel** — tighter splash radius, but fragments fly outward on impact dealing secondary damage to a wider area
+### Bridges
+- [ ] **River bridges** — re-add for player traversal across rivers (enemies don't need them since they fly)
 
-### Future Tower Specializations
-- Design specializations for each new tower type as they are added
-- Each branch should feel meaningfully different in playstyle, not just stat tweaks
-- Encourage mixing specializations across towers for varied strategies
+---
 
-### UI
-- When a Level 1 tower is upgraded, show a choice panel with both specialization options
-- Display name, icon, and brief description of each path
-- Highlight stat changes compared to the base Level 1 tower
+## Major Features
 
-## 6. Leaderboard
-- Show a leaderboard on the victory/defeat screen or accessible from the main menu
-- Score = f(completion time, remaining money) — faster clears with more money = higher score
-- Store top scores in localStorage per level per difficulty
-- Display: rank, player name, score, time, money
-- Highlight the player's current run if it made the board
+### Progression & Economy
+- [ ] **Unlock Progression System** — towers and content unlock through XP earned by beating levels; leftover money converts to XP
+- [ ] **Medal Shop (Global Upgrades)** — spend medals on permanent upgrades (player stats, tower stats, economy, defense). Accessible from level select map.
+- [ ] **Character Abilities** — spend XP to permanently upgrade player stats (attack speed, range, damage, move speed, HP, magnet range, armor, HP regen). Could merge with Medal Shop or be a separate XP-based system.
 
-## 7. Hero Selection
-- Replace the name-input screen with a hero select screen
-- Multiple hero characters, each with a unique skin/sprite and a small passive bonus
-- Players click to select a hero before entering a level
+### Tower Specialization (Branching Upgrades)
+- [ ] At Level 2 upgrade, present a choice between two specializations (permanent, no respec)
+- [ ] **Arrow: Marksman** — long range, piercing, slower | **Arrow: Rapid Fire** — short range, fast, spread
+- [ ] **Cannon: Mortar** — huge splash, fire zone DOT | **Cannon: Shrapnel** — tight splash, secondary fragments
+- [ ] UI: choice panel with name, icon, description, stat comparison
 
-### Hero Roster (examples)
-- **Archer** — default hero, balanced stats (current character)
-- **Ranger** — +5% attack speed
-- **Knight** — +10% max HP, slightly slower move speed
-- **Scout** — +10% movement speed
-- **Mage** — +8% tower damage aura (towers in range deal more)
-- **Engineer** — -10% tower build cost
-- **Berserker** — +10% damage, -5% max HP
-- More heroes unlockable through progression (medals, XP, etc.)
+### Combat Depth
+- [ ] **Damage Types & Enemy Resistances** — Arrow/Magic/Cannon damage types; enemies have % resistance or weakness to each. Encourages diverse tower builds.
 
-### Design Notes
-- Each hero has a distinct sprite/color palette so they're visually identifiable
-- Passive bonuses should be small but meaningful — not game-breaking
-- Hero select screen shows: hero portrait, name, passive description, stats
-- Selected hero is highlighted; click "Confirm" or proceed to level select
-- Could tie into unlock progression (some heroes locked behind medal counts)
+### Heroes
+- [ ] **Hero Selection Screen** — replace name input with hero select. Multiple characters with unique sprites and small passive bonuses (e.g. Archer, Knight, Scout, Mage, Engineer, Berserker). Unlockable through medals/XP.
 
-## 8. Overall Upgrades (Medal Shop)
-- Accessible from the level select map screen via an "UPGRADES" button
-- Spend medals earned from completing levels on permanent global upgrades
-- Upgrades apply to ALL heroes, ALL towers, and ALL maps
+### Competitive
+- [ ] **Leaderboard** — score = f(time, remaining money). localStorage per level per difficulty. Show on victory/defeat screen.
+- [ ] **Achievements System** — unlockable achievements with popup notifications, dedicated screen, progress tracking. Examples: Pacifist, Untouchable, Speedrunner, Full Clear, Boss Rush.
 
-### Upgrade Categories
-- **Player Stats** — max HP, attack damage, attack speed, movement speed, coin magnet range
-- **Tower Stats** — tower damage %, tower fire rate %, tower range %, tower HP %
-- **Economy** — starting gold bonus, coin drop value %, build cost reduction %
-- **Defense** — wall HP %, damage reduction %
+### Infrastructure
+- [ ] **Cloud Progress Save** — lightweight backend (UUID-based, no auth) so progress survives cache clears. Options: Cloudflare Workers+KV, Vercel+Upstash, Supabase, Firebase.
+- [ ] **Mobile Support** — virtual joystick, larger tap targets, compact HUD, responsive scaling.
 
-### Design Notes
-- Each upgrade has multiple tiers (e.g. 5 levels), each tier costs progressively more medals
-- Show current level, next level bonus, and medal cost clearly
-- Upgrades are permanent and persist across all sessions (localStorage)
-- Balance so upgrades provide meaningful progression without trivializing content
-- Medals are earned from completing difficulties (4 per level), so replaying on harder difficulties fuels upgrades
-- UI: grid or list of upgrade cards, each showing an icon, name, current tier, and cost to upgrade
+### Multiplayer
+- [ ] **Multiplayer** — when this starts, remove the 1x/2x/4x speed toggle.
 
-## 9. Character Abilities (Purchasable Upgrades)
-- Spend XP or in-game currency to permanently upgrade the player character
-- Upgrades persist across levels (part of the progression system)
+---
 
-### Stat Upgrades
-- **Attack Speed** — reduce bow fire rate cooldown
-- **Attack Range** — increase targeting/shooting distance
-- **Attack Damage** — increase arrow damage per hit
-- **Movement Speed** — move faster around the map
-- **Coin Magnet Range** — collect coins from further away
-- **Coin Magnet Speed** — coins fly toward player faster
-- **Max HP** — increase player health pool
-- **HP Regen** — slowly regenerate health over time
-- **Armor** — reduce incoming damage by a flat amount or percentage
+## Art & Audio
 
-### Design Notes
-- Each stat should have multiple tiers (e.g. 5 levels each, progressively more expensive)
-- Accessible from the level select screen or during the pre-wave build phase
-- Show clear before/after values so the player knows what they're buying
-- Balance so upgrades feel impactful but no single stat becomes a must-buy
-- Could tie into the XP system from TODO #4 — XP is the currency for these upgrades
+- [ ] **Player & Enemy Sprite Redo** — complete visual overhaul of all character sprites (idle, move, shoot, hit, die) with consistent art style and directional animations.
+- [ ] **Background music per biome** — currently one track for all levels; each biome should have its own BGM.
+- [ ] **Replace remaining jsfxr fallbacks** — swap synth sounds with real audio files as they become available.
 
-## 10. Cloud Progress Save (Cache-Proof Persistence)
-- Currently medals are saved in localStorage — clearing browser cache wipes all progress
-- Add a lightweight backend so progress survives cache clears and can be restored via URL
+---
 
-### How It Works
-1. First visit: generate a UUID, store in localStorage, append to URL as hash (e.g. `yourgame.com/#a3f8b2c1`)
-2. On medal earn: save to localStorage (primary, fast) AND PUT to backend (durable backup)
-3. On page load: check URL for ID → fetch progress from backend, merge with localStorage (take best of both)
-4. Cache cleared? URL still has the ID → backend restores everything
+## Tutorial
 
-### Backend
-- 2 endpoints: `GET /progress/:id` and `PUT /progress/:id`
-- Data is a small JSON blob: `{ medals: { "1": { easy: true, ... } } }`
-- No auth — the UUID is the key
-- ~30 lines of server code
+- [ ] **Tutorial Level** — guided walkthrough that pauses and highlights:
+  1. Auto-shooting (stand still for full speed)
+  2. Building an arrow tower
+  3. Upgrading a tower
+  4. Placing walls to funnel enemies
 
-### Hosting Options (free tier)
-- Cloudflare Workers + KV
-- Vercel serverless + Upstash Redis
-- Supabase (free Postgres + REST API)
-- Firebase Realtime DB
+---
 
-## 11. Damage Types & Enemy Resistances
-- Define attack/damage types: Arrow (physical/piercing), Magic, Cannon (AoE/explosive), etc.
-- Each tower deals a specific damage type
-- Enemies have resistances (or weaknesses) to certain damage types
-  - e.g. armored enemies resist Arrow but are weak to Cannon AoE
-  - e.g. magic-immune enemies shrug off Magic towers but take full Arrow damage
-- Resistance = % damage reduction (e.g. 50% Arrow resistance = takes half damage from arrows)
-- Weakness = % damage bonus (e.g. -25% resistance = takes 1.25x damage)
-- Encourages diverse tower builds rather than spamming one type
-- UI: show resistance icons on enemy info or as subtle tint/shield indicators
-- Ties into Tower Specialization (TODO #5) — specialization branches could shift damage types
+## Completed
 
-## 12. Player Character & Enemy Sprites Full Redo
-- Complete visual overhaul of all player character sprites (idle, move, shoot, hit, die)
-- Complete visual overhaul of all enemy sprites (basic, heavy, runner, wolf, bear, spider)
-- Consistent art style across all characters
-- Improved animations and directional sprites
-
-## 13. Tutorial Level
-- Single player only, guided walkthrough
-- Pauses action and dims screen except for the highlighted area at each step
-- Steps:
-  1. Show character auto-shooting an enemy — explain basic combat
-  2. Tell player they shoot at half speed while moving (stand still to maximize DPS)
-  3. Walk through building an arrow tower (open build menu → select arrow → place)
-  4. Walk through upgrading the arrow tower (click tower → upgrade panel)
-
-## 14. Mobile Support
-- Detect mobile devices and adapt UI accordingly
-- Virtual joystick for player movement (touch-based)
-- Larger tap targets for build buttons, tower selection, upgrade panel
-- Compact HUD layout to save screen space on smaller screens
-- Touch-friendly tower placement and wall building
-- Responsive canvas scaling for various screen sizes/orientations
-
-## 15. Achievements System
-- Accessible from the level select map via an "ACHIEVEMENTS" button
-- In-game popup notification when an achievement is unlocked
-- Dedicated achievement screen showing all achievements (locked and unlocked)
-- Persist unlocked achievements in localStorage
-
-### Example Achievements
-- **Pacifist** — Beat a level on Hard without building any towers
-- **Architect** — Build 10 towers in a single level
-- **Untouchable** — Beat a level without taking any damage
-- **Speedrunner** — Beat a level in under 3 minutes
-- **Hoarder** — Finish a level with 500+ unspent gold
-- **Exterminator** — Kill 1000 total enemies across all levels
-- **Diamond Collector** — Earn a Diamond medal on any level
-- **Full Clear** — Earn all 4 medals on a single level
-- **Wall Street** — Build 50 walls in a single level
-- **Boss Rush** — Defeat 5 bosses total
-
-### Design Notes
-- Each achievement has: icon, name, description, unlock condition, locked/unlocked state
-- Achievement popup slides in from the top during gameplay, auto-dismisses after a few seconds
-- Achievement screen: grid of cards, unlocked ones are bright/colored, locked ones are dimmed/silhouetted
-- Track progress toward multi-step achievements (e.g. "Exterminator: 342/1000")
+- [x] Tower graphics redo (isometric perspective, WC2 autotiling walls)
+- [x] Level select screen (Kingdom Rush-style map, 4 difficulties, medals)
+- [x] Grasslands biome — basic/heavy/runner enemies, Brood Mother boss
+- [x] Forest biome — wolf/spider/bear enemies, Forest Guardian boss
+- [x] Infected biome — infected enemies, Blighted One boss
+- [x] River biome — flying enemies (crow/bat/dragonfly/mosquito), Fog Phantom boss
+- [x] Landing page with OG unfurl image
+- [x] Background music (looping during gameplay)
+- [x] Sound effects (arrow, cannon, coin, upgrade, click, hit, boom, etc.)
+- [x] Native resolution UI scaling
+- [x] Hotbar redesign with labels, costs, and mage tower lock overlay
+- [x] Wall placement optimization (BFS caching, O(1) queue)
+- [x] Mosquito darts stop on wall/tower hit
+- [x] River mob cluster spawning
+- [x] Camera shake tuning
+- [x] Per-sound volume control
