@@ -6,7 +6,7 @@
     <title>Ranger Danger</title>
     <meta name="description" content="A tower defense survival game. Build towers, place walls, and defend against waves of enemies across 4 biomes." />
 
-    <!-- OpenGraph (Discord, Slack, Facebook, LinkedIn, etc.) -->
+    <!-- OpenGraph -->
     <meta property="og:type" content="website" />
     <meta property="og:url" content="https://rangerdanger.xyz" />
     <meta property="og:title" content="Ranger Danger" />
@@ -20,41 +20,483 @@
     <meta name="twitter:title" content="Ranger Danger" />
     <meta name="twitter:description" content="Build towers, place walls, and survive the horde." />
     <meta name="twitter:image" content="https://rangerdanger.xyz/og-image.png" />
+
+    <!-- Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700;900&family=Cinzel:wght@400;600;700&display=swap" rel="stylesheet" />
+
     <style>
-      html, body { margin:0; padding:0; background:#0b0f1a; color:#eee; font-family: system-ui, sans-serif; overflow:hidden; height:100%; }
+      *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+      html, body { background:#05070d; color:#eee; font-family: system-ui, -apple-system, sans-serif; overflow-x:hidden; height:100%; }
+
+      /* ---- Game canvas ---- */
       #game { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
       canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
-      #overlay { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:rgba(5,8,15,0.85); z-index:10; }
+
+      /* ---- Landing overlay ---- */
+      #overlay {
+        position:fixed; inset:0; z-index:10;
+        display:flex; align-items:center; justify-content:center;
+        background:#05070d;
+        overflow-y:auto; overflow-x:hidden;
+      }
       #overlay.hidden { display:none; }
-      .panel { background:#11172a; padding:24px 32px; border:2px solid #2a3760; border-radius:8px; text-align:center; min-width:280px; }
-      .panel h1 { margin:0 0 8px; font-size:28px; letter-spacing:2px; color:#7cc4ff; }
-      .panel p { margin:4px 0 16px; color:#aab; font-size:13px; }
-      .panel button { margin-top:14px; background:#2a3760; color:#fff; border:none; padding:10px 20px; border-radius:4px; font-size:14px; cursor:pointer; }
-      .panel button:hover { background:#3b4d84; }
-      .hint { color:#556; font-size:11px; margin-top:14px; line-height:1.5; }
-      /* Loading state */
-      .panel.loading button, .panel.loading .hint, .panel.loading p { display:none; }
-      .loader { display:none; margin:18px auto 0; }
-      .panel.loading .loader { display:block; }
-      .loader-spinner { width:32px; height:32px; border:3px solid #2a3760; border-top-color:#7cc4ff; border-radius:50%; margin:16px auto 0; animation:spin 0.8s linear infinite; }
-      @keyframes spin { to{transform:rotate(360deg)} }
-      .load-text { color:#7cc4ff; font-size:13px; margin-top:10px; letter-spacing:1px; }
+
+      /* ---- Particles ---- */
+      .particles { position:fixed; inset:0; pointer-events:none; overflow:hidden; z-index:0; }
+      .particle {
+        position:absolute; width:2px; height:2px;
+        background:#4ade80; border-radius:50%; opacity:0;
+        animation: pfloat linear infinite;
+      }
+      @keyframes pfloat {
+        0%   { transform:translateY(0) scale(1);    opacity:0; }
+        10%  { opacity:0.7; }
+        50%  { transform:translateY(-30px) scale(1.3); opacity:0.9; }
+        90%  { opacity:0.5; }
+        100% { transform:translateY(-60px) scale(0.8); opacity:0; }
+      }
+
+      /* ---- Landing layout ---- */
+      .landing {
+        position:relative; z-index:1;
+        width:100%; max-width:640px;
+        text-align:center;
+        padding:40px 20px 32px;
+        margin:0 auto;
+      }
+
+      /* ---- Celtic knot ornament (SVG) ---- */
+      .knot {
+        display:block; margin:0 auto;
+        opacity:0.55;
+      }
+      .knot-sm { width:200px; height:20px; margin:10px auto; opacity:0.4; }
+
+      /* ---- Title ---- */
+      .title {
+        font-family:'Cinzel Decorative', serif;
+        font-weight:900;
+        font-size:clamp(48px, 10vw, 80px);
+        line-height:0.95;
+        color:#3ddc6e;
+        text-shadow:
+          0 0 40px rgba(34,197,94,0.6),
+          0 0 80px rgba(34,197,94,0.25),
+          0 2px 0 #1a5c2e;
+        margin-bottom:6px;
+      }
+
+      .subtitle {
+        font-family:'Cinzel', serif;
+        font-weight:600;
+        font-size:clamp(13px, 2.5vw, 17px);
+        letter-spacing:6px;
+        color:#8ab89a;
+        text-transform:uppercase;
+        margin:16px 0 8px;
+      }
+
+      /* ---- Play button ---- */
+      .play-btn {
+        display:inline-block;
+        margin-top:10px;
+        font-family:'Cinzel Decorative', serif;
+        font-weight:700;
+        font-size:clamp(28px, 5vw, 40px);
+        color:#e8f5d0;
+        background: linear-gradient(180deg, #3a7a1e 0%, #2a5c14 50%, #1e4a0e 100%);
+        border:3px solid #6aac38;
+        border-radius:8px;
+        padding:12px 56px;
+        cursor:pointer;
+        text-shadow: 0 2px 4px rgba(0,0,0,0.5);
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.15),
+          0 0 20px rgba(34,197,94,0.3),
+          0 4px 12px rgba(0,0,0,0.6);
+        transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+        animation: play-glow 3s ease-in-out infinite;
+        position:relative;
+      }
+      .play-btn:hover {
+        transform:scale(1.06);
+        border-color:#8cd450;
+        box-shadow:
+          inset 0 1px 0 rgba(255,255,255,0.2),
+          0 0 36px rgba(74,222,128,0.5),
+          0 6px 20px rgba(0,0,0,0.5);
+      }
+      .play-btn:active { transform:scale(1.0); }
+      @keyframes play-glow {
+        0%, 100% { box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 0 20px rgba(34,197,94,0.25), 0 4px 12px rgba(0,0,0,0.6); }
+        50%      { box-shadow: inset 0 1px 0 rgba(255,255,255,0.15), 0 0 32px rgba(34,197,94,0.5),  0 4px 12px rgba(0,0,0,0.6); }
+      }
+      /* Gold diamond ornaments beside PLAY text */
+      .play-btn::before, .play-btn::after {
+        content:'';
+        position:absolute; top:50%; width:14px; height:14px;
+        background:#d4a017;
+        transform:translateY(-50%) rotate(45deg);
+        box-shadow: 0 0 6px rgba(212,160,23,0.6);
+      }
+      .play-btn::before { left:14px; }
+      .play-btn::after  { right:14px; }
+
+      /* ---- Description ---- */
+      .desc {
+        margin-top:28px;
+        font-size:clamp(13px, 2vw, 15px);
+        line-height:1.8;
+        color:#b0bec5;
+      }
+      .desc strong { color:#fff; font-weight:600; }
+      .desc .hl { color:#4ade80; font-weight:600; }
+
+      /* ---- Feature cards ---- */
+      .features {
+        display:grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap:8px;
+        margin-top:28px;
+      }
+      .feat {
+        background: rgba(10,18,30,0.7);
+        border:1px solid rgba(34,197,94,0.15);
+        border-radius:10px;
+        padding:14px 6px 12px;
+        text-align:center;
+      }
+      .feat-icon {
+        display:block;
+        width:48px; height:48px;
+        margin:0 auto 8px;
+        image-rendering:pixelated;
+      }
+      .feat-title {
+        font-family:'Cinzel', serif;
+        font-weight:700;
+        font-size:9px;
+        letter-spacing:1px;
+        color:#4ade80;
+        text-transform:uppercase;
+        margin-bottom:4px;
+      }
+      .feat-desc {
+        font-size:10px;
+        color:#8a9aaa;
+        line-height:1.4;
+      }
+
+      /* ---- Twitter banner ---- */
+      .twitter-bar {
+        margin-top:28px;
+        display:flex;
+        border:1px solid rgba(34,197,94,0.15);
+        border-radius:12px;
+        overflow:hidden;
+        background:rgba(10,18,30,0.7);
+      }
+      .twitter-left {
+        flex:1;
+        display:flex;
+        align-items:center;
+        gap:14px;
+        padding:16px 18px;
+      }
+      .twitter-left .tw-icon {
+        flex-shrink:0;
+        width:36px; height:36px;
+        background:linear-gradient(135deg, #1a3a5c, #0f2440);
+        border-radius:6px;
+        display:flex; align-items:center; justify-content:center;
+      }
+      .twitter-left .tw-text { text-align:left; }
+      .twitter-left .tw-label {
+        font-family:'Cinzel', serif;
+        font-weight:700;
+        font-size:13px;
+        color:#4ade80;
+        letter-spacing:1px;
+        text-transform:uppercase;
+      }
+      .twitter-left .tw-sub {
+        font-size:11px;
+        color:#7a8a9a;
+        margin-top:2px;
+      }
+      .twitter-right {
+        display:flex;
+        align-items:center;
+        gap:10px;
+        padding:16px 20px;
+        border-left:1px solid rgba(34,197,94,0.1);
+        text-decoration:none;
+        color:inherit;
+        transition:background 0.15s;
+      }
+      .twitter-right:hover { background:rgba(29,161,242,0.08); }
+      .twitter-right .tw-handle-label {
+        font-size:10px;
+        color:#5a7a9a;
+        text-transform:uppercase;
+        letter-spacing:1px;
+      }
+      .twitter-right .tw-handle {
+        font-family:'Cinzel', serif;
+        font-weight:700;
+        font-size:14px;
+        color:#5aace0;
+      }
+
+      /* Twitter bird SVG color */
+      .tw-bird { fill:#1da1f2; }
+
+      /* ---- Footer ---- */
+      .footer {
+        margin-top:24px;
+        font-size:11px;
+        color:#3a4a5a;
+      }
+
+      /* ---- Loading state ---- */
+      .landing.loading > *:not(.loader):not(.title) { display:none; }
+      .landing.loading .title { margin-bottom:20px; }
+      .loader { display:none; text-align:center; }
+      .landing.loading .loader { display:block; }
+      .loader-spinner {
+        width:36px; height:36px;
+        border:3px solid #1e3a2a;
+        border-top-color:#4ade80;
+        border-radius:50%;
+        margin:16px auto 0;
+        animation:spin 0.8s linear infinite;
+      }
+      @keyframes spin { to { transform:rotate(360deg); } }
+      .load-text { color:#4ade80; font-size:14px; margin-top:12px; letter-spacing:1.5px; }
+
+      /* ---- Responsive ---- */
+      @media (max-width: 600px) {
+        .features { grid-template-columns: repeat(3, 1fr); }
+        .features .feat:nth-child(4),
+        .features .feat:nth-child(5) {
+          grid-column: span 1;
+        }
+        .twitter-bar { flex-direction:column; }
+        .twitter-right { border-left:none; border-top:1px solid rgba(34,197,94,0.1); justify-content:center; }
+        .play-btn { padding:12px 40px; }
+      }
+      @media (max-width: 400px) {
+        .features { grid-template-columns: repeat(2, 1fr); }
+        .landing { padding:24px 12px 24px; }
+      }
     </style>
   </head>
   <body>
     <div id="game"></div>
+
     <div id="overlay">
-      <div class="panel">
-        <h1>RANGER DANGER</h1>
-        <p>Survive the horde</p>
-        <button id="startBtn">PLAY</button>
-        <div class="hint">WASD / Arrows to move &middot; auto-shoot nearby enemies (half speed while moving)<br/>1 = Arrow Tower &middot; 2 = Cannon Tower &middot; 3 = Wall &middot; Click to build &middot; X+Click to sell</div>
+      <!-- Floating particles -->
+      <div class="particles" id="particles"></div>
+
+      <div class="landing" id="landingPanel">
+
+        <!-- Celtic knot ornament top -->
+        <svg class="knot" viewBox="0 0 400 30" width="320" height="24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0 15h120 M280 15h120" stroke="#3a7a3a" stroke-width="1" opacity="0.5"/>
+          <g transform="translate(200,15)" stroke="#4ade80" stroke-width="1.5" fill="none" opacity="0.7">
+            <ellipse rx="28" ry="10"/><ellipse rx="18" ry="10"/>
+            <ellipse rx="28" ry="10" transform="rotate(60)"/><ellipse rx="18" ry="10" transform="rotate(60)"/>
+            <ellipse rx="28" ry="10" transform="rotate(-60)"/><ellipse rx="18" ry="10" transform="rotate(-60)"/>
+          </g>
+          <circle cx="130" cy="15" r="3" fill="#3a7a3a" opacity="0.5"/>
+          <circle cx="270" cy="15" r="3" fill="#3a7a3a" opacity="0.5"/>
+        </svg>
+
+        <!-- Title -->
+        <h1 class="title">RANGER<br>DANGER</h1>
+
+        <!-- Celtic knot ornament mid -->
+        <svg class="knot knot-sm" viewBox="0 0 300 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M0 10h90 M210 10h90" stroke="#3a7a3a" stroke-width="1" opacity="0.5"/>
+          <g transform="translate(150,10)" stroke="#4ade80" stroke-width="1.2" fill="none" opacity="0.55">
+            <ellipse rx="20" ry="7"/><ellipse rx="12" ry="7"/>
+            <ellipse rx="20" ry="7" transform="rotate(60)"/><ellipse rx="12" ry="7" transform="rotate(60)"/>
+            <ellipse rx="20" ry="7" transform="rotate(-60)"/><ellipse rx="12" ry="7" transform="rotate(-60)"/>
+          </g>
+          <circle cx="95" cy="10" r="2.5" fill="#3a7a3a" opacity="0.5"/>
+          <circle cx="205" cy="10" r="2.5" fill="#3a7a3a" opacity="0.5"/>
+        </svg>
+
+        <p class="subtitle">Survive the Horde</p>
+
+        <!-- PLAY button -->
+        <button class="play-btn" id="startBtn">PLAY</button>
+
+        <!-- Description -->
+        <div class="desc">
+          <p>
+            <span class="hl">Ranger Danger</span> is a fast-paced hybrid of
+            <strong>tower defense</strong> and <strong>action combat</strong>.
+          </p>
+          <p style="margin-top:6px;">
+            Build towers, block paths, and fight enemies directly as your ranger.<br>
+            Position matters. Timing matters.<br>
+            Survive wave after wave across diverse biomes.
+          </p>
+        </div>
+
+        <!-- Feature cards -->
+        <div class="features">
+          <div class="feat">
+            <canvas class="feat-icon" id="icon-fight" width="48" height="48"></canvas>
+            <div class="feat-title">Move &amp; Fight</div>
+            <div class="feat-desc">Control your ranger and attack enemies directly.</div>
+          </div>
+          <div class="feat">
+            <canvas class="feat-icon" id="icon-build" width="48" height="48"></canvas>
+            <div class="feat-title">Build &amp; Defend</div>
+            <div class="feat-desc">Construct towers and walls to stop the horde.</div>
+          </div>
+          <div class="feat">
+            <canvas class="feat-icon" id="icon-biome" width="48" height="48"></canvas>
+            <div class="feat-title">Explore Biomes</div>
+            <div class="feat-desc">From lush forests to volcanic wastes and beyond.</div>
+          </div>
+          <div class="feat">
+            <canvas class="feat-icon" id="icon-coins" width="48" height="48"></canvas>
+            <div class="feat-title">Collect &amp; Upgrade</div>
+            <div class="feat-desc">Earn gold, unlock upgrades, and become stronger.</div>
+          </div>
+          <div class="feat">
+            <canvas class="feat-icon" id="icon-waves" width="48" height="48"></canvas>
+            <div class="feat-title">Survive Waves</div>
+            <div class="feat-desc">Face relentless waves of enemies and epic bosses.</div>
+          </div>
+        </div>
+
+        <!-- Twitter bar -->
+        <div class="twitter-bar">
+          <div class="twitter-left">
+            <div class="tw-icon">
+              <svg width="20" height="20" viewBox="0 0 24 24"><path class="tw-bird" d="M23.643 4.937c-.835.37-1.732.62-2.675.733a4.67 4.67 0 002.048-2.578 9.3 9.3 0 01-2.958 1.13 4.66 4.66 0 00-7.938 4.25 13.229 13.229 0 01-9.602-4.868c-.4.69-.63 1.49-.63 2.342A4.66 4.66 0 003.96 9.824a4.647 4.647 0 01-2.11-.583v.06a4.66 4.66 0 003.737 4.568 4.692 4.692 0 01-2.104.08 4.661 4.661 0 004.352 3.234 9.348 9.348 0 01-5.786 1.995 9.5 9.5 0 01-1.112-.065 13.175 13.175 0 007.14 2.093c8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602a9.47 9.47 0 002.323-2.41l.002-.003z"/></svg>
+            </div>
+            <div class="tw-text">
+              <div class="tw-label">Follow Development</div>
+              <div class="tw-sub">Get updates, devlogs, and sneak peeks of what's coming next!</div>
+            </div>
+          </div>
+          <a class="twitter-right" href="https://twitter.com/ZakAgain" target="_blank" rel="noopener">
+            <svg width="18" height="18" viewBox="0 0 24 24"><path class="tw-bird" d="M23.643 4.937c-.835.37-1.732.62-2.675.733a4.67 4.67 0 002.048-2.578 9.3 9.3 0 01-2.958 1.13 4.66 4.66 0 00-7.938 4.25 13.229 13.229 0 01-9.602-4.868c-.4.69-.63 1.49-.63 2.342A4.66 4.66 0 003.96 9.824a4.647 4.647 0 01-2.11-.583v.06a4.66 4.66 0 003.737 4.568 4.692 4.692 0 01-2.104.08 4.661 4.661 0 004.352 3.234 9.348 9.348 0 01-5.786 1.995 9.5 9.5 0 01-1.112-.065 13.175 13.175 0 007.14 2.093c8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602a9.47 9.47 0 002.323-2.41l.002-.003z"/></svg>
+            <div>
+              <div class="tw-handle-label">Follow on Twitter</div>
+              <div class="tw-handle">@ZakAgain</div>
+            </div>
+          </a>
+        </div>
+
+        <p class="footer">&copy; Ranger Danger</p>
+
+        <!-- Loading spinner -->
         <div class="loader">
           <div class="load-text">Generating world...</div>
           <div class="loader-spinner"></div>
         </div>
       </div>
     </div>
+
+    <script>
+    // ---- Floating particles ----
+    (function() {
+      var c = document.getElementById('particles');
+      for (var i = 0; i < 50; i++) {
+        var s = document.createElement('span');
+        s.className = 'particle';
+        s.style.top = (Math.random() * 100) + '%';
+        s.style.left = (Math.random() * 100) + '%';
+        s.style.animationDuration = (5 + Math.random() * 8) + 's';
+        s.style.animationDelay = (Math.random() * 8) + 's';
+        c.appendChild(s);
+      }
+    })();
+
+    // ---- Pixel-art feature icons ----
+    (function() {
+      function px(ctx, x, y, color) {
+        ctx.fillStyle = color;
+        ctx.fillRect(x * 4, y * 4, 4, 4);
+      }
+
+      // Ranger with bow (Move & Fight)
+      var c1 = document.getElementById('icon-fight').getContext('2d');
+      // Body
+      [5,6,7].forEach(function(x){[3,4,5,6].forEach(function(y){px(c1,x,y,'#2a6a2a');});});
+      // Head
+      [5,6,7].forEach(function(x){[1,2].forEach(function(y){px(c1,x,y,'#ddb89a');});});
+      // Hood
+      [5,6,7].forEach(function(x){px(c1,x,1,'#1a5a20');});
+      // Legs
+      [5,6].forEach(function(x){[7,8].forEach(function(y){px(c1,x,y,'#3a3020');});});
+      // Bow
+      px(c1,9,3,'#8a6a40'); px(c1,9,4,'#8a6a40'); px(c1,9,5,'#8a6a40');
+      // Arrow
+      px(c1,10,4,'#ccc'); px(c1,11,4,'#ccc');
+
+      // Tower (Build & Defend)
+      var c2 = document.getElementById('icon-build').getContext('2d');
+      // Base
+      [4,5,6,7,8].forEach(function(x){[8,9].forEach(function(y){px(c2,x,y,'#5a4a3a');});});
+      // Body
+      [5,6,7].forEach(function(x){[3,4,5,6,7].forEach(function(y){px(c2,x,y,'#7a6a54');});});
+      // Battlements
+      px(c2,5,2,'#8a7a62'); px(c2,7,2,'#8a7a62');
+      // Window
+      px(c2,6,5,'#ffd040');
+      // Flag
+      px(c2,6,0,'#dd3333'); px(c2,7,0,'#dd3333'); px(c2,6,1,'#dd3333');
+
+      // Trees/biome (Explore Biomes)
+      var c3 = document.getElementById('icon-biome').getContext('2d');
+      // Tree 1
+      [3,4,5].forEach(function(x){px(c3,x,4,'#2a7a2a');});
+      [4].forEach(function(x){px(c3,x,3,'#2a7a2a');});
+      px(c3,4,5,'#5a3a1a'); px(c3,4,6,'#5a3a1a');
+      // Tree 2 (purple/crystal)
+      [7,8,9].forEach(function(x){px(c3,x,5,'#7a3a9a');});
+      [8].forEach(function(x){px(c3,x,4,'#8a4aaa');});
+      px(c3,8,6,'#5a3a1a'); px(c3,8,7,'#5a3a1a');
+      // Ground
+      [2,3,4,5,6,7,8,9,10].forEach(function(x){px(c3,x,8,'#2a5a1a');});
+      // Volcano hint
+      px(c3,1,7,'#7a3a1a'); px(c3,1,6,'#9a4a2a'); px(c3,1,5,'#ff6a20');
+
+      // Coins (Collect & Upgrade)
+      var c4 = document.getElementById('icon-coins').getContext('2d');
+      function drawCoin(cx, cy) {
+        px(c4,cx,cy,'#ffd700'); px(c4,cx+1,cy,'#ffd700');
+        px(c4,cx,cy+1,'#ffd700'); px(c4,cx+1,cy+1,'#ffd700');
+        px(c4,cx,cy,'#ffea60');
+      }
+      drawCoin(3,3); drawCoin(6,3); drawCoin(9,3);
+      drawCoin(4,5); drawCoin(7,5);
+      drawCoin(5,7);
+
+      // Swords crossed (Survive Waves)
+      var c5 = document.getElementById('icon-waves').getContext('2d');
+      // Sword 1 (top-left to bottom-right)
+      for(var i=0;i<8;i++){px(c5,2+i,2+i,'#aab0b8');}
+      // Sword 2 (top-right to bottom-left)
+      for(var i=0;i<8;i++){px(c5,9-i,2+i,'#aab0b8');}
+      // Guards
+      px(c5,3,7,'#d4a017'); px(c5,4,7,'#d4a017');
+      px(c5,7,7,'#d4a017'); px(c5,8,7,'#d4a017');
+      // Grips
+      px(c5,3,8,'#6a4a2a'); px(c5,4,9,'#6a4a2a');
+      px(c5,8,8,'#6a4a2a'); px(c5,7,9,'#6a4a2a');
+    })();
+    </script>
+
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

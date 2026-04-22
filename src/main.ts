@@ -60,8 +60,8 @@ function start() {
   // Hide overlay once GameScene is ready (after "Generating world..." from level select)
   game.events.on('game-ready', () => {
     overlay.classList.add('hidden');
-    const panel = overlay.querySelector('.panel');
-    if (panel) panel.classList.remove('loading');
+    const landing = document.getElementById('landingPanel');
+    if (landing) landing.classList.remove('loading');
   });
 }
 
