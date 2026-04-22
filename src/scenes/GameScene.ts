@@ -8,6 +8,7 @@ import { Projectile } from '../entities/Projectile';
 import { Coin } from '../entities/Coin';
 import { Boss } from '../entities/Boss';
 import { createSparseGrid, findPath, canReachFromSpawnDirections, gridGet, gridSet, SparseGrid } from '../systems/Pathfinding';
+import { SFX } from '../audio/sfx';
 import { createGroundChunk, TREE_PATTERNS, generateAllArt, registerAnimations, getRiverTileGrid, riverCenterPx, RIVER_HALF_W, riverHorizontalCenterY } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
 
@@ -486,6 +487,7 @@ export class GameScene extends Phaser.Scene {
       for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, ox + i, oy + j, 2);
       this.gridVersion++; this.rebuildGapBlockers(); this.rebuildGapBlockers();
       this.pushHud();
+      SFX.play('towerPlace');
       return;
     }
 
@@ -507,6 +509,7 @@ export class GameScene extends Phaser.Scene {
     this.updateWallNeighbors(tx, ty);
     this.gridVersion++; this.rebuildGapBlockers();
     this.pushHud();
+    SFX.play('wallPlace');
   }
 
   sellAt(tx: number, ty: number) {
@@ -774,6 +777,7 @@ export class GameScene extends Phaser.Scene {
     this.player.money -= cost;
     t.totalSpent += cost;
     t.upgrade();
+    SFX.play('upgrade');
     this.floatText(t.x, t.y - 24, `LVL ${t.level + 1}`, '#7cf29a');
     this.pushHud();
     // refresh ring + panel
@@ -1430,6 +1434,7 @@ export class GameScene extends Phaser.Scene {
       const rate = stoodLongEnough ? CFG.player.fireRate : CFG.player.fireRate * 2;
       if (time > this.player.lastShot + rate) {
         this.player.lastShot = time;
+        SFX.play('arrowShoot');
         bow.play('bow-shoot', true);
         bow.once('animationcomplete-bow-shoot', () => bow.play('bow-idle'));
         // Lead the target
@@ -1467,6 +1472,7 @@ export class GameScene extends Phaser.Scene {
         tower.top.setRotation(angle);
         if (time > tower.lastShot + st.fireRate) {
           tower.lastShot = time;
+          SFX.play('cannonShoot');
           tower.top.play('cannon-top-shoot', true);
           const cScale = 0.5 + tower.level * 0.15;
           this.spawnProjectile(tower.x, launchY, aim.x, aim.y, st.projectileSpeed, st.damage, st.splashRadius, cScale);
@@ -1488,6 +1494,7 @@ export class GameScene extends Phaser.Scene {
         tower.top.setRotation(angle);
         if (time > tower.lastShot + st.fireRate) {
           tower.lastShot = time;
+          SFX.play('arrowShoot');
           tower.top.setTexture('t_top_1');
           const aScale = 0.5 + tower.level * 0.12;
           const aTint = tower.level === 2 ? 0xffd67a : tower.level === 1 ? 0x9fd9ff : 0;
@@ -2584,6 +2591,7 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.boss, this.wallGroup, onStructureHit, () => this.biome !== 'river');
     this.physics.add.collider(this.boss, this.towerGroup, onStructureHit, () => this.biome !== 'river');
     this.game.events.emit('boss-spawn', { hp: this.boss.hp, maxHp: this.boss.maxHp, biome: this.biome });
+    SFX.play('bossSpawn');
     const bossTitle = this.biome === 'forest' ? 'THE WENDIGO'
                     : this.biome === 'infected' ? 'THE BLIGHTED ONE'
                     : this.biome === 'river' ? 'THE FOG PHANTOM'
@@ -2748,6 +2756,7 @@ export class GameScene extends Phaser.Scene {
   // Damage a single enemy and handle its death drops/counts.
   applyDamageToEnemy(e: Enemy, dmg: number) {
     if (!e || !e.active || e.dying) return;
+    SFX.play('hit');
     e.hurt(dmg);
     if (e.hp <= 0) {
       if (!e.noCoinDrop) {
@@ -2768,6 +2777,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   cannonExplode(x: number, y: number, radius: number, dmg: number) {
+    SFX.play('boom');
     // ---------- VISUALS ----------
     // 1) Bright white core flash (fast)
     const core = this.add.circle(x, y, radius * 0.55, 0xfff5c0, 0.95)
@@ -2951,6 +2961,7 @@ export class GameScene extends Phaser.Scene {
         // collect
         this.player.money += coin.value;
         this.pushHud();
+        SFX.play('coin');
         const pop = this.add.sprite(coin.x, coin.y, 'fx_pop_0').setDepth(15).setScale(0.5);
         pop.play('fx-pop');
         pop.once('animationcomplete', () => pop.destroy());
@@ -3307,6 +3318,7 @@ export class GameScene extends Phaser.Scene {
       if (!this.scene.isActive()) return;
       this.gameOver = true;
       this.physics.pause();
+      SFX.play('gameOver');
       this.game.events.emit('game-end', {
         win: false, name: 'hero',
         kills: this.player.kills, money: this.player.money
@@ -3317,6 +3329,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.physics.pause();
+    SFX.play('victory');
     this.game.events.emit('game-end', { win: true, name: 'hero', kills: this.player.kills, money: this.player.money });
   }
 

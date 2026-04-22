@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
+import { SFX } from '../audio/sfx';
 import {
   LEVELS, LevelDef, Difficulty, DIFFICULTY_ORDER, DIFFICULTY_LABELS,
   MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, isLevelUnlocked, MedalStore
@@ -298,6 +299,7 @@ export class LevelSelectScene extends Phaser.Scene {
           this.showTooltip(cx, cy - R - this.p(14), 'Coming Soon');
           return;
         }
+        SFX.play('click');
         this.openDifficultyPanel(level);
       });
 
@@ -448,6 +450,7 @@ export class LevelSelectScene extends Phaser.Scene {
         btnBg.strokeRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
       });
       hitRect.on('pointerdown', () => {
+        SFX.play('click');
         this.selectedDiff = diff;
         for (const btn of this.diffButtons) {
           const sel = btn.diff === diff;
@@ -559,7 +562,7 @@ export class LevelSelectScene extends Phaser.Scene {
       text.setColor('#7cf29a');
       hit.setInteractive({ useHandCursor: true });
       hit.off('pointerdown');
-      hit.on('pointerdown', () => this.startMission());
+      hit.on('pointerdown', () => { SFX.play('click'); this.startMission(); });
       hit.on('pointerover', () => {
         g.clear();
         g.fillStyle(0x2a6a3e, 1);

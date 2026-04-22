@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
+import { SFX } from '../audio/sfx';
 
 export class Player extends Phaser.Physics.Arcade.Sprite {
   hp = CFG.player.hp;
@@ -30,6 +31,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     if (this.invuln > now) return;
     this.hp -= amount;
     this.invuln = now + 500;
+    SFX.play('playerHurt');
     this.play('player-hit', true);
     scene.tweens.add({
       targets: this, alpha: 0.3, yoyo: true, duration: 80, repeat: 3,

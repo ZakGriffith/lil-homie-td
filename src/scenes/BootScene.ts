@@ -7,6 +7,7 @@ import cannonBase1Img from '../assets/sprites/cannon_base_1.png';
 import cannonBase2Img from '../assets/sprites/cannon_base_2.png';
 import levelMapBgImg from '../assets/sprites/level_map_bg.jpg';
 import greenCheckImg from '../assets/sprites/green_check.png';
+import { SFX } from '../audio/sfx';
 
 export class BootScene extends Phaser.Scene {
   constructor() { super('Boot'); }
@@ -24,6 +25,7 @@ export class BootScene extends Phaser.Scene {
   }
 
   create() {
+    SFX.init();
     // Art generation deferred to GameScene — go straight to level select
     this.scene.start('LevelSelect');
   }

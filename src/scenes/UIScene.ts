@@ -1,6 +1,7 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
 import { Difficulty, saveMedal } from '../levels';
+import { SFX } from '../audio/sfx';
 
 export class UIScene extends Phaser.Scene {
   hpBarBg!: Phaser.GameObjects.Rectangle;
@@ -255,7 +256,7 @@ export class UIScene extends Phaser.Scene {
     const bg = this.add.rectangle(0, 0, w, h, 0x2a3760).setStrokeStyle(1, 0x556);
     const t = this.add.text(0, 0, label, { fontFamily: 'monospace', fontSize: '12px', color: '#fff' }).setOrigin(0.5);
     bg.setInteractive({ useHandCursor: true });
-    bg.on('pointerdown', onClick);
+    bg.on('pointerdown', () => { SFX.play('click'); onClick(); });
     bg.on('pointerover', () => bg.setFillStyle(0x3b4d84));
     bg.on('pointerout', () => bg.setFillStyle(0x2a3760));
     c.add([bg, t]);
@@ -283,7 +284,7 @@ export class UIScene extends Phaser.Scene {
 
     // Hit area
     const hitRect = this.add.rectangle(0, 0, w, h, 0x000000, 0).setInteractive({ useHandCursor: true });
-    hitRect.on('pointerdown', onClick);
+    hitRect.on('pointerdown', () => { SFX.play('click'); onClick(); });
     hitRect.on('pointerover', () => drawSlot(true));
     hitRect.on('pointerout', () => drawSlot(false));
 
