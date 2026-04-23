@@ -2062,9 +2062,6 @@ function drawTowerArcher(put: Put) {
   // Quiver on back
   rect(put, cx - 4, ty + 1, 2, 6, P.woodD);
   put(cx - 4, ty + 1, P.woodM); put(cx - 3, ty + 1, P.woodM);
-  // Arrow tips poking out
-  put(cx - 4, ty, P.steel); put(cx - 3, ty, P.steel);
-  put(cx - 4, ty - 1, P.steelD);
 }
 
 // Tower archer bow — same as player bow but green arms
@@ -2351,32 +2348,32 @@ function drawWall(mask: number, damaged: boolean) {
 function drawArrow(frame: 0|1) {
   return (put: Put) => {
     const cy = 16;
-    // shaft
-    rect(put, 4, cy - 1, 18, 1, P.arrowD);
-    rect(put, 4, cy, 18, 1, P.arrow);
-    rect(put, 4, cy + 1, 18, 1, P.arrowD);
+    // shaft — shortened so total length is ~18 logical px (back at x=2, tip at x=19)
+    rect(put, 4, cy - 1, 10, 1, P.arrowD);
+    rect(put, 4, cy, 10, 1, P.arrow);
+    rect(put, 4, cy + 1, 10, 1, P.arrowD);
 
-    // head (diamond)
-    put(22, cy, P.steel);
-    put(23, cy - 1, P.steel); put(23, cy, P.steel); put(23, cy + 1, P.steel);
-    put(24, cy - 2, P.steel); put(24, cy - 1, P.white); put(24, cy, P.steel); put(24, cy + 1, P.white); put(24, cy + 2, P.steel);
-    put(25, cy - 1, P.steel); put(25, cy, P.steel); put(25, cy + 1, P.steel);
-    put(26, cy, P.steelD);
+    // head (diamond) — shifted left by 8
+    put(14, cy, P.steel);
+    put(15, cy - 1, P.steel); put(15, cy, P.steel); put(15, cy + 1, P.steel);
+    put(16, cy - 2, P.steel); put(16, cy - 1, P.white); put(16, cy, P.steel); put(16, cy + 1, P.white); put(16, cy + 2, P.steel);
+    put(17, cy - 1, P.steel); put(17, cy, P.steel); put(17, cy + 1, P.steel);
+    put(18, cy, P.steelD);
     // head outline
-    put(23, cy - 2, P.outline); put(23, cy + 2, P.outline);
-    put(25, cy - 2, P.outline); put(25, cy + 2, P.outline);
-    put(27, cy, P.outline);
+    put(15, cy - 2, P.outline); put(15, cy + 2, P.outline);
+    put(17, cy - 2, P.outline); put(17, cy + 2, P.outline);
+    put(19, cy, P.outline);
 
-    // fletching
+    // fletching — unchanged; back at x=2 preserves existing nocked-arrow offsets
     put(3, cy - 2, P.white); put(4, cy - 2, P.white); put(5, cy - 2, P.white);
     put(3, cy + 2, P.white); put(4, cy + 2, P.white); put(5, cy + 2, P.white);
     put(2, cy - 1, P.red); put(2, cy, P.redD); put(2, cy + 1, P.red);
     put(6, cy - 2, P.redD); put(6, cy + 2, P.redD);
 
     if (frame === 1) {
-      put(27, cy - 1, P.sparkL);
-      put(28, cy, P.sparkL);
-      put(27, cy + 1, P.sparkL);
+      put(19, cy - 1, P.sparkL);
+      put(20, cy, P.sparkL);
+      put(19, cy + 1, P.sparkL);
     }
   };
 }
