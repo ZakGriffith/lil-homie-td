@@ -12,6 +12,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   lastShot = 0;
   stand: Phaser.GameObjects.Sprite | null = null; // static ballista stand (arrow only)
   top: Phaser.GameObjects.Sprite;
+  nockedArrow: Phaser.GameObjects.Sprite | null = null; // real arrow resting on bow (arrow only)
   hpBar: Phaser.GameObjects.Graphics;
   tileX: number;
   tileY: number;
@@ -59,6 +60,9 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     if (kind === 'arrow') {
       // Bow origin: further left so the bow extends out from the archer's body
       this.top.setOrigin(0.0, 0.5);
+      // Real arrow resting on the bow — initial position matches the rotation=0 offset
+      // used in updateTowers so it renders correctly before the first frame of aiming.
+      this.nockedArrow = scene.add.sprite(wx + 23, wy + topOffY, 'arrow_0').setDepth(7.5).setScale(0.5);
     }
 
     this.hpBar = scene.add.graphics().setDepth(20);
@@ -94,6 +98,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     const scale = 0.5;
     const targets = [this, this.top];
     if (this.stand) targets.push(this.stand);
+    if (this.nockedArrow) targets.push(this.nockedArrow);
     this.scene.tweens.add({
       targets,
       scale: { from: scale * 1.15, to: scale },
@@ -110,6 +115,12 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     if (this.kind === 'cannon') this.top.clearTint();
     else this.top.setTint(tint);
     if (this.stand) this.stand.setTint(tint);
+    if (this.nockedArrow) {
+      // Match the per-level arrow projectile tint used in spawnProjectile
+      const arrowTint = this.level === 2 ? 0xffd67a : this.level === 1 ? 0x9fd9ff : 0;
+      if (arrowTint) this.nockedArrow.setTint(arrowTint);
+      else this.nockedArrow.clearTint();
+    }
 
     // Swap tower base sprite per upgrade level
     if (this.kind === 'arrow') {
@@ -134,6 +145,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.setTintFill(0xffffff);
     this.top.setTintFill(0xffffff);
     if (this.stand) this.stand.setTintFill(0xffffff);
+    if (this.nockedArrow) this.nockedArrow.setTintFill(0xffffff);
     this.scene.time.delayedCall(60, () => { this.applyTierVisual(); });
   }
 
@@ -155,6 +167,7 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
     this.hpBar.destroy();
     this.top.destroy();
     if (this.stand) this.stand.destroy();
+    if (this.nockedArrow) this.nockedArrow.destroy();
     this.destroy();
   }
 }

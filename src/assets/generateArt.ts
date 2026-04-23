@@ -455,22 +455,6 @@ function drawBow(shooting: boolean) {
       put(gx + 1 - pull, gy + y, P.stoneL);
     }
 
-    // ===== ARROW =====
-    const arrowStartX = shooting ? gx - 4 : gx + 1;
-    for (let x = arrowStartX; x <= gx + 14; x++) {
-      put(x, gy, P.arrowD);
-    }
-    // arrowhead
-    put(gx + 15, gy, P.steel);
-    put(gx + 16, gy - 1, P.steel);
-    put(gx + 16, gy, P.steel);
-    put(gx + 16, gy + 1, P.steel);
-    // fletching
-    put(arrowStartX, gy - 1, P.white);
-    put(arrowStartX, gy + 1, P.white);
-    put(arrowStartX - 1, gy - 1, P.white);
-    put(arrowStartX - 1, gy + 1, P.white);
-
     // Muzzle flash when shooting
     if (shooting) {
       put(gx + 17, gy, P.sparkL);
@@ -2123,20 +2107,6 @@ function drawTowerBow(shooting: boolean) {
       const pull = shooting ? Math.round((1 - (y * y) / 81) * 4) : 0;
       put(gx + 1 - pull, gy + y, P.stoneL);
     }
-
-    // Arrow
-    const arrowStartX = shooting ? gx - 4 : gx + 1;
-    for (let x = arrowStartX; x <= gx + 14; x++) {
-      put(x, gy, P.arrowD);
-    }
-    put(gx + 15, gy, P.steel);
-    put(gx + 16, gy - 1, P.steel);
-    put(gx + 16, gy, P.steel);
-    put(gx + 16, gy + 1, P.steel);
-    put(arrowStartX, gy - 1, P.white);
-    put(arrowStartX, gy + 1, P.white);
-    put(arrowStartX - 1, gy - 1, P.white);
-    put(arrowStartX - 1, gy + 1, P.white);
 
     if (shooting) {
       put(gx + 17, gy, P.sparkL);

@@ -1152,6 +1152,7 @@ export class GameScene extends Phaser.Scene {
     // Player
     this.player.setDepth(yDepth(this.player.y));
     this.player.bow.setDepth(yDepth(this.player.y) + 0.5);
+    this.player.nockedArrow.setDepth(yDepth(this.player.y) + 0.6);
 
     // Towers: base, archer/stand, bow/top all sort by tower Y
     for (const tower of this.towers) {
@@ -1159,6 +1160,7 @@ export class GameScene extends Phaser.Scene {
       tower.setDepth(d);
       if (tower.stand) tower.stand.setDepth(d + 0.1);
       tower.top.setDepth(d + 0.2);
+      if (tower.nockedArrow) tower.nockedArrow.setDepth(d + 0.3);
     }
 
     // Enemies
@@ -1459,6 +1461,7 @@ export class GameScene extends Phaser.Scene {
 
     // Bow follows player with offset based on aim direction
     const bow = this.player.bow;
+    const nock = this.player.nockedArrow;
 
     // Find most threatening enemy — prioritizes shortest path distance, not euclidean
     const target = this.findMostThreateningEnemy(this.player.x, this.player.y, CFG.player.range);
@@ -1495,7 +1498,11 @@ export class GameScene extends Phaser.Scene {
         this.player.lastShot = time;
         SFX.play('arrowShoot');
         bow.play('bow-shoot', true);
-        bow.once('animationcomplete-bow-shoot', () => bow.play('bow-idle'));
+        nock.setVisible(false);
+        bow.once('animationcomplete-bow-shoot', () => {
+          bow.play('bow-idle');
+          nock.setVisible(true);
+        });
         // Lead the target
         let aimX = target.x, aimY = target.y;
         if (target.body) {
@@ -1514,6 +1521,11 @@ export class GameScene extends Phaser.Scene {
       bow.setFlipY(!this.player.facingRight);
       bow.setPosition(this.player.x + idleDir * 10, this.player.y + 2);
     }
+
+    // Nocked arrow rides with the bow — fletching tip sits on the bowstring.
+    // Offset = (bowstring_x - bow_origin_x) + (arrow_center_x - arrow_back_x) = 1 + 14 = 15 world px.
+    nock.setPosition(bow.x + Math.cos(bow.rotation) * 15, bow.y + Math.sin(bow.rotation) * 15);
+    nock.setRotation(bow.rotation);
   }
 
   // ---------- TOWERS ----------
@@ -1539,7 +1551,17 @@ export class GameScene extends Phaser.Scene {
       } else {
         // Arrow: shoot at nearest enemy with lead targeting
         const tgt = this.findNearestEnemy(tower.x, tower.y, st.range);
-        if (!tgt) continue;
+        if (!tgt) {
+          // Keep the nocked arrow aligned with the bow's current rotation while idle
+          if (tower.nockedArrow) {
+            tower.nockedArrow.setPosition(
+              tower.top.x + Math.cos(tower.top.rotation) * 23,
+              tower.top.y + Math.sin(tower.top.rotation) * 23
+            );
+            tower.nockedArrow.setRotation(tower.top.rotation);
+          }
+          continue;
+        }
         let aimX = tgt.x, aimY = tgt.y;
         if (tgt.body) {
           const dist = Math.hypot(tgt.x - tower.x, tgt.y - tower.y) || 1;
@@ -1555,11 +1577,22 @@ export class GameScene extends Phaser.Scene {
           tower.lastShot = time;
           SFX.play('arrowShoot');
           tower.top.setTexture('t_top_1');
+          if (tower.nockedArrow) tower.nockedArrow.setVisible(false);
           const aScale = 0.5 + tower.level * 0.12;
           const aTint = tower.level === 2 ? 0xffd67a : tower.level === 1 ? 0x9fd9ff : 0;
           this.spawnProjectile(tower.x, launchY, aimX, aimY, st.projectileSpeed, st.damage, 0, aScale, aTint, tgt);
         } else if (time > tower.lastShot + 150) {
           tower.top.setTexture('t_top_0');
+          if (tower.nockedArrow) tower.nockedArrow.setVisible(true);
+        }
+
+        // Nocked arrow rides with the bow — fletching tip aligned with the bowstring
+        if (tower.nockedArrow) {
+          tower.nockedArrow.setPosition(
+            tower.top.x + Math.cos(angle) * 23,
+            tower.top.y + Math.sin(angle) * 23
+          );
+          tower.nockedArrow.setRotation(angle);
         }
       }
     }
