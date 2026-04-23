@@ -12,6 +12,7 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
   facing = 0; // radians
   facingRight = true; // last horizontal direction
   bow: Phaser.GameObjects.Sprite;
+  nockedArrow: Phaser.GameObjects.Sprite;
 
   constructor(scene: Phaser.Scene, x: number, y: number) {
     super(scene, x, y, 'p_idle_0');
@@ -24,6 +25,8 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
 
     // Separate bow sprite that rotates to aim
     this.bow = scene.add.sprite(x, y, 'bow_0').setDepth(11).setOrigin(0.25, 0.5).setScale(0.5);
+    // Real arrow nocked on the bow — the same projectile sprite that will fly when firing
+    this.nockedArrow = scene.add.sprite(x, y, 'arrow_0').setDepth(11.5).setScale(0.5);
   }
 
   hurt(amount: number, scene: Phaser.Scene) {
