@@ -402,6 +402,7 @@ export class GameScene extends Phaser.Scene {
     if (k === 'tower' && towerKind) this.buildTowerKind = towerKind;
     this.ghost.setVisible(k !== 'none');
     if (this.gridOverlay) this.gridOverlay.setVisible(k !== 'none');
+    if (k === 'none') this.game.events.emit('build-error', '');
     if (k === 'tower') {
       this.ghost.setTexture(this.buildTowerKind === 'cannon' ? 'c_base' : 't_base');
       const baseTint = Tower.TIER_TINT[this.buildTowerKind][0];
@@ -949,6 +950,7 @@ export class GameScene extends Phaser.Scene {
       const p = this.input.activePointer;
       const tx = Math.floor(p.worldX / CFG.tile);
       const ty = Math.floor(p.worldY / CFG.tile);
+      let buildErr = '';
       if (this.buildKind === 'tower') {
         const s = CFG.tower.tiles;
         const ox = s % 2 === 0
@@ -960,7 +962,10 @@ export class GameScene extends Phaser.Scene {
         this.ghost.setPosition((ox + s / 2) * CFG.tile, (oy + s / 2) * CFG.tile);
         const towerCost = CFG.tower.kinds[this.buildTowerKind].cost;
         const canAffordTower = this.player.money >= towerCost;
-        this.ghost.setTint(this.canPlaceTower(ox, oy) && canAffordTower ? 0x88ff88 : 0xff8888);
+        const canPlace = this.canPlaceTower(ox, oy);
+        if (!canAffordTower) buildErr = 'Not enough gold';
+        else if (!canPlace) buildErr = 'Blocked';
+        this.ghost.setTint(canPlace && canAffordTower ? 0x88ff88 : 0xff8888);
       } else {
         this.ghost.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2);
         // Invalidate cache when player moves to a new tile
@@ -970,6 +975,7 @@ export class GameScene extends Phaser.Scene {
           this._wallCheckCache = { key: '', valid: false };
         }
         let valid = gridGet(this.grid, tx, ty) === 0;
+        let tileBlocked = !valid;
         if (valid) {
           // Cache path check per tile to avoid running BFS every frame
           const cacheKey = `${tx},${ty}`;
@@ -990,8 +996,12 @@ export class GameScene extends Phaser.Scene {
           }
         }
         const canAffordWall = this.player.money >= CFG.wall.cost;
+        if (!canAffordWall) buildErr = 'Not enough gold';
+        else if (tileBlocked) buildErr = 'Blocked';
+        else if (!valid) buildErr = 'Blocks path';
         this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
       }
+      this.game.events.emit('build-error', buildErr);
     }
 
     // Generate ground chunks around player as they move (4ms budget per frame)

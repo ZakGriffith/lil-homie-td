@@ -606,9 +606,9 @@ export class LevelSelectScene extends Phaser.Scene {
 
     // Show the "Generating world..." loading overlay
     const overlay = document.getElementById('overlay');
-    const panel = overlay?.querySelector('.panel') as HTMLDivElement | null;
-    if (overlay && panel) {
-      panel.classList.add('loading');
+    const landing = document.getElementById('landingPanel');
+    if (overlay && landing) {
+      landing.classList.add('loading');
       overlay.classList.remove('hidden');
     }
 

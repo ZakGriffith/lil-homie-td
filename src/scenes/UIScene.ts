@@ -27,6 +27,7 @@ export class UIScene extends Phaser.Scene {
   progressLines: Phaser.GameObjects.Rectangle[] = [];
   progressContainer!: Phaser.GameObjects.Container;
   countdownText!: Phaser.GameObjects.Text;
+  buildErrorText!: Phaser.GameObjects.Text;
 
   levelId = 1;
   difficulty: Difficulty = 'easy';
@@ -178,11 +179,27 @@ export class UIScene extends Phaser.Scene {
     this.waveBarBg = this.add.rectangle(barX, barY, barW, this.p(14), 0x11172a).setOrigin(0, 0).setStrokeStyle(this.p(2), 0x2a3760);
     this.waveBar = this.add.rectangle(barX + this.p(2), barY + this.p(2), 0, this.p(10), 0x4a8ad9).setOrigin(0, 0);
 
+    // Build error message (persistent while hovering invalid tile)
+    const hotbarTop = H - this.p(48) - this.p(32); // matches hotbarY
+    this.buildErrorText = this.add.text(W / 2, hotbarTop - this.p(18), '', {
+      fontFamily: 'monospace', fontSize: this.fs(13), color: '#ff6a6a',
+      stroke: '#0b0f1a', strokeThickness: this.p(3),
+      backgroundColor: '#1a0a0aCC',
+      padding: { x: Number(this.p(10)), y: Number(this.p(4)) }
+    }).setOrigin(0.5, 1).setDepth(900).setVisible(false);
+
     // listen for HUD updates
     this.game.events.on('hud', (s: any) => this.updateHud(s));
     this.game.events.on('game-end', (s: any) => this.showEnd(s));
     this.game.events.on('boss-spawn', (s: any) => this.showBossBar(s));
     this.game.events.on('boss-hp', (s: any) => this.updateBossBar(s));
+    this.game.events.on('build-error', (msg: string) => {
+      if (msg) {
+        this.buildErrorText.setText(msg).setVisible(true);
+      } else {
+        this.buildErrorText.setVisible(false);
+      }
+    });
   }
 
   showBossBar(s: any) {
@@ -502,5 +519,6 @@ export class UIScene extends Phaser.Scene {
     this.game.events.off('game-end');
     this.game.events.off('boss-spawn');
     this.game.events.off('boss-hp');
+    this.game.events.off('build-error');
   }
 }
