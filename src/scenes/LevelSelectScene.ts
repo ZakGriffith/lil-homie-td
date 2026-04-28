@@ -241,6 +241,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
   // ---- LEVEL NODES ----
   drawNodes() {
+    const isMobile = !!this.game.registry.get('isMobile');
     for (const level of LEVELS) {
       const unlocked = isLevelUnlocked(this.medalStore, level.id);
       const medals = this.medalStore[String(level.id)];
@@ -286,10 +287,10 @@ export class LevelSelectScene extends Phaser.Scene {
       }
 
       // Level name
-      this.add.text(cx, cy + this.p(12), level.name, {
-        fontFamily: 'monospace', fontSize: this.fs(7),
+      this.add.text(cx, cy + this.p(isMobile ? 16 : 12), level.name, {
+        fontFamily: 'monospace', fontSize: this.fs(isMobile ? 20 : 7),
         color: unlocked ? '#e8dcc8' : '#4a4030',
-        stroke: '#000', strokeThickness: this.p(1)
+        stroke: '#000', strokeThickness: this.p(isMobile ? 2 : 1)
         }).setOrigin(0.5).setDepth(4);
 
       // Medal dots
@@ -404,7 +405,11 @@ export class LevelSelectScene extends Phaser.Scene {
 
     const W = this.scale.width;
     const H = this.scale.height;
-    const pw = this.p(300), ph = this.p(360);
+    const isMobile = !!this.game.registry.get('isMobile');
+    // On mobile the panel fills almost the entire canvas vertically so the
+    // buttons are tap-friendly. Desktop keeps the original compact size.
+    const pw = isMobile ? Math.min(this.p(560), W * 0.92) : this.p(300);
+    const ph = isMobile ? H * 0.92 : this.p(360);
     const px = W / 2, py = H / 2;
 
     // Backdrop
@@ -427,28 +432,37 @@ export class LevelSelectScene extends Phaser.Scene {
 
     // Level name
     const biome = BIOME_COLORS[level.biome];
-    const title = this.add.text(0, -ph / 2 + this.p(28), level.name, {
-      fontFamily: 'monospace', fontSize: this.fs(18), color: '#7cc4ff',
+    const titleY = -ph / 2 + this.p(isMobile ? 38 : 28);
+    const tagY = -ph / 2 + this.p(isMobile ? 70 : 52);
+    const dividerY = -ph / 2 + this.p(isMobile ? 92 : 68);
+    const title = this.add.text(0, titleY, level.name, {
+      fontFamily: 'monospace', fontSize: this.fs(isMobile ? 26 : 18), color: '#7cc4ff',
       stroke: '#000', strokeThickness: this.p(3)
     }).setOrigin(0.5);
 
     // Biome tag
-    const tag = this.add.text(0, -ph / 2 + this.p(52), biome.label.toUpperCase(), {
-      fontFamily: 'monospace', fontSize: this.fs(10), color: biome.textHex,
+    const tag = this.add.text(0, tagY, biome.label.toUpperCase(), {
+      fontFamily: 'monospace', fontSize: this.fs(isMobile ? 14 : 10), color: biome.textHex,
       stroke: '#000', strokeThickness: this.p(2)
     }).setOrigin(0.5);
 
     // Divider line
     const divider = this.add.graphics();
     divider.lineStyle(this.p(1), 0x2a3760, 0.6);
-    divider.lineBetween(-pw / 2 + this.p(20), -ph / 2 + this.p(68), pw / 2 - this.p(20), -ph / 2 + this.p(68));
+    divider.lineBetween(-pw / 2 + this.p(20), dividerY, pw / 2 - this.p(20), dividerY);
 
-    // Difficulty buttons
+    // Difficulty buttons — larger and more spaced on mobile to fill the
+    // taller panel and stay tap-friendly.
     const medals = this.medalStore[String(level.id)];
-    const btnStartY = this.p(-40);
-    const btnH = this.p(38);
-    const btnW = this.p(230);
-    const btnGap = this.p(6);
+    const btnH = isMobile ? this.p(60) : this.p(38);
+    const btnGap = isMobile ? this.p(12) : this.p(6);
+    const btnW = isMobile ? Math.min(this.p(460), pw - this.p(40)) : this.p(230);
+    // Center the 4-button block vertically within the panel (between the
+    // title area at top and the START button area at bottom).
+    const btnBlockH = 4 * btnH + 3 * btnGap;
+    const btnStartY = isMobile
+      ? -btnBlockH / 2 + btnH / 2
+      : this.p(-40);
     const items: Phaser.GameObjects.GameObject[] = [backdrop, outerBox, innerBox, title, tag, divider];
 
     for (let i = 0; i < DIFFICULTY_ORDER.length; i++) {
@@ -465,7 +479,7 @@ export class LevelSelectScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: true });
 
       const label = this.add.text(-btnW / 2 + this.p(20), by, DIFFICULTY_LABELS[diff], {
-        fontFamily: 'monospace', fontSize: this.fs(13), color: '#ccd',
+        fontFamily: 'monospace', fontSize: this.fs(isMobile ? 20 : 13), color: '#ccd',
         stroke: '#000', strokeThickness: this.p(1)
       }).setOrigin(0, 0.5);
 
@@ -505,26 +519,28 @@ export class LevelSelectScene extends Phaser.Scene {
     }
 
     // Green checkmarks for completed difficulties
+    const chkSize = this.p(isMobile ? 40 : 28);
     for (let i = 0; i < DIFFICULTY_ORDER.length; i++) {
       const diff = DIFFICULTY_ORDER[i];
       const earned = medals?.[diff] ?? false;
       if (earned) {
         const by = btnStartY + i * (btnH + btnGap);
-        const chk = this.add.image(btnW / 2 - this.p(24), by, 'green_check').setOrigin(0.5).setDisplaySize(this.p(28), this.p(28));
+        const chk = this.add.image(btnW / 2 - chkSize / 2 - this.p(8), by, 'green_check').setOrigin(0.5).setDisplaySize(chkSize, chkSize);
         items.push(chk);
       }
     }
 
-    // START button
-    const startBtnW = this.p(120), startBtnH = this.p(36);
-    this.startBtnY = ph / 2 - this.p(52);
+    // START button — sized up on mobile to match the larger panel.
+    const startBtnW = isMobile ? this.p(220) : this.p(120);
+    const startBtnH = isMobile ? this.p(56) : this.p(36);
+    this.startBtnY = ph / 2 - startBtnH - this.p(isMobile ? 24 : 16);
     this.startBtnG = this.add.graphics();
     this.startBtnG.fillStyle(0x1a2540, 1);
     this.startBtnG.fillRoundedRect(-startBtnW / 2, this.startBtnY, startBtnW, startBtnH, this.p(8));
     this.startBtnG.lineStyle(this.p(1), 0x2a3760, 0.8);
     this.startBtnG.strokeRoundedRect(-startBtnW / 2, this.startBtnY, startBtnW, startBtnH, this.p(8));
     this.startText = this.add.text(0, this.startBtnY + startBtnH / 2, 'START', {
-      fontFamily: 'monospace', fontSize: this.fs(15), color: '#556',
+      fontFamily: 'monospace', fontSize: this.fs(isMobile ? 22 : 15), color: '#556',
       stroke: '#000', strokeThickness: this.p(2)
     }).setOrigin(0.5);
     this.startHit = this.add.rectangle(0, this.startBtnY + startBtnH / 2, startBtnW, startBtnH, 0x000000, 0);
@@ -533,9 +549,9 @@ export class LevelSelectScene extends Phaser.Scene {
     items.push(this.startBtnG, this.startText, this.startHit);
 
     // Close button
-    const clBtnSz = this.p(24);
-    const clX = pw / 2 - this.p(32);
-    const clY = -ph / 2 + this.p(8);
+    const clBtnSz = this.p(isMobile ? 40 : 24);
+    const clX = pw / 2 - this.p(isMobile ? 50 : 32);
+    const clY = -ph / 2 + this.p(isMobile ? 14 : 8);
     const closeG = this.add.graphics();
     closeG.fillStyle(0x1a2540, 1);
     closeG.fillRoundedRect(clX, clY, clBtnSz, clBtnSz, this.p(4));
@@ -544,10 +560,10 @@ export class LevelSelectScene extends Phaser.Scene {
     const closeCx = clX + clBtnSz / 2;
     const closeCy = clY + clBtnSz / 2;
     const closeX = this.add.text(closeCx, closeCy, 'X', {
-      fontFamily: 'monospace', fontSize: this.fs(12), color: '#aab',
+      fontFamily: 'monospace', fontSize: this.fs(isMobile ? 20 : 12), color: '#aab',
       stroke: '#000', strokeThickness: this.p(1)
     }).setOrigin(0.5);
-    const closeHit = this.add.rectangle(closeCx, closeCy, this.p(28), this.p(28), 0x000000, 0)
+    const closeHit = this.add.rectangle(closeCx, closeCy, clBtnSz + this.p(4), clBtnSz + this.p(4), 0x000000, 0)
       .setInteractive({ useHandCursor: true });
     closeHit.on('pointerdown', () => this.closeDifficultyPanel());
     closeHit.on('pointerover', () => {
