@@ -22,9 +22,9 @@ export const CFG = {
       arrow: {
         cost: 60,
         levels: [
-          { hp: 120, fireRate: 620, range: 240, damage: 16, projectileSpeed: 480, splashRadius: 0, upgradeCost: 60 },
-          { hp: 170, fireRate: 460, range: 270, damage: 24, projectileSpeed: 580, splashRadius: 0, upgradeCost: 110 },
-          { hp: 240, fireRate: 320, range: 300, damage: 34, projectileSpeed: 700, splashRadius: 0, upgradeCost: 0 }
+          { hp: 120, fireRate: 620, range: 240, damage: 20, projectileSpeed: 480, splashRadius: 0, upgradeCost: 60 },
+          { hp: 170, fireRate: 460, range: 270, damage: 30, projectileSpeed: 580, splashRadius: 0, upgradeCost: 110 },
+          { hp: 240, fireRate: 320, range: 300, damage: 42, projectileSpeed: 700, splashRadius: 0, upgradeCost: 0 }
         ]
       },
       cannon: {
@@ -61,7 +61,9 @@ export const CFG = {
     crow:      { hp: 18, speed: 58,  dmg: 7,  coin: 1, color: 0x232330 },
     bat:       { hp: 35, speed: 36,  dmg: 11, coin: 2, color: 0x3c2832 },
     dragonfly: { hp: 10, speed: 135, dmg: 4,  coin: 1, color: 0x28a0b4 },
-    mosquito:  { hp: 14, speed: 50,  dmg: 3,  coin: 1, color: 0x504638 }
+    mosquito:  { hp: 14, speed: 50,  dmg: 3,  coin: 1, color: 0x504638 },
+    // Infected ranged enemy
+    toad:      { hp: 30, speed: 45,  dmg: 8,  coin: 2, color: 0x9040d0 }
   },
 
   coin: { magnetRange: 90, magnetSpeed: 420 },
@@ -104,6 +106,16 @@ export const CFG = {
     clusterSpread: 24,          // px spread within the cluster
     rampFactor: 0.88,           // faster ramp than normal (0.93)
     minInterval: 250,           // tighter floor than normal (350)
+    toadRange: 200,             // px — distance at which toad stops and lobs
+    toadFireRate: 2800,         // ms between lobs
+    toadGlobSpeed: 120,         // slow arcing glob
+    toadGlobDmg: 8,
+    toadGlobSplash: 16,         // ~half a tile, roughly one square
+    toadGlobLifetime: 3500,
+    toadGlobArcHeight: 60,      // px — peak height of the arc
+    toadHopInterval: 800,       // ms between hops
+    toadHopDuration: 350,       // ms a hop takes (airborne)
+    toadChance: 0.15,           // chance a spawn is a toad instead of normal infected
   },
 
   river: {

@@ -10,14 +10,23 @@ export interface LevelDef {
   connectsTo: number[];
   unlockCost: number;
   implemented: boolean;
+  // Per-level spawn tuning (overrides CFG defaults)
+  rampFactor?: number;   // how fast spawn interval tightens (lower = harder)
+  minInterval?: number;  // spawn interval floor in ms
+  waveSize?: number;     // enemies per wave
+  clusterMax?: number;   // cap on group spawn sizes (prevents swarms on early levels)
 }
 
 export const LEVELS: LevelDef[] = [
   // Grasslands — top-left (castle & forest area)
-  { id: 1,  name: 'Meadow',        biome: 'grasslands', x: 150, y: 345, connectsTo: [2],    unlockCost: 0,  implemented: true },
-  { id: 2,  name: 'Forest',        biome: 'forest',     x: 265, y: 425, connectsTo: [3],    unlockCost: 1,  implemented: true },
-  { id: 3,  name: 'Infected Lands',      biome: 'infected', x: 410, y: 320, connectsTo: [4],    unlockCost: 3,  implemented: true },
-  { id: 4,  name: 'Rivers',        biome: 'river',      x: 168, y: 200, connectsTo: [5],    unlockCost: 4,  implemented: true },
+  { id: 1,  name: 'Meadow',        biome: 'grasslands', x: 150, y: 345, connectsTo: [2],    unlockCost: 0,  implemented: true,
+    rampFactor: 0.93, minInterval: 350, waveSize: 100, clusterMax: 4 },
+  { id: 2,  name: 'Forest',        biome: 'forest',     x: 265, y: 425, connectsTo: [3],    unlockCost: 1,  implemented: true,
+    rampFactor: 0.91, minInterval: 320, waveSize: 110, clusterMax: 3 },
+  { id: 3,  name: 'Infected Lands',      biome: 'infected', x: 410, y: 320, connectsTo: [4],    unlockCost: 3,  implemented: true,
+    rampFactor: 0.88, minInterval: 250, waveSize: 120, clusterMax: 3 },
+  { id: 4,  name: 'Rivers',        biome: 'river',      x: 168, y: 200, connectsTo: [5],    unlockCost: 4,  implemented: true,
+    rampFactor: 0.86, minInterval: 220, waveSize: 130, clusterMax: 2 },
   { id: 5,  name: 'The Castle',    biome: 'grasslands', x: 125, y: 95, connectsTo: [6],    unlockCost: 5,  implemented: false },
   // Desert — top-center/right (ruins & dunes)
   { id: 6,  name: 'Oasis',         biome: 'desert',     x: 430, y: 170, connectsTo: [7],    unlockCost: 7,  implemented: false },

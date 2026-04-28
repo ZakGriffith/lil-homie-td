@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
 
-export type EnemyKind = 'basic' | 'heavy' | 'runner' | 'snake' | 'rat' | 'deer' | 'wolf' | 'bear' | 'spider' | 'infected_basic' | 'infected_heavy' | 'infected_runner' | 'crow' | 'bat' | 'dragonfly' | 'mosquito';
+export type EnemyKind = 'basic' | 'heavy' | 'runner' | 'snake' | 'rat' | 'deer' | 'wolf' | 'bear' | 'spider' | 'infected_basic' | 'infected_heavy' | 'infected_runner' | 'toad' | 'crow' | 'bat' | 'dragonfly' | 'mosquito';
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   kind: EnemyKind;
@@ -26,7 +26,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       basic: CFG.enemy.basic, heavy: CFG.enemy.heavy, runner: CFG.enemy.runner,
       snake: CFG.enemy.snake, rat: CFG.enemy.rat, deer: CFG.enemy.deer,
       wolf: CFG.enemy.wolf, bear: CFG.enemy.bear, spider: CFG.enemy.spider,
-      infected_basic: CFG.enemy.basic, infected_heavy: CFG.enemy.heavy, infected_runner: CFG.enemy.runner,
+      infected_basic: CFG.enemy.basic, infected_heavy: CFG.enemy.heavy, infected_runner: CFG.enemy.runner, toad: CFG.enemy.toad,
       crow: CFG.enemy.crow, bat: CFG.enemy.bat, dragonfly: CFG.enemy.dragonfly, mosquito: CFG.enemy.mosquito,
     };
     const data = dataMap[kind];
@@ -108,6 +108,10 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.baseTint = 0xe0d020; // yellow tint for infected runners
         this.setTint(this.baseTint);
         break;
+      case 'toad':
+        this.setScale(0.55).setSize(28, 24).setOffset(18, 22);
+        this.play('etd-idle');
+        break;
       case 'crow':
         this.setScale(0.5).setSize(24, 24).setOffset(20, 20);
         this.play('ecr-move');
@@ -140,6 +144,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       case 'infected_basic': return 'eib';
       case 'infected_heavy': return 'eih';
       case 'infected_runner': return 'eib'; // reuses infected basic sprites
+      case 'toad': return 'etd';
       case 'wolf': return 'ew';
       case 'bear': return 'ear'; // default to right-facing
       case 'spider': return 'es';

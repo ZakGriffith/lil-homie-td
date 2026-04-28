@@ -19,6 +19,7 @@ export class GameScene extends Phaser.Scene {
   enemies!: Phaser.Physics.Arcade.Group;
   projectiles!: Phaser.Physics.Arcade.Group;
   enemyDarts!: Phaser.Physics.Arcade.Group;
+  toadGlobs!: Phaser.Physics.Arcade.Group;
   coins!: Phaser.Physics.Arcade.Group;
   walls: Wall[] = [];
   towers: Tower[] = [];
@@ -83,6 +84,10 @@ export class GameScene extends Phaser.Scene {
   biome: Biome = 'grasslands';
   enemyHpMult = 1;
   enemySpeedMult = 1;
+  levelRampFactor = CFG.spawn.rampFactor;
+  levelMinInterval = CFG.spawn.minInterval;
+  levelWaveSize = CFG.spawn.waveSize;
+  levelClusterMax = 4;
   boulders: { sprite: Phaser.GameObjects.Sprite; shadow: Phaser.GameObjects.Sprite; sx: number; sy: number; tx: number; ty: number; totalDist: number; speed: number; dmg: number; splashRadius: number; born: number }[] = [];
   webs: { x: number; y: number; sprite: Phaser.GameObjects.Sprite; expireAt: number }[] = [];
   gasClouds: { x: number; y: number; sprites: Phaser.GameObjects.Arc[]; expireAt: number; dmgCd: number }[] = [];
@@ -96,6 +101,7 @@ export class GameScene extends Phaser.Scene {
   sf = 1; // native resolution scale factor
   _wallCheckCache = { key: '', valid: false };
   _lastWallCheckPlayerTile = '';
+  _warmupFrames = 0;
 
   constructor() { super('Game'); }
 
@@ -155,6 +161,12 @@ export class GameScene extends Phaser.Scene {
     this.winDelayUntil = 0;
     this.winCollectedAt = 0;
 
+    // Per-level spawn tuning (from level def, fall back to CFG defaults)
+    this.levelRampFactor = levelDef?.rampFactor ?? CFG.spawn.rampFactor;
+    this.levelMinInterval = levelDef?.minInterval ?? CFG.spawn.minInterval;
+    this.levelWaveSize = levelDef?.waveSize ?? CFG.spawn.waveSize;
+    this.levelClusterMax = levelDef?.clusterMax ?? 4;
+
     // Difficulty multipliers (don't mutate CFG)
     this.enemySpeedMult = 1;
     switch (this.difficulty) {
@@ -189,6 +201,7 @@ export class GameScene extends Phaser.Scene {
     this.enemies = this.physics.add.group({ classType: Enemy, runChildUpdate: false });
     this.projectiles = this.physics.add.group({ classType: Projectile, runChildUpdate: false });
     this.enemyDarts = this.physics.add.group({ runChildUpdate: false });
+    this.toadGlobs = this.physics.add.group({ runChildUpdate: false });
     this.coins = this.physics.add.group({ classType: Coin, runChildUpdate: false });
     this.wallGroup = this.physics.add.staticGroup();
     this.towerGroup = this.physics.add.staticGroup();
@@ -253,6 +266,8 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemyDarts, (_p, d) => this.enemyDartHitsPlayer(d as Phaser.Physics.Arcade.Sprite));
     this.physics.add.overlap(this.enemyDarts, this.wallGroup, (_d, _w) => { (_d as Phaser.Physics.Arcade.Sprite).destroy(); });
     this.physics.add.overlap(this.enemyDarts, this.towerGroup, (_d, _t) => { (_d as Phaser.Physics.Arcade.Sprite).destroy(); });
+    // Toad globs hit the player (they arc over walls/towers — no wall/tower overlap)
+    this.physics.add.overlap(this.player, this.toadGlobs, (_p, g) => this.toadGlobHitsPlayer(g as Phaser.Physics.Arcade.Sprite));
     // boss overlaps set up when boss spawns (since it's created later)
 
     // input
@@ -342,14 +357,12 @@ export class GameScene extends Phaser.Scene {
       sporeGreenEmitter.addEmitZone({ type: 'random', source: new Phaser.Geom.Rectangle(-500, -400, 1000, 800) } as any);
     }
 
-    // Delay a few frames so the browser can composite and UI scene finishes create()
+    // Warm-up phase: pause physics and run several real frames so the browser
+    // JIT-compiles the update loop and uploads textures to the GPU. The loading
+    // overlay stays visible until we're done, then the game starts stutter-free.
     this.loadingDone = false;
-    this.time.delayedCall(100, () => {
-      this.loadingDone = true;
-      this.pushHud();
-      this.game.events.emit('game-ready');
-      SFX.playBgm();
-    });
+    this.physics.pause();
+    this._warmupFrames = 0;
   }
 
   hudState() {
@@ -364,7 +377,7 @@ export class GameScene extends Phaser.Scene {
       bossSpawned: this.bossSpawned,
       wave: this.wave + 1,
       waveKills: this.waveKills,
-      waveSize: CFG.spawn.waveSize,
+      waveSize: this.levelWaveSize,
       waveBreakUntil: this.waveBreakUntil,
       vTime: this.vTime,
       countdownMsg: this.countdownMsg,
@@ -971,7 +984,20 @@ export class GameScene extends Phaser.Scene {
 
   update(_realTime: number, delta: number) {
     if (this.gameOver) return;
-    if (!this.loadingDone) return;
+
+    // Warm-up: let a few render frames pass (physics paused, loading overlay visible)
+    // so the browser JIT-compiles and GPU uploads textures before gameplay starts.
+    if (!this.loadingDone) {
+      this._warmupFrames++;
+      if (this._warmupFrames >= 10) {
+        this.loadingDone = true;
+        this.physics.resume();
+        this.pushHud();
+        this.game.events.emit('game-ready');
+        SFX.playBgm();
+      }
+      return;
+    }
 
     // Ghost follow pointer (runs even while build-paused)
     if (this.buildKind !== 'none') {
@@ -1062,6 +1088,7 @@ export class GameScene extends Phaser.Scene {
     this.updateBirdPoops(time);
     this.updateProjectiles(time);
     this.updateEnemyDarts();
+    this.updateToadGlobs();
     this.updateBoulders(time);
     this.updateCoins(vd);
     this.updateSpawning(time, vd);
@@ -1854,6 +1881,75 @@ export class GameScene extends Phaser.Scene {
         const rushSpeed = hasLOS ? e.speed : e.speed * 1.5;
         e.setVelocity((dx / d) * rushSpeed, (dy / d) * rushSpeed);
         if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
+        return true;
+      }
+
+      // Blighted Toad — hops toward player, lobs arcing toxic globs
+      if (e.kind === 'toad') {
+        const toadRange = CFG.infected.toadRange;
+        const dist = Math.sqrt(dist2);
+        e.setFlipX(tx - e.x < 0);
+
+        // Toad state stored on the sprite instance
+        const td = e as any;
+        if (td._toadHopNext === undefined) {
+          td._toadHopNext = time + CFG.infected.toadHopInterval;
+          td._toadHopping = false;
+          td._toadHopEnd = 0;
+          td._toadHopVx = 0;
+          td._toadHopVy = 0;
+        }
+
+        // In range — stop and lob
+        if (dist < toadRange && dist > 40) {
+          // Check if toad or player is adjacent to a wall/tower/tree (blocks arc)
+          const toadAdj = this.isAdjacentToObstacle(e.x, e.y);
+          const playerAdj = this.isAdjacentToObstacle(tx, ty);
+
+          if (!td._toadHopping) {
+            e.setVelocity(0, 0);
+            if (e.anims.currentAnim?.key !== 'etd-idle') e.play('etd-idle');
+          }
+
+          if (time > e.attackCd && !td._toadHopping) {
+            e.attackCd = time + CFG.infected.toadFireRate;
+            e.play('etd-atk');
+            // Spawn glob after brief delay for animation
+            this.time.delayedCall(200 / this.timeMult, () => {
+              if (e.active && !e.dying) {
+                this.spawnToadGlob(e.x, e.y, tx, ty, toadAdj || playerAdj);
+              }
+            });
+          }
+          return true;
+        }
+
+        // Out of range or too close — hop toward player
+        if (td._toadHopping) {
+          // Currently mid-hop — keep velocity
+          if (time > td._toadHopEnd) {
+            td._toadHopping = false;
+            e.setVelocity(0, 0);
+            if (e.anims.currentAnim?.key !== 'etd-idle') e.play('etd-idle');
+            td._toadHopNext = time + CFG.infected.toadHopInterval;
+          }
+          return true;
+        }
+
+        // Waiting for next hop
+        if (time > td._toadHopNext) {
+          td._toadHopping = true;
+          td._toadHopEnd = time + CFG.infected.toadHopDuration;
+          const dx = tx - e.x, dy = ty - e.y;
+          const d = dist || 1;
+          td._toadHopVx = (dx / d) * e.speed;
+          td._toadHopVy = (dy / d) * e.speed;
+          e.setVelocity(td._toadHopVx, td._toadHopVy);
+          e.play('etd-hop');
+        } else {
+          e.setVelocity(0, 0);
+          if (e.anims.currentAnim?.key !== 'etd-idle') e.play('etd-idle');
+        }
         return true;
       }
 
@@ -2748,6 +2844,11 @@ export class GameScene extends Phaser.Scene {
     ];
     const pick = corners[Math.floor(Math.random() * corners.length)];
     this.boss = new Boss(this, pick.x, pick.y, this.biome);
+    // Per-biome boss tuning — meadow is the intro boss, keep it approachable
+    if (this.biome === 'grasslands') {
+      this.boss.hp = 800; this.boss.maxHp = 800;
+      this.boss.dmg = 15; this.boss.speed = 24;
+    }
     this.pushHud();
     this.physics.add.overlap(this.projectiles, this.boss, (a: any, b: any) => {
       const pr = (a instanceof Projectile ? a : b) as Projectile;
@@ -2825,6 +2926,121 @@ export class GameScene extends Phaser.Scene {
     this.enemyDarts.children.iterate((c: any) => {
       if (!c || !c.active) return true;
       if (this.vTime - c._born > CFG.river.mosquitoDartLifetime) { c.destroy(); return true; }
+      return true;
+    });
+  }
+
+  // ---------- TOAD GLOBS (arcing ranged attack) ----------
+
+  /** Check if a world position is adjacent to a wall, tower, tree, or water tile */
+  isAdjacentToObstacle(wx: number, wy: number): boolean {
+    const t = CFG.tile;
+    const gx = Math.floor(wx / t), gy = Math.floor(wy / t);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        if (dx === 0 && dy === 0) continue;
+        const v = gridGet(this.grid, gx + dx, gy + dy);
+        if (v === 1 || v === 2 || v === 3 || v === 4) return true; // wall, tower, tree, water
+      }
+    }
+    return false;
+  }
+
+  spawnToadGlob(x: number, y: number, tx: number, ty: number, blockedByAdjacent: boolean) {
+    const glob = this.physics.add.sprite(x, y, 'tglob_0').setScale(0.8).setDepth(12);
+    glob.play('tglob-spin');
+    glob.setSize(10, 10).setOffset(3, 3);
+    this.toadGlobs.add(glob);
+
+    const dx = tx - x, dy = ty - y;
+    const dist = Math.hypot(dx, dy) || 1;
+    const spd = CFG.infected.toadGlobSpeed;
+
+    const g = glob as any;
+    g._born = this.vTime;
+    g._startX = x;
+    g._startY = y;
+    g._targetX = tx;
+    g._targetY = ty;
+    g._totalDist = dist;
+    g._dmg = CFG.infected.toadGlobDmg;
+    g._splash = CFG.infected.toadGlobSplash;
+    g._arcHeight = blockedByAdjacent ? 0 : CFG.infected.toadGlobArcHeight;
+    g._flat = blockedByAdjacent;
+    g._landed = false;
+
+    // Set velocity toward target
+    glob.setVelocity((dx / dist) * spd, (dy / dist) * spd);
+
+    // If flat (adjacent), register wall/tower overlap so it can be blocked mid-flight
+    if (blockedByAdjacent) {
+      this.physics.add.overlap(glob, this.wallGroup, () => { if (!g._landed) this.landToadGlob(glob); });
+      this.physics.add.overlap(glob, this.towerGroup, () => { if (!g._landed) this.landToadGlob(glob); });
+    }
+  }
+
+  /** Glob reaches its target (or hits a wall). Stop, splash, damage, destroy. */
+  landToadGlob(glob: Phaser.Physics.Arcade.Sprite) {
+    if (!glob.active) return;
+    const g = glob as any;
+    if (g._landed) return;
+    g._landed = true;
+
+    // Stop moving
+    glob.setVelocity(0, 0);
+    glob.setScale(0.8);
+    glob.setOrigin(0.5, 0.5);
+    (glob.body as Phaser.Physics.Arcade.Body).enable = false;
+
+    const dmg = g._dmg ?? CFG.infected.toadGlobDmg;
+    const splash = g._splash ?? CFG.infected.toadGlobSplash;
+
+    // Damage player if within splash radius
+    const pdx = this.player.x - glob.x, pdy = this.player.y - glob.y;
+    if (pdx * pdx + pdy * pdy < splash * splash) {
+      this.player.hurt(dmg, this);
+      this.pushHud();
+      if (this.player.hp <= 0) this.lose();
+    }
+
+    // Splat visual + destroy
+    const splat = this.add.circle(glob.x, glob.y, splash, 0x40e060, 0.5).setDepth(5);
+    this.tweens.add({ targets: splat, alpha: 0, scale: 1.8, duration: 500, onComplete: () => splat.destroy() });
+    // Brief green flash on the glob then destroy
+    glob.setTintFill(0x40e060);
+    this.tweens.add({ targets: glob, alpha: 0, scaleX: 1.2, scaleY: 0.3, duration: 200, onComplete: () => glob.destroy() });
+  }
+
+  toadGlobHitsPlayer(glob: Phaser.Physics.Arcade.Sprite) {
+    // Player overlap is only used as a fallback — main landing is in updateToadGlobs
+    if (!glob.active || (glob as any)._landed) return;
+    this.landToadGlob(glob);
+  }
+
+  updateToadGlobs() {
+    this.toadGlobs.children.iterate((c: any) => {
+      if (!c || !c.active || c._landed) return true;
+      const elapsed = this.vTime - c._born;
+      if (elapsed > CFG.infected.toadGlobLifetime) { this.landToadGlob(c); return true; }
+
+      // Check if glob has reached (or passed) its target
+      const dx = c.x - c._startX, dy = c.y - c._startY;
+      const traveled = Math.hypot(dx, dy);
+      if (traveled >= c._totalDist) {
+        // Arrived at target — land it
+        this.landToadGlob(c);
+        return true;
+      }
+
+      // Arc effect: offset visual based on progress
+      const progress = traveled / c._totalDist;
+      if (c._arcHeight > 0) {
+        const arc = -4 * c._arcHeight * progress * (progress - 1);
+        const scaleMod = 1 + (arc / c._arcHeight) * 0.4;
+        c.setScale(0.8 * scaleMod);
+        c.setOrigin(0.5, 0.5 + arc / 16);
+      }
+
       return true;
     });
   }
@@ -3161,7 +3377,7 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    const waveSize = CFG.spawn.waveSize;
+    const waveSize = this.levelWaveSize;
     const lastWaveIdx = CFG.spawn.waveCount - 1;
     const isLastWave = this.wave >= lastWaveIdx;
 
@@ -3220,9 +3436,7 @@ export class GameScene extends Phaser.Scene {
     this.rampTimer += delta;
     if (this.rampTimer > CFG.spawn.rampEvery) {
       this.rampTimer = 0;
-      const rampF = this.biome === 'infected' ? CFG.infected.rampFactor : CFG.spawn.rampFactor;
-      const minI = this.biome === 'infected' ? CFG.infected.minInterval : CFG.spawn.minInterval;
-      this.spawnInterval = Math.max(minI, this.spawnInterval * rampF);
+      this.spawnInterval = Math.max(this.levelMinInterval, this.spawnInterval * this.levelRampFactor);
       this.heavyChance = Math.min(CFG.spawn.heavyChanceMax, this.heavyChance + CFG.spawn.heavyChanceStep);
     }
     if (this.spawnTimer > this.spawnInterval && this.waveSpawned < waveSize) {
@@ -3252,7 +3466,7 @@ export class GameScene extends Phaser.Scene {
 
   spawnRunnerPack() {
     const spawnR = CFG.spawnDist * CFG.tile;
-    const waveSize = CFG.spawn.waveSize;
+    const waveSize = this.levelWaveSize;
     const side = Phaser.Math.Between(0, 3);
     const px = this.player.x, py = this.player.y;
     let cx = 0, cy = 0;
@@ -3315,7 +3529,10 @@ export class GameScene extends Phaser.Scene {
     if (this.biome === 'forest') {
       kind = Math.random() < this.heavyChance ? 'bear' : 'spider';
     } else if (this.biome === 'infected') {
-      kind = Math.random() < this.heavyChance ? 'infected_heavy' : 'infected_basic';
+      const r = Math.random();
+      if (r < CFG.infected.toadChance) kind = 'toad';
+      else if (r < CFG.infected.toadChance + this.heavyChance) kind = 'infected_heavy';
+      else kind = 'infected_basic';
     } else if (this.biome === 'river') {
       const r = Math.random();
       if (r < this.heavyChance) kind = 'bat';
@@ -3327,9 +3544,9 @@ export class GameScene extends Phaser.Scene {
 
     // Forest spiders spawn in small clusters
     if (this.biome === 'forest' && kind === 'spider') {
-      const n = Phaser.Math.Between(CFG.forest.spiderClusterMin, CFG.forest.spiderClusterMax);
+      const n = Math.min(Phaser.Math.Between(CFG.forest.spiderClusterMin, CFG.forest.spiderClusterMax), this.levelClusterMax);
       const spread = CFG.forest.spiderClusterSpread;
-      const waveSize = CFG.spawn.waveSize;
+      const waveSize = this.levelWaveSize;
       const toSpawn = Math.min(n, waveSize - this.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
@@ -3342,11 +3559,11 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Infected enemies spawn in tight groups
-    if (this.biome === 'infected') {
-      const n = Phaser.Math.Between(CFG.infected.clusterMin, CFG.infected.clusterMax);
+    // Infected enemies spawn in tight groups (toads spawn solo)
+    if (this.biome === 'infected' && kind !== 'toad') {
+      const n = Math.min(Phaser.Math.Between(CFG.infected.clusterMin, CFG.infected.clusterMax), this.levelClusterMax);
       const spread = CFG.infected.clusterSpread;
-      const waveSize = CFG.spawn.waveSize;
+      const waveSize = this.levelWaveSize;
       const toSpawn = Math.min(n, waveSize - this.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
@@ -3361,9 +3578,9 @@ export class GameScene extends Phaser.Scene {
 
     // River enemies spawn in loose groups
     if (this.biome === 'river') {
-      const n = Phaser.Math.Between(CFG.river.clusterMin, CFG.river.clusterMax);
+      const n = Math.min(Phaser.Math.Between(CFG.river.clusterMin, CFG.river.clusterMax), this.levelClusterMax);
       const spread = CFG.river.clusterSpread;
-      const waveSize = CFG.spawn.waveSize;
+      const waveSize = this.levelWaveSize;
       const toSpawn = Math.min(n, waveSize - this.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);

@@ -1035,6 +1035,146 @@ function drawEnemyInfectedHeavy(f: EFrame) {
 }
 
 // ==================================================================
+//  BLIGHTED TOAD (32x32) — infected ranged toad, lobs toxic globs
+// ==================================================================
+type ToadFrame = 'idle' | 'hop0' | 'hop1' | 'hop2' | 'hop3' | 'atk0' | 'atk1' | 'hit' | 'die0' | 'die1' | 'die2' | 'die3';
+
+function drawEnemyToad(f: ToadFrame) {
+  return (put: Put) => {
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 9 - step * 2;
+      if (r <= 0) return;
+      ellipse(put, 16, 20, r + 2, r, P.infect);
+      ellipse(put, 16, 20, Math.max(0, r + 1), Math.max(0, r - 1), P.infectL);
+      // toxic splatter particles
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + step * 0.5;
+        const d = step * 3 + 2;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(20 + Math.sin(a) * d), '#40e060');
+      }
+      return;
+    }
+
+    const flash = f === 'hit';
+    const body = flash ? P.white : P.infect;
+    const bodyD = flash ? P.white : P.infectD;
+    const bodyM = flash ? P.white : P.infectM;
+    const bodyL = flash ? P.white : P.infectL;
+    const green = flash ? P.white : '#40e060';
+    const greenD = flash ? P.white : '#208030';
+
+    // Hop offsets: how high off the ground the toad is
+    let hopY = 0;
+    let squashX = 0; // widen body on landing
+    let squashY = 0; // flatten body on landing
+    if (f === 'hop0') { hopY = -2; squashY = 1; } // crouching to launch
+    if (f === 'hop1') { hopY = -8; }                // peak of hop
+    if (f === 'hop2') { hopY = -5; }                // coming down
+    if (f === 'hop3') { hopY = 0; squashX = 2; squashY = -1; } // landing squash
+
+    const isAtk = f === 'atk0' || f === 'atk1';
+
+    // Shadow (smaller when airborne)
+    const shadowR = hopY < -3 ? 4 : 6;
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -shadowR; dx <= shadowR; dx++)
+        if ((dx * dx) / (shadowR * shadowR) + (dy * dy) / 2 <= 1)
+          put(16 + dx, 28 + dy, P.shadow);
+
+    const cy = 20 + hopY; // body center y
+
+    // Back legs (wide, frog-like)
+    if (f === 'hop0') {
+      // Crouched — legs compressed
+      rect(put, 7, cy + 5, 4, 3, bodyD);
+      rect(put, 21, cy + 5, 4, 3, bodyD);
+      put(6, cy + 7, greenD); put(25, cy + 7, greenD); // webbed toes
+    } else if (f === 'hop1' || f === 'hop2') {
+      // Airborne — legs extended behind
+      rect(put, 6, cy + 6, 5, 2, bodyD);
+      rect(put, 21, cy + 6, 5, 2, bodyD);
+      put(5, cy + 7, greenD); put(6, cy + 8, greenD);
+      put(26, cy + 7, greenD); put(25, cy + 8, greenD);
+    } else {
+      // Idle / landed — legs tucked
+      rect(put, 7, cy + 4, 4, 4, bodyD);
+      rect(put, 21, cy + 4, 4, 4, bodyD);
+      put(7, cy + 8, greenD); put(8, cy + 8, greenD);
+      put(23, cy + 8, greenD); put(24, cy + 8, greenD);
+    }
+
+    // Front legs
+    rect(put, 10, cy + 5, 3, 3, bodyD);
+    rect(put, 19, cy + 5, 3, 3, bodyD);
+    put(10, cy + 7, greenD); put(21, cy + 7, greenD);
+
+    // Body (wide and squat toad)
+    const bw = 9 + squashX;
+    const bh = 6 + squashY;
+    ellipse(put, 16, cy, bw, bh, bodyD);
+    ellipse(put, 16, cy - 1, bw - 1, bh - 1, body);
+    ellipse(put, 16, cy - 2, bw - 2, Math.max(1, bh - 2), bodyL);
+
+    // Warts / pustules on back
+    put(11, cy - 2, green); put(12, cy - 3, greenD);
+    put(20, cy - 1, green); put(21, cy - 2, greenD);
+    put(15, cy - 4, green); put(18, cy - 3, green);
+    put(13, cy + 1, green);
+
+    // Eyes (bulging on top of head, toad-like)
+    disc(put, 12, cy - 4, 3, bodyD);
+    disc(put, 20, cy - 4, 3, bodyD);
+    disc(put, 12, cy - 4, 2, bodyM);
+    disc(put, 20, cy - 4, 2, bodyM);
+    // Eye glow
+    put(12, cy - 5, '#e0ff40'); put(13, cy - 5, '#e0ff40');
+    put(20, cy - 5, '#e0ff40'); put(21, cy - 5, '#e0ff40');
+    put(12, cy - 4, P.outline); put(20, cy - 4, P.outline);
+
+    // Mouth
+    if (isAtk) {
+      // Open mouth — spitting
+      rect(put, 13, cy + 2, 6, 3, P.outline);
+      rect(put, 14, cy + 3, 4, 1, green);
+      // Glob leaving mouth
+      if (f === 'atk1') {
+        disc(put, 16, cy - 6, 2, green);
+        put(16, cy - 7, '#80ff90');
+      }
+    } else {
+      // Closed mouth — wide line
+      rect(put, 12, cy + 2, 8, 1, P.outline);
+    }
+
+    // Throat pouch (slightly lighter)
+    rect(put, 13, cy + 1, 6, 1, bodyL);
+  };
+}
+
+// ==================================================================
+//  TOAD GLOB PROJECTILE (16x16) — arcing toxic glob
+// ==================================================================
+function drawToadGlob(f: 'glob0' | 'glob1') {
+  return (put: Put) => {
+    const c1 = f === 'glob0' ? '#40e060' : '#60ff80';
+    const c2 = f === 'glob0' ? '#208030' : '#40a050';
+    // Glob body
+    disc(put, 8, 8, 4, c2);
+    disc(put, 8, 7, 3, c1);
+    // Glow center
+    put(8, 7, '#a0ff80');
+    put(7, 7, c1); put(9, 7, c1);
+    // Dripping trail
+    put(8, 12, c2); put(7, 13, c2);
+    put(9, 11, c2);
+    // Speckles
+    put(6, 6, '#80ff90');
+    put(10, 8, '#80ff90');
+  };
+}
+
+// ==================================================================
 //  ENEMY WOLF (32x32) — fast grey pack hunter
 // ==================================================================
 function drawEnemyWolf(f: EFrame) {
@@ -4745,6 +4885,12 @@ export function generateAllArt(scene: Phaser.Scene) {
   for (const f of eFrames) add(scene, `eder_${f}`, makeCanvas(32, drawEnemyDeer(f)));
   for (const f of eFrames) add(scene, `eib_${f}`, makeCanvas(32, drawEnemyInfectedBasic(f)));
   for (const f of eFrames) add(scene, `eih_${f}`, makeCanvas(32, drawEnemyInfectedHeavy(f)));
+  // Blighted Toad — uses its own frame set (idle + hop + atk + hit + die)
+  const toadFrames: ToadFrame[] = ['idle', 'hop0', 'hop1', 'hop2', 'hop3', 'atk0', 'atk1', 'hit', 'die0', 'die1', 'die2', 'die3'];
+  for (const f of toadFrames) add(scene, `etd_${f}`, makeCanvas(32, drawEnemyToad(f)));
+  // Toad glob projectile
+  add(scene, 'tglob_0', makeCanvas(16, drawToadGlob('glob0')));
+  add(scene, 'tglob_1', makeCanvas(16, drawToadGlob('glob1')));
   for (const f of eFrames) add(scene, `ew_${f}`, makeCanvas(32, drawEnemyWolf(f)));
   // Bear: extract frames from sprite sheet, strip grey bg, register as textures
   extractBearFrames(scene);
@@ -5039,6 +5185,14 @@ export function registerAnimations(scene: Phaser.Scene) {
   mk('eih-atk',  ['eih_atk0','eih_atk1'], 6, -1);
   mk('eih-hit',  ['eih_hit'], 8, 0);
   mk('eih-die',  ['eih_die0','eih_die1','eih_die2','eih_die3'], 8, 0);
+
+  // Blighted Toad
+  mk('etd-idle', ['etd_idle'], 1, -1);
+  mk('etd-hop',  ['etd_hop0','etd_hop1','etd_hop2','etd_hop3'], 8, 0); // plays once per hop
+  mk('etd-atk',  ['etd_atk0','etd_atk1'], 6, 0);
+  mk('etd-hit',  ['etd_hit'], 8, 0);
+  mk('etd-die',  ['etd_die0','etd_die1','etd_die2','etd_die3'], 8, 0);
+  mk('tglob-spin', ['tglob_0','tglob_1'], 8, -1);
 
   mk('ew-move', ['ew_move0','ew_move1','ew_move2','ew_move3'], 10, -1);
   mk('ew-atk',  ['ew_atk0','ew_atk1'], 10, -1);
