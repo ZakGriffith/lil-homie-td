@@ -226,6 +226,11 @@ export class UIScene extends Phaser.Scene {
       }
     });
 
+    // Recover the end-panel after a UI restart (e.g. mid-rotation): if the
+    // game already ended and we missed the live event, replay it now.
+    const gameEndState = this.game.registry.get('gameEndState') as any;
+    if (gameEndState) this.showEnd(gameEndState);
+
     // ---- Mobile virtual joystick (lower-left) ----
     if (this.isMobile) {
       const outerR = this.p(60);

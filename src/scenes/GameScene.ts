@@ -155,6 +155,7 @@ export class GameScene extends Phaser.Scene {
     this.game.registry.set('bossHp', 0);
     this.game.registry.set('bossMaxHp', 0);
     this.game.registry.set('bossBiome', '');
+    this.game.registry.set('gameEndState', null);
     this.killsTarget = CFG.winKills;
     this.gameOver = false;
     this.boulders = [];
@@ -3611,10 +3612,14 @@ export class GameScene extends Phaser.Scene {
       this.gameOver = true;
       this.physics.pause();
       SFX.play('gameOver');
-      this.game.events.emit('game-end', {
+      const payload = {
         win: false, name: 'Ranger',
         kills: this.player.kills, money: this.player.money
-      });
+      };
+      // Persist so a UIScene restart (e.g. mid-rotation) can recover the
+      // panel even if the live event fired while UI had no listener.
+      this.game.registry.set('gameEndState', payload);
+      this.game.events.emit('game-end', payload);
     }, 3500);
   }
   win() {
@@ -3622,7 +3627,9 @@ export class GameScene extends Phaser.Scene {
     this.gameOver = true;
     this.physics.pause();
     SFX.play('victory');
-    this.game.events.emit('game-end', { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money });
+    const payload = { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money };
+    this.game.registry.set('gameEndState', payload);
+    this.game.events.emit('game-end', payload);
   }
 
   shutdown() {
