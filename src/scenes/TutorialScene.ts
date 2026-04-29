@@ -43,8 +43,13 @@ export class TutorialScene extends Phaser.Scene {
   arrowGfx!: Phaser.GameObjects.Graphics;
   skipBtn!: Phaser.GameObjects.Text;
   private sf = 1;
+  private isMobile = false;
   private p(v: number) { return v * this.sf; }
   private fs(px: number) { return `${Math.round(px * this.sf)}px`; }
+  /** LevelSelect-canvas scaling: matches LevelSelectScene's sf = nativeW/CFG.width.
+   *  Tutorial's regular `p()` uses uiScale (different on mobile), so use this for
+   *  any coordinate that targets a node/panel rendered by LevelSelectScene. */
+  private lsP(v: number) { return v * (this.scale.width / CFG.width); }
 
   hudLabels: Phaser.GameObjects.GameObject[] = [];
   hudClickZone: Phaser.GameObjects.Rectangle | null = null;
@@ -63,6 +68,7 @@ export class TutorialScene extends Phaser.Scene {
 
   create() {
     this.sf = this.game.registry.get('sf') || 1;
+    this.isMobile = !!this.game.registry.get('isMobile');
     const W = this.scale.width;
     const H = this.scale.height;
 
@@ -82,14 +88,35 @@ export class TutorialScene extends Phaser.Scene {
     // Arrow graphic (pulsing pointer)
     this.arrowGfx = this.add.graphics().setDepth(101);
 
-    // Skip button
-    this.skipBtn = this.add.text(W - this.p(20), H - this.p(12), 'Skip Tutorial', {
+    // Skip button — position depends on orientation, see repositionSkipBtn().
+    this.skipBtn = this.add.text(0, 0, 'Skip Tutorial', {
       fontFamily: 'monospace', fontSize: this.fs(10), color: '#888',
       stroke: '#000', strokeThickness: this.p(2)
-    }).setOrigin(1, 1).setDepth(103).setInteractive({ useHandCursor: true });
+    }).setDepth(103).setInteractive({ useHandCursor: true });
     this.skipBtn.on('pointerdown', () => this.finish());
     this.skipBtn.on('pointerover', () => this.skipBtn.setColor('#ccc'));
     this.skipBtn.on('pointerout', () => this.skipBtn.setColor('#888'));
+    this.repositionSkipBtn();
+
+    // Re-render the active step + reposition skip button on viewport change
+    // (rotation, browser resize). Mobile portrait → landscape changes every
+    // tutorial element's coordinates, so we need to redraw them. Defer one
+    // microtask so GameScene's viewport-changed handler (which calls
+    // setGameSize) runs first and this.scale reflects the new dimensions.
+    const onViewportChanged = () => {
+      queueMicrotask(() => {
+        this.sf = this.game.registry.get('sf') || 1;
+        this.isMobile = !!this.game.registry.get('isMobile');
+        this.repositionSkipBtn();
+        // Skip the redraw if a delayed transition is in flight — the screen
+        // is intentionally blank until pendingStep fires.
+        if (!this.pendingStep) this.showStep();
+      });
+    };
+    this.game.events.on('viewport-changed', onViewportChanged);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off('viewport-changed', onViewportChanged);
+    });
 
     // Listen for events
     this.game.events.on('tutorial-level-clicked', this.onLevelClicked, this);
@@ -219,26 +246,65 @@ export class TutorialScene extends Phaser.Scene {
     this.cleanupHudLabels();
 
     switch (this.step) {
-      case 'ls_click_meadow':
-        this.showPrompt('Welcome, Ranger!\nClick on the Meadow to begin your training.', this.p(80));
-        this.drawDimWithHole(this.p(150), this.p(345), this.p(40));
-        this.drawArrow(this.p(150), this.p(295), 'down');
+      case 'ls_click_meadow': {
+        const verb = this.isMobile ? 'Tap' : 'Click';
+        this.showPrompt(`Welcome, Ranger!\n${verb} on the Meadow to begin your training.`, this.p(80));
+        // Meadow node lives in LevelSelect's coord system (sf = nativeW/960),
+        // not the tutorial's uiScale-based one — they differ on mobile.
+        this.drawDimWithHole(this.lsP(150), this.lsP(345), this.lsP(40));
+        this.drawArrow(this.lsP(150), this.lsP(295), 'down');
         break;
+      }
 
-      case 'ls_click_easy':
-        this.showPrompt('Select Easy difficulty to start.', this.p(80));
-        this.drawDimWithCutout(W / 2 - this.p(115), H / 2 - this.p(60), this.p(230), this.p(38));
-        this.drawArrow(W / 2 - this.p(130), H / 2 - this.p(41), 'right');
+      case 'ls_click_easy': {
+        // The difficulty panel rebuilds with mobile-specific button geometry
+        // (see LevelSelectScene.openDifficultyPanel), so derive the cutout
+        // from the same numbers rather than the desktop-only literals.
+        if (this.isMobile) {
+          const btnH = this.lsP(60);
+          const btnGap = this.lsP(12);
+          const btnBlockH = 4 * btnH + 3 * btnGap;
+          const easyCenterY = H / 2 - btnBlockH / 2 + btnH / 2;
+          const ph = H * 0.92;
+          const pw = Math.min(this.lsP(560), W * 0.92);
+          const btnW = Math.min(this.lsP(460), pw - this.lsP(40));
+          this.drawDimWithCutout(W / 2 - btnW / 2, easyCenterY - btnH / 2, btnW, btnH);
+          this.drawArrow(W / 2 - btnW / 2 - this.lsP(20), easyCenterY, 'right');
+          // Prompt text moves to the bottom of the viewport.
+          this.showPrompt('Tap Easy difficulty to start.', H - this.p(20), 1);
+        } else {
+          this.showPrompt('Select Easy difficulty to start.', this.p(80));
+          this.drawDimWithCutout(W / 2 - this.p(115), H / 2 - this.p(60), this.p(230), this.p(38));
+          this.drawArrow(W / 2 - this.p(130), H / 2 - this.p(41), 'right');
+        }
         break;
+      }
 
-      case 'ls_click_start':
-        this.showPrompt('Click START to begin!', this.p(80));
-        this.drawDimWithCutout(W / 2 - this.p(60), H / 2 + this.p(128), this.p(120), this.p(36));
-        this.drawArrow(W / 2, H / 2 + this.p(120), 'down');
+      case 'ls_click_start': {
+        const verb = this.isMobile ? 'Tap' : 'Click';
+        this.showPrompt(`${verb} START to begin!`, this.p(80));
+        if (this.isMobile) {
+          // Mobile panel: ph = H*0.92, START button at (panel center) + (ph/2 - p(80)).
+          // Absolute top of START = H/2 + ph/2 - p_ls(80).
+          const ph = H * 0.92;
+          const startBtnH = this.lsP(56);
+          const startBtnW = this.lsP(220);
+          const startTop = H / 2 + ph / 2 - startBtnH - this.lsP(24);
+          this.drawDimWithCutout(W / 2 - startBtnW / 2, startTop, startBtnW, startBtnH);
+          // Arrow moved up 1 button height so it sits above the START button.
+          this.drawArrow(W / 2, startTop - this.lsP(8), 'down');
+        } else {
+          this.drawDimWithCutout(W / 2 - this.p(60), H / 2 + this.p(128), this.p(120), this.p(36));
+          this.drawArrow(W / 2, H / 2 + this.p(120), 'down');
+        }
         break;
+      }
 
       case 'game_move':
-        this.showPrompt('Use WASD or Arrow Keys to move.', this.p(150));
+        this.showPrompt(
+          this.isMobile ? 'Use the joystick to move.' : 'Use WASD or Arrow Keys to move.',
+          this.p(150)
+        );
         break;
 
       case 'game_hud': {
@@ -286,7 +352,12 @@ export class TutorialScene extends Phaser.Scene {
         this.hudLabels.push(goldLabel);
 
         // Main prompt below labels
-        this.showPrompt('Keep an eye on your HUD!\nHealth, wave progress, and gold reserves.\n\nClick anywhere to continue.', this.p(180));
+        this.showPrompt(
+          this.isMobile
+            ? 'Keep an eye on your HUD!\nHealth, wave progress, and gold reserves.\n\nTAP anywhere to continue.'
+            : 'Keep an eye on your HUD!\nHealth, wave progress, and gold reserves.\n\nClick anywhere to continue.',
+          this.p(180)
+        );
 
         // Click anywhere to advance
         this.hudClickZone = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0)
@@ -309,7 +380,12 @@ export class TutorialScene extends Phaser.Scene {
 
       case 'game_press_1': {
         this.pauseGame();
-        this.showPrompt('Time to build defenses!\nPress 1 or click the hotbar to select the Arrow Tower.', H - this.p(140));
+        this.showPrompt(
+          this.isMobile
+            ? 'Time to build defenses!\nTap the hotbar to select the Arrow Tower.'
+            : 'Time to build defenses!\nPress 1 or click the hotbar to select the Arrow Tower.',
+          H - this.p(140)
+        );
         // Highlight hotbar slot 1 area — hotbarY is the TOP of the slot
         const slotSize = this.p(48);
         const slotGap = this.p(10);
@@ -323,7 +399,12 @@ export class TutorialScene extends Phaser.Scene {
       }
 
       case 'game_place_tower':
-        this.showPrompt('Click near your ranger to place the Arrow Tower.\nThe green ghost shows where it will go.', this.p(150));
+        this.showPrompt(
+          this.isMobile
+            ? 'Tap near your ranger to place the Arrow Tower.'
+            : 'Click near your ranger to place the Arrow Tower.\nThe green ghost shows where it will go.',
+          this.p(150)
+        );
         // Light dim, no specific hole — player needs to see the grid
         this.overlay.fillStyle(0x000000, 0.2);
         this.overlay.fillRect(0, 0, W, H);
@@ -337,7 +418,12 @@ export class TutorialScene extends Phaser.Scene {
 
       case 'game_press_4': {
         this.pauseGame();
-        this.showPrompt('Walls block enemy paths!\nPress 4 or click the hotbar to select Wall.', H - this.p(140));
+        this.showPrompt(
+          this.isMobile
+            ? 'Walls block enemy paths!\nTap the hotbar to select Wall.'
+            : 'Walls block enemy paths!\nPress 4 or click the hotbar to select Wall.',
+          H - this.p(140)
+        );
         const slotSize2 = this.p(48);
         const slotGap2 = this.p(10);
         const hotbarY2 = H - slotSize2 - this.p(32);
@@ -362,7 +448,20 @@ export class TutorialScene extends Phaser.Scene {
           this.advanceTo('game_loot_coins', 1500);
           return;
         }
-        this.showPrompt('Right-click or press ESC to leave build menu.', this.p(150));
+        if (this.isMobile) {
+          this.showPrompt('Tap the wall icon in the hotbar to leave build menu.', H - this.p(140));
+          // Highlight the wall hotbar slot so the player knows where to tap.
+          const slotSize3 = this.p(48);
+          const slotGap3 = this.p(10);
+          const hotbarY3 = H - slotSize3 - this.p(32);
+          const barCenterX3 = W / 2;
+          const slots3 = 5;
+          const wallSlotX2 = barCenterX3 - (slots3 * slotSize3 + (slots3 - 1) * slotGap3) / 2 + 3 * (slotSize3 + slotGap3) + slotSize3 / 2;
+          this.drawDimWithRect(wallSlotX2 - slotSize3 / 2 - this.p(4), hotbarY3 - this.p(4), slotSize3 + this.p(8), slotSize3 + this.p(8));
+          this.drawArrow(wallSlotX2, hotbarY3 - this.p(12), 'down');
+        } else {
+          this.showPrompt('Right-click or press ESC to leave build menu.', this.p(150));
+        }
         break;
       }
 
@@ -372,24 +471,47 @@ export class TutorialScene extends Phaser.Scene {
 
       case 'game_click_tower': {
         this.pauseGame();
-        this.showPrompt('Click on your Arrow Tower to select it.', this.p(150));
-        // Highlight the first arrow tower placed
+        this.showPrompt(
+          this.isMobile
+            ? 'Tap on your Arrow Tower to select it.'
+            : 'Click on your Arrow Tower to select it.',
+          this.p(150)
+        );
+        // Highlight the first arrow tower placed. Tower coords are WORLD-
+        // space (Phaser GameObject) — convert to screen-space via the Game
+        // camera so the highlight lands on the tower regardless of where
+        // the camera is panned (camera follows the player).
         const gsTower = this.scene.get('Game') as any;
         const tower = gsTower?.towers?.[0];
         if (tower) {
-          const ts = this.p(48);
-          this.drawDimWithRect(tower.x - ts / 2, tower.y - ts / 2, ts, ts);
-          this.drawArrow(tower.x, tower.y - ts / 2 - this.p(8), 'down');
+          const cam = gsTower.cameras.main;
+          const sx = (tower.x - cam.scrollX) * cam.zoom;
+          const sy = (tower.y - cam.scrollY) * cam.zoom;
+          // Tower footprint = CFG.tower.tiles * CFG.tile world units, scaled by camera zoom.
+          const towerWorldSize = CFG.tower.tiles * CFG.tile;
+          const ts = towerWorldSize * cam.zoom + this.p(8);
+          this.drawDimWithRect(sx - ts / 2, sy - ts / 2, ts, ts);
+          this.drawArrow(sx, sy - ts / 2 - this.p(8), 'down');
         }
         break;
       }
 
       case 'game_upgrade_tower':
-        this.showPrompt('Click the Upgrade button to make your tower stronger!', this.p(150));
+        this.showPrompt(
+          this.isMobile
+            ? 'Tap the Upgrade button to make your tower stronger!'
+            : 'Click the Upgrade button to make your tower stronger!',
+          this.p(150)
+        );
         break;
 
       case 'game_deselect_tower':
-        this.showPrompt('Click somewhere else to close the tower panel.', this.p(150));
+        this.showPrompt(
+          this.isMobile
+            ? 'Tap somewhere else to close the tower panel.'
+            : 'Click somewhere else to close the tower panel.',
+          this.p(150)
+        );
         break;
 
       case 'game_done':
@@ -435,9 +557,26 @@ export class TutorialScene extends Phaser.Scene {
     if (this.hudClickZone) { this.hudClickZone.destroy(); this.hudClickZone = null; }
   }
 
-  showPrompt(text: string, y: number) {
+  /** Place the skip-tutorial link based on viewport / orientation:
+   *   - Mobile portrait: vertically centered on the right edge so the user's
+   *     thumb (which usually rests near the bottom holding the phone) doesn't
+   *     hit it accidentally.
+   *   - Mobile landscape & desktop: lower-right corner (the legacy spot). */
+  private repositionSkipBtn() {
+    if (!this.skipBtn) return;
     const W = this.scale.width;
-    this.promptText.setText(text).setPosition(W / 2, y);
+    const H = this.scale.height;
+    const isPortraitMobile = this.isMobile && H > W;
+    if (isPortraitMobile) {
+      this.skipBtn.setPosition(W - this.p(20), H / 2).setOrigin(1, 0.5);
+    } else {
+      this.skipBtn.setPosition(W - this.p(20), H - this.p(12)).setOrigin(1, 1);
+    }
+  }
+
+  showPrompt(text: string, y: number, anchorY: number = 0.5) {
+    const W = this.scale.width;
+    this.promptText.setOrigin(0.5, anchorY).setText(text).setPosition(W / 2, y);
 
     // Draw text background panel
     const bounds = this.promptText.getBounds();
