@@ -364,6 +364,24 @@ class SfxManager {
     this.bgmPlaying = false;
   }
 
+  /** Fade BGM volume to silence over `durationMs`, then stop the source. */
+  fadeOutBgm(durationMs = 1500) {
+    if (!this.ctx || !this.bgmGain || !this.bgmSource) { this.stopBgm(); return; }
+    const now = this.ctx.currentTime;
+    const end = now + durationMs / 1000;
+    const g = this.bgmGain.gain;
+    g.cancelScheduledValues(now);
+    g.setValueAtTime(g.value, now);
+    // linearRamp to 0 (avoid 0 with exponential)
+    g.linearRampToValueAtTime(0, end);
+    const src = this.bgmSource;
+    setTimeout(() => {
+      if (this.bgmSource === src) this.stopBgm();
+      // Restore gain so future playBgm calls aren't silent
+      if (this.bgmGain) this.bgmGain.gain.value = this._muted ? 0 : this._bgmVolume;
+    }, durationMs + 50);
+  }
+
   get bgmVolume() { return this._bgmVolume; }
   set bgmVolume(v: number) {
     this._bgmVolume = Math.max(0, Math.min(1, v));

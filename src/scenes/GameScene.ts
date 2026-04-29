@@ -1164,19 +1164,17 @@ export class GameScene extends Phaser.Scene {
     const pad = 28; // distance from screen edge
     const cx = cam.width / 2;
     const cy = cam.height / 2;
+    const margin = 40;
+    // Visible world rect — accounts for camera zoom so off-screen detection
+    // is correct on high-DPI displays (sf > 1) where cam.width != worldView width.
+    const wv = cam.worldView;
 
     // Track which towers are still alive for cleanup
     const alive = new Set(this.towers);
 
     for (const t of this.towers) {
-      // Tower screen position
-      const sx = t.x - cam.scrollX;
-      const sy = t.y - cam.scrollY;
-
-      // Is tower on screen? (with margin)
-      const margin = 40;
-      const onScreen = sx > -margin && sx < cam.width + margin &&
-                       sy > -margin && sy < cam.height + margin;
+      const onScreen = t.x > wv.x - margin && t.x < wv.right + margin &&
+                       t.y > wv.y - margin && t.y < wv.bottom + margin;
 
       // Get or create indicator
       let ind = this.towerIndicators.get(t);
@@ -1196,9 +1194,9 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      // Ray from screen center to tower screen pos, intersect with screen rect
-      const dx = sx - cx;
-      const dy = sy - cy;
+      // Direction in world space → project onto screen-space rect for the edge marker
+      const dx = t.x - cam.midPoint.x;
+      const dy = t.y - cam.midPoint.y;
       if (dx === 0 && dy === 0) continue;
 
       const scaleX = dx !== 0 ? (cx - pad) / Math.abs(dx) : Infinity;
@@ -1210,7 +1208,6 @@ export class GameScene extends Phaser.Scene {
       const angle = Math.atan2(dy, dx);
 
       ind.bg.setPosition(edgeX, edgeY).setVisible(true);
-      // Pointer offset from bg center, pointing toward tower
       ind.ptr.setPosition(edgeX + Math.cos(angle) * 18, edgeY + Math.sin(angle) * 18)
         .setRotation(angle).setVisible(true);
     }
@@ -1224,14 +1221,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Boss off-screen indicator
+    // Boss off-screen indicator — covers regular bosses and castle bosses
+    // (queen + dragon, both stored in this.boss by spawnCastleBoss)
     const b = this.boss;
     if (b && b.active && !b.dying) {
-      const bsx = b.x - cam.scrollX;
-      const bsy = b.y - cam.scrollY;
-      const margin = 40;
-      const bossOnScreen = bsx > -margin && bsx < cam.width + margin &&
-                           bsy > -margin && bsy < cam.height + margin;
+      const bossOnScreen = b.x > wv.x - margin && b.x < wv.right + margin &&
+                           b.y > wv.y - margin && b.y < wv.bottom + margin;
 
       if (!this.bossIndicator) {
         const bg = this.add.sprite(0, 0, 'ind_boss')
@@ -1245,8 +1240,8 @@ export class GameScene extends Phaser.Scene {
         this.bossIndicator.bg.setVisible(false);
         this.bossIndicator.ptr.setVisible(false);
       } else {
-        const dx = bsx - cx;
-        const dy = bsy - cy;
+        const dx = b.x - cam.midPoint.x;
+        const dy = b.y - cam.midPoint.y;
         if (dx !== 0 || dy !== 0) {
           const scaleX = dx !== 0 ? (cx - pad) / Math.abs(dx) : Infinity;
           const scaleY = dy !== 0 ? (cy - pad) / Math.abs(dy) : Infinity;
@@ -4180,6 +4175,9 @@ export class GameScene extends Phaser.Scene {
       });
     }, 900);
 
+    // Fade BGM during the death animation so the defeat screen lands in silence
+    SFX.fadeOutBgm(2500);
+
     // Show defeat screen after the full animation (real-time)
     setTimeout(() => {
       if (!this.scene.isActive()) return;
@@ -4196,6 +4194,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.physics.pause();
+    SFX.fadeOutBgm(1500);
     SFX.play('victory');
     this.game.events.emit('game-end', { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money });
   }
