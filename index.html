@@ -2,7 +2,7 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no" />
+    <meta name="viewport" content="width=device-width,initial-scale=1,user-scalable=no,viewport-fit=cover" />
     <title>Ranger Danger</title>
     <meta name="description" content="A tower defense survival game. Build towers, place walls, and defend against waves of enemies across 4 biomes." />
 
@@ -28,16 +28,41 @@
 
     <style>
       *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-      html, body { background:#05070d; color:#eee; font-family: system-ui, -apple-system, sans-serif; overflow-x:hidden; height:100%; }
+      html, body {
+        background:#05070d; color:#eee;
+        font-family: system-ui, -apple-system, sans-serif;
+        overflow: hidden;            /* prevent page scroll, esp. on mobile */
+        overscroll-behavior: none;   /* no pull-to-refresh / rubber-band */
+        height: 100%;
+      }
 
       /* ---- Game canvas ---- */
-      #game { width:100vw; height:100vh; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+      #game {
+        width: 100vw;
+        /* 100vh on iOS Safari includes the area behind the URL bar, while
+         * window.innerHeight (used to size the canvas) does not — that
+         * mismatch left a black gap above the canvas in landscape. dvh
+         * tracks the visible viewport, so the centered canvas fills it. */
+        height: 100vh;
+        height: 100dvh;
+        display: flex; align-items: center; justify-content: center;
+        overflow: hidden;
+        touch-action: none;          /* canvas owns gestures; no browser panning */
+      }
       canvas { image-rendering: pixelated; image-rendering: crisp-edges; }
 
       /* ---- Landing overlay ---- */
       #overlay {
         position:fixed; inset:0; z-index:10;
-        display:flex; align-items:center; justify-content:center;
+        display:flex;
+        /* `safe center` keeps centering when content fits, but falls back to
+         * flex-start when it overflows. Plain `center` with overflowing
+         * flex content makes the top of the content unreachable — the
+         * browser snaps the scroll back, hiding everything above the
+         * centerline (including the RANGER DANGER title) behind the iOS
+         * status bar. */
+        align-items:safe center;
+        justify-content:center;
         background:#05070d;
         overflow-y:auto; overflow-x:hidden;
       }
@@ -63,7 +88,9 @@
         position:relative; z-index:1;
         width:100%; max-width:640px;
         text-align:center;
-        padding:80px 20px 32px;
+        /* safe-area-inset-top clears the iOS notch / dynamic island; the
+         * baseline gives breathing room above the title without wasting space. */
+        padding: calc(env(safe-area-inset-top, 0px) + 24px) 20px calc(env(safe-area-inset-bottom, 0px) + 32px);
         margin:0 auto;
       }
 
@@ -290,7 +317,7 @@
       }
       @media (max-width: 400px) {
         .features { grid-template-columns: repeat(2, 1fr); }
-        .landing { padding:24px 12px 24px; }
+        .landing { padding: calc(env(safe-area-inset-top, 0px) + 16px) 12px calc(env(safe-area-inset-bottom, 0px) + 24px); }
       }
     </style>
   </head>

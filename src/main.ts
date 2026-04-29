@@ -5,6 +5,8 @@ import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { TutorialScene } from './scenes/TutorialScene';
+import { SFX } from './audio/sfx';
+import { installViewportResizeListener } from './viewport';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
@@ -36,6 +38,11 @@ function start() {
   if (started) return;
   started = true;
 
+  // Unlock audio FIRST, synchronously, while we're still inside the click
+  // gesture. iOS requires this for both WebAudio resume and the silent-loop
+  // hack that bypasses the mute switch.
+  SFX.unlock();
+
   // Hide overlay immediately — level select appears fast since art is deferred
   overlay.classList.add('hidden');
   requestWakeLock();
@@ -63,6 +70,19 @@ function start() {
     overlay.classList.add('hidden');
     const landing = document.getElementById('landingPanel');
     if (landing) landing.classList.remove('loading');
+  });
+
+  // Resize / orientation handling. When the viewport changes, update the
+  // shared scale registry values and broadcast a `viewport-changed` event.
+  // Each scene is responsible for setting its own gameSize (LevelSelect locks
+  // to a 3:2 fit; GameScene fills the device viewport), so this top-level
+  // handler intentionally does NOT call setGameSize itself.
+  installViewportResizeListener((vp) => {
+    game.registry.set('sf', vp.uiScale);
+    game.registry.set('cameraZoom', vp.cameraZoom);
+    game.registry.set('uiScale', vp.uiScale);
+    game.registry.set('isMobile', vp.isMobile);
+    game.events.emit('viewport-changed', vp);
   });
 }
 

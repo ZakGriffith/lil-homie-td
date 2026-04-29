@@ -11,6 +11,7 @@ import { createSparseGrid, findPath, canReachFromSpawnDirections, gridGet, gridS
 import { SFX } from '../audio/sfx';
 import { createGroundChunk, TREE_PATTERNS, generateAllArt, registerAnimations, getRiverTileGrid, riverCenterPx, RIVER_HALF_W, riverHorizontalCenterY } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
+import { computeViewport, viewportWorldSize } from '../viewport';
 
 type BuildKind = 'none' | 'tower' | 'wall';
 
@@ -39,6 +40,13 @@ export class GameScene extends Phaser.Scene {
   buildKind: BuildKind = 'none';
   buildTowerKind: TowerKind = 'arrow';
   buildPaused = false;
+  // Bound listeners stored so shutdown() can remove the exact handlers it
+  // registered. Calling game.events.off(name) without a fn ref nukes ALL
+  // listeners for that event — including ones the next GameScene's create()
+  // may have already registered if Phaser interleaves shutdown/create.
+  private _onUiBuild?: (k: BuildKind, tk?: TowerKind) => void;
+  private _onUiSell?: () => void;
+  private _onUiSpeed?: (mult: number) => void;
   nextRunnerPack = 0;
   playerStoppedAt = 0;
   ghost!: Phaser.GameObjects.Sprite;
@@ -99,6 +107,9 @@ export class GameScene extends Phaser.Scene {
   squiggleTimer = 0;
   treeSeed = 0;
   sf = 1; // native resolution scale factor
+  /** Effective spawn/chunk radius in tiles. Desktop: CFG.spawnDist (unchanged).
+   *  Mobile: grown when the viewport shows more world than the desktop default covers. */
+  spawnDist = CFG.spawnDist;
   _wallCheckCache = { key: '', valid: false };
   _lastWallCheckPlayerTile = '';
   _warmupFrames = 0;
@@ -145,6 +156,12 @@ export class GameScene extends Phaser.Scene {
     this.boss = null;
     this.bossSpawned = false;
     this.bossCountdownUntil = 0;
+    // Clear any persisted boss state from the previous run/level.
+    this.game.registry.set('bossActive', false);
+    this.game.registry.set('bossHp', 0);
+    this.game.registry.set('bossMaxHp', 0);
+    this.game.registry.set('bossBiome', '');
+    this.game.registry.set('gameEndState', null);
     this.killsTarget = CFG.winKills;
     this.gameOver = false;
     this.boulders = [];
@@ -213,14 +230,18 @@ export class GameScene extends Phaser.Scene {
       tileWidth: CFG.tile, tileHeight: CFG.tile,
       width: mapSize, height: mapSize
     });
-    // 1px transparent + 1px solid tileset
-    const canvas = document.createElement('canvas');
-    canvas.width = CFG.tile * 2; canvas.height = CFG.tile;
-    const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#ff00ff';
-    ctx.fillRect(CFG.tile, 0, CFG.tile, CFG.tile); // tile index 1 = solid
+    // 1px transparent + 1px solid tileset (registered once at the global
+    // texture manager — the canvas/texture survive scene shutdowns, so on
+    // subsequent runs we just reuse the existing entry instead of warning).
     const tilesetKey = 'wall_collision_tileset';
-    this.textures.addCanvas(tilesetKey, canvas);
+    if (!this.textures.exists(tilesetKey)) {
+      const canvas = document.createElement('canvas');
+      canvas.width = CFG.tile * 2; canvas.height = CFG.tile;
+      const ctx = canvas.getContext('2d')!;
+      ctx.fillStyle = '#ff00ff';
+      ctx.fillRect(CFG.tile, 0, CFG.tile, CFG.tile); // tile index 1 = solid
+      this.textures.addCanvas(tilesetKey, canvas);
+    }
     const tileset = this.wallTilemap.addTilesetImage(tilesetKey, tilesetKey, CFG.tile, CFG.tile)!;
     this.wallLayer = this.wallTilemap.createBlankLayer('walls', tileset,
       -(mapSize / 2) * CFG.tile, -(mapSize / 2) * CFG.tile)!;
@@ -228,11 +249,45 @@ export class GameScene extends Phaser.Scene {
     this.wallLayer.setVisible(false); // invisible — walls have their own sprites
     this.wallLayer.setDepth(-1);
 
+    // Expand the canvas back to the full device viewport (LevelSelectScene
+    // shrunk it to a 3:2 fit). On desktop this is a no-op since the viewport
+    // size equals 3:2 * sf already; on mobile this kills the letterbox.
+    {
+      const vp = computeViewport();
+      this.scale.setGameSize(vp.renderW, vp.renderH);
+      this.scale.refresh();
+    }
+
     // player — starts at origin, camera follows
     this.player = new Player(this, 0, 0);
     this.sf = this.game.registry.get('sf') || 1;
-    this.cameras.main.setZoom(this.sf);
+    const cameraZoom = this.game.registry.get('cameraZoom') ?? this.sf;
+    this.cameras.main.setZoom(cameraZoom);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
+
+    // Viewport-aware spawn radius. Desktop keeps CFG.spawnDist exactly (hard
+    // requirement). On mobile the view aspect differs from 3:2, so the corner
+    // distance can exceed 18 tiles (notably in portrait) — grow to cover it.
+    this.recomputeSpawnDist();
+
+    // React to rotation / window resize: resize the canvas to the new device
+    // viewport, pull the new camera zoom out of the registry, and grow chunk/
+    // spawn radius to match. World state (player, towers, enemies) stays
+    // untouched.
+    const onViewportChanged = () => {
+      const vp = computeViewport();
+      this.scale.setGameSize(vp.renderW, vp.renderH);
+      this.scale.refresh();
+      this.cameras.main.setZoom(vp.cameraZoom);
+      this.recomputeSpawnDist();
+      // Force chunk regeneration around player at the new view radius.
+      this.lastChunkCx = -9999;
+      this.lastChunkCy = -9999;
+    };
+    this.game.events.on('viewport-changed', onViewportChanged);
+    this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
+      this.game.events.off('viewport-changed', onViewportChanged);
+    });
 
     // Apply difficulty adjustments
     if (this.difficulty === 'oneHP') {
@@ -308,7 +363,17 @@ export class GameScene extends Phaser.Scene {
 
     // events from UI
     this.events.emit('hud', this.hudState());
-    this.game.events.on('ui-build', (k: BuildKind, tk?: TowerKind) => {
+    // Defensive: drop any leftover listeners from a previous run before
+    // registering ours. The old shutdown path doesn't always fire in time
+    // (e.g. on win the panel→stop happens synchronously inside an input
+    // handler and Phaser can interleave the create of the next run before
+    // the previous shutdown), which would leave us with two listeners both
+    // toggling buildKind on the same singleton scene instance — they cancel
+    // each other and the build menu never opens.
+    this.game.events.off('ui-build');
+    this.game.events.off('ui-sell');
+    this.game.events.off('ui-speed');
+    this._onUiBuild = (k: BuildKind, tk?: TowerKind) => {
       const ts = this.game.registry.get('tutorialStep');
       if (ts) {
         if (ts === 'game_press_1' && k === 'tower' && tk === 'arrow') { /* allowed */ }
@@ -317,9 +382,12 @@ export class GameScene extends Phaser.Scene {
         else return; // block everything else during tutorial
       }
       this.toggleBuild(k, tk);
-    });
-    this.game.events.on('ui-sell', () => this.setBuild('none'));
-    this.game.events.on('ui-speed', (mult: number) => this.setTimeScale(mult));
+    };
+    this._onUiSell = () => this.setBuild('none');
+    this._onUiSpeed = (mult: number) => this.setTimeScale(mult);
+    this.game.events.on('ui-build', this._onUiBuild);
+    this.game.events.on('ui-sell', this._onUiSell);
+    this.game.events.on('ui-speed', this._onUiSpeed);
 
     // Apply default game speed (1.25x base)
     this.setTimeScale(this.timeMult);
@@ -478,7 +546,7 @@ export class GameScene extends Phaser.Scene {
     }
     // Temporarily block tiles and check spawn directions can still reach the player
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, tx + i, ty + j, 2);
-    const ok = canReachFromSpawnDirections(this.grid, pt.x, pt.y, CFG.spawnDist);
+    const ok = canReachFromSpawnDirections(this.grid, pt.x, pt.y, this.spawnDist);
     for (let j = 0; j < s; j++) for (let i = 0; i < s; i++) gridSet(this.grid, tx + i, ty + j, 0);
     return ok;
   }
@@ -489,6 +557,16 @@ export class GameScene extends Phaser.Scene {
     // Right-click cancels build mode
     if (p.rightButtonDown() && this.buildKind !== 'none') {
       this.setBuild('none');
+      return;
+    }
+
+    // Ignore taps that land inside the mobile joystick's hit zone — otherwise
+    // dragging the stick during build mode would also place a tower beneath
+    // the thumb. Bounds are published by UIScene in screen-space pixels.
+    const jb = this.game.registry.get('joystickBounds') as
+      | { x: number; y: number; w: number; h: number }
+      | undefined;
+    if (jb && p.x >= jb.x && p.x <= jb.x + jb.w && p.y >= jb.y && p.y <= jb.y + jb.h) {
       return;
     }
 
@@ -883,9 +961,23 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Recompute the effective spawn radius from the current viewport. Desktop
+   *  always resolves to CFG.spawnDist; mobile grows it to cover the camera's
+   *  corner distance plus a 2-tile margin so enemies still spawn off-screen. */
+  recomputeSpawnDist() {
+    const vp = computeViewport();
+    if (vp.isMobile) {
+      const { w: viewW, h: viewH } = viewportWorldSize(vp);
+      const cornerTiles = Math.ceil(Math.hypot(viewW / 2, viewH / 2) / CFG.tile);
+      this.spawnDist = Math.max(CFG.spawnDist, cornerTiles + 2);
+    } else {
+      this.spawnDist = CFG.spawnDist;
+    }
+  }
+
   /** Count how many of the 4 cardinal spawn directions can reach (px, py). */
   countReachableDirections(px: number, py: number): number {
-    const dist = CFG.spawnDist;
+    const dist = this.spawnDist;
     const testPoints = [
       { x: px, y: py - dist },
       { x: px, y: py + dist },
@@ -1028,6 +1120,13 @@ export class GameScene extends Phaser.Scene {
     // Ghost follow pointer (runs even while build-paused)
     if (this.buildKind !== 'none') {
       const p = this.input.activePointer;
+      // Don't snap the ghost onto the joystick when the player's thumb is on
+      // the stick — keep it at its last position until they tap elsewhere.
+      const jb = this.game.registry.get('joystickBounds') as
+        | { x: number; y: number; w: number; h: number }
+        | undefined;
+      const overJoystick = !!jb && p.x >= jb.x && p.x <= jb.x + jb.w && p.y >= jb.y && p.y <= jb.y + jb.h;
+      if (!overJoystick) {
       const tx = Math.floor(p.worldX / CFG.tile);
       const ty = Math.floor(p.worldY / CFG.tile);
       let buildErr = '';
@@ -1082,6 +1181,7 @@ export class GameScene extends Phaser.Scene {
         this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
       }
       this.game.events.emit('build-error', buildErr);
+      } // end !overJoystick
     }
 
     // Generate ground chunks around player as they move (4ms budget per frame)
@@ -1468,7 +1568,7 @@ export class GameScene extends Phaser.Scene {
     const ptx = Math.floor(this.player.x / t);
     const pty = Math.floor(this.player.y / t);
     // Only do pathfinding checks near spawn (within spawnDist + margin)
-    const nearSpawn = Math.abs(cx * cs) < CFG.spawnDist + cs && Math.abs(cy * cs) < CFG.spawnDist + cs;
+    const nearSpawn = Math.abs(cx * cs) < this.spawnDist + cs && Math.abs(cy * cs) < this.spawnDist + cs;
 
     // Chunk tile origin
     const chunkTileX = cx * cs;
@@ -1501,7 +1601,7 @@ export class GameScene extends Phaser.Scene {
       }
 
       // Pathfinding check only near spawn area
-      if (nearSpawn && !canReachFromSpawnDirections(this.grid, ptx, pty, CFG.spawnDist, 3)) {
+      if (nearSpawn && !canReachFromSpawnDirections(this.grid, ptx, pty, this.spawnDist, 3)) {
         for (const tile of pattern.tiles) {
           gridSet(this.grid, ox + tile.dx, oy + tile.dy, 0);
         }
@@ -1543,6 +1643,21 @@ export class GameScene extends Phaser.Scene {
     if (k.D.isDown || k.RIGHT.isDown) vx += 1;
     if (k.W.isDown || k.UP.isDown) vy -= 1;
     if (k.S.isDown || k.DOWN.isDown) vy += 1;
+
+    // Mobile virtual joystick contribution. UIScene publishes the current
+    // stick vector to the registry every frame. A generous deadzone (0.3
+    // magnitude) ignores thumb rest / jitter; outside the deadzone the input
+    // snaps to a unit vector so movement is binary (full speed, no analog).
+    const jx = (this.game.registry.get('joystickX') as number) || 0;
+    const jy = (this.game.registry.get('joystickY') as number) || 0;
+    const jmag2 = jx * jx + jy * jy;
+    const JOYSTICK_DEADZONE_SQ = 0.3 * 0.3;
+    if (jmag2 >= JOYSTICK_DEADZONE_SQ) {
+      const jmag = Math.sqrt(jmag2);
+      vx += jx / jmag;
+      vy += jy / jmag;
+    }
+
     const moving = vx !== 0 || vy !== 0;
     if (moving) {
       const len = Math.hypot(vx, vy);
@@ -1849,6 +1964,12 @@ export class GameScene extends Phaser.Scene {
   }
 
   updateEnemies(time: number, _delta: number) {
+    // Performance cull radius — enemies further than this from the player
+    // skip AI/animation work this frame. Squared so we don't sqrt per enemy.
+    // Chosen well outside any camera viewport so culled enemies are never
+    // visible. The boss is updated separately and is exempt from this cull.
+    const FAR_AI_CULL_SQ = 1100 * 1100;
+
     this.enemies.children.iterate((c: any) => {
       const e = c as Enemy;
       if (!e || !e.active || e.dying) return true;
@@ -1858,6 +1979,14 @@ export class GameScene extends Phaser.Scene {
       e.targetRef = this.player;
       const prefix = e.dirPrefix();
       const dist2 = (tx - e.x) ** 2 + (ty - e.y) ** 2;
+
+      // Far-AI cull: stop the enemy and skip pathfinding/lineBlocked/etc.
+      // It still exists in the world; once the player gets close it resumes
+      // normal behaviour next frame.
+      if (dist2 > FAR_AI_CULL_SQ) {
+        if (e.body && (e.body as any).enable) e.setVelocity(0, 0);
+        return true;
+      }
 
       // Birds randomly poop while flying
       if ((e.kind === 'crow' || e.kind === 'bat') && Math.random() < 0.0006) {
@@ -2859,7 +2988,7 @@ export class GameScene extends Phaser.Scene {
   spawnBoss() {
     if (this.bossSpawned) return;
     this.bossSpawned = true;
-    const spawnR = CFG.spawnDist * CFG.tile;
+    const spawnR = this.spawnDist * CFG.tile;
     const px = this.player.x, py = this.player.y;
     // spawn at a random corner at spawnDist from the player
     const corners = [
@@ -2891,6 +3020,12 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.boss, this.wallGroup, onStructureHit, () => this.biome !== 'river');
     this.physics.add.collider(this.boss, this.towerGroup, onStructureHit, () => this.biome !== 'river');
     this.game.events.emit('boss-spawn', { hp: this.boss.hp, maxHp: this.boss.maxHp, biome: this.biome });
+    // Persist boss state so a viewport-driven UIScene restart can recreate
+    // the boss bar from registry data (boss-spawn is one-shot).
+    this.game.registry.set('bossActive', true);
+    this.game.registry.set('bossHp', this.boss.hp);
+    this.game.registry.set('bossMaxHp', this.boss.maxHp);
+    this.game.registry.set('bossBiome', this.biome);
     SFX.play('bossSpawn');
     const bossTitle = this.biome === 'forest' ? 'THE WENDIGO'
                     : this.biome === 'infected' ? 'THE BLIGHTED ONE'
@@ -3143,7 +3278,11 @@ export class GameScene extends Phaser.Scene {
     spark.once('animationcomplete', () => spark.destroy());
     pr.destroy();
     this.game.events.emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
-    if (b.dying) this.dropBossLoot(b);
+    this.game.registry.set('bossHp', b.hp);
+    if (b.dying) {
+      this.game.registry.set('bossActive', false);
+      this.dropBossLoot(b);
+    }
   }
 
   dropBossLoot(b: Boss) {
@@ -3318,7 +3457,11 @@ export class GameScene extends Phaser.Scene {
       if (dx * dx + dy * dy <= r2) {
         this.boss.hurt(Math.floor(dmg * 0.6));
         this.game.events.emit('boss-hp', { hp: this.boss.hp, maxHp: this.boss.maxHp });
-        if (this.boss.dying) this.dropBossLoot(this.boss);
+        this.game.registry.set('bossHp', this.boss.hp);
+        if (this.boss.dying) {
+          this.game.registry.set('bossActive', false);
+          this.dropBossLoot(this.boss);
+        }
       }
     }
   }
@@ -3498,7 +3641,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnRunnerPack() {
-    const spawnR = CFG.spawnDist * CFG.tile;
+    const spawnR = this.spawnDist * CFG.tile;
     const waveSize = this.levelWaveSize;
     const side = Phaser.Math.Between(0, 3);
     const px = this.player.x, py = this.player.y;
@@ -3539,7 +3682,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   spawnEnemy() {
-    const spawnR = CFG.spawnDist * CFG.tile;
+    const spawnR = this.spawnDist * CFG.tile;
     const px = this.player.x, py = this.player.y;
     const vx = (this.player.body as Phaser.Physics.Arcade.Body).velocity.x;
     const vy = (this.player.body as Phaser.Physics.Arcade.Body).velocity.y;
@@ -3652,9 +3795,16 @@ export class GameScene extends Phaser.Scene {
       if (this.winDelayUntil === 0) {
         this.winDelayUntil = this.vTime + 12000;
         this.countdownColor = '#7cf29a';
-        // Kill all remaining enemies when the boss dies
-        for (const e of this.enemies.getChildren() as Enemy[]) {
-          if (!e.dying && e.active) e.hurt(9999);
+        // Kill all remaining enemies when the boss dies — staggered so dozens
+        // of die animations don't all start on the same frame and spike GPU
+        // / animation work.
+        const survivors = (this.enemies.getChildren() as Enemy[])
+          .filter((e) => e && e.active && !e.dying);
+        for (let i = 0; i < survivors.length; i++) {
+          const e = survivors[i];
+          this.time.delayedCall(i * 25, () => {
+            if (e.active && !e.dying) e.hurt(9999);
+          });
         }
       }
       const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
@@ -3759,10 +3909,14 @@ export class GameScene extends Phaser.Scene {
       this.gameOver = true;
       this.physics.pause();
       SFX.play('gameOver');
-      this.game.events.emit('game-end', {
+      const payload = {
         win: false, name: 'Ranger',
         kills: this.player.kills, money: this.player.money
-      });
+      };
+      // Persist so a UIScene restart (e.g. mid-rotation) can recover the
+      // panel even if the live event fired while UI had no listener.
+      this.game.registry.set('gameEndState', payload);
+      this.game.events.emit('game-end', payload);
     }, 3500);
   }
   win() {
@@ -3770,13 +3924,18 @@ export class GameScene extends Phaser.Scene {
     this.gameOver = true;
     this.physics.pause();
     SFX.play('victory');
-    this.game.events.emit('game-end', { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money });
+    const payload = { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money };
+    this.game.registry.set('gameEndState', payload);
+    this.game.events.emit('game-end', payload);
   }
 
   shutdown() {
     SFX.stopBgm();
-    this.game.events.off('ui-build');
-    this.game.events.off('ui-sell');
-    this.game.events.off('ui-speed');
+    if (this._onUiBuild) this.game.events.off('ui-build', this._onUiBuild);
+    if (this._onUiSell) this.game.events.off('ui-sell', this._onUiSell);
+    if (this._onUiSpeed) this.game.events.off('ui-speed', this._onUiSpeed);
+    this._onUiBuild = undefined;
+    this._onUiSell = undefined;
+    this._onUiSpeed = undefined;
   }
 }
