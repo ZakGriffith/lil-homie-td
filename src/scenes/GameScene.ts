@@ -479,8 +479,21 @@ export class GameScene extends Phaser.Scene {
     };
   }
 
+  /** Set true while a hud emit is pending for the current frame. Many callers
+   *  (each kill, each coin pickup, each tower place) trigger pushHud in
+   *  bursts; UIScene.updateHud is heavy enough that running it 20+ times per
+   *  frame on mobile drops the framerate noticeably. Coalesce all calls in a
+   *  single frame into one emit at POST_UPDATE so updateHud runs at most once
+   *  per frame regardless of how many pickups happen. */
+  private _hudFlushScheduled = false;
+
   pushHud() {
-    this.game.events.emit('hud', this.hudState());
+    if (this._hudFlushScheduled) return;
+    this._hudFlushScheduled = true;
+    this.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
+      this._hudFlushScheduled = false;
+      this.game.events.emit('hud', this.hudState());
+    });
   }
 
   setTimeScale(mult: number) {
@@ -3525,24 +3538,31 @@ export class GameScene extends Phaser.Scene {
       if (!coin || !coin.active) return true;
       const dx = this.player.x - coin.x;
       const dy = this.player.y - coin.y;
-      const d = Math.hypot(dx, dy);
+      // Squared-distance early reject: avoids sqrt for the common case of
+      // coins far outside magnet range.
+      const sqDist = dx * dx + dy * dy;
+      const magnetR = CFG.coin.magnetRange;
+      if (sqDist > magnetR * magnetR) return true;
+      const d = Math.sqrt(sqDist);
       if (d < 18) {
         // collect
         this.player.money += coin.value;
         this.pushHud();
         SFX.play('coin');
-        this.game.events.emit('tutorial-coin-collected');
+        // Tutorial event: only emit when the tutorial is active. Otherwise
+        // every coin pickup paid for an event dispatch with no listeners.
+        if (this.game.registry.get('tutorialActive')) {
+          this.game.events.emit('tutorial-coin-collected');
+        }
         const pop = this.add.sprite(coin.x, coin.y, 'fx_pop_0').setDepth(15).setScale(0.5);
         pop.play('fx-pop');
         pop.once('animationcomplete', () => pop.destroy());
         coin.destroy();
         return true;
       }
-      if (d < CFG.coin.magnetRange) {
-        const speed = CFG.coin.magnetSpeed * (1 - d / CFG.coin.magnetRange + 0.2);
-        coin.x += (dx / d) * speed * dt;
-        coin.y += (dy / d) * speed * dt;
-      }
+      const speed = CFG.coin.magnetSpeed * (1 - d / magnetR + 0.2);
+      coin.x += (dx / d) * speed * dt;
+      coin.y += (dy / d) * speed * dt;
       return true;
     });
   }
