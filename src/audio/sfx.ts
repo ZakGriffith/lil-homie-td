@@ -69,14 +69,14 @@ class SfxManager {
   private buffers: Partial<Record<SfxKey, AudioBuffer>> = {};
   private ctx: AudioContext | null = null;
   private gainNode: GainNode | null = null;
-  private _volume = 0.22;
+  private _volume = 0.32;
   private _muted = false;
 
   // Background music
   private bgmGain: GainNode | null = null;
   private bgmSource: AudioBufferSourceNode | null = null;
   private bgmBuffer: AudioBuffer | null = null;
-  private _bgmVolume = 0.12;
+  private _bgmVolume = 0.07;
   private bgmPlaying = false;
   private lastPlayed: Partial<Record<SfxKey, number>> = {};
   private cooldowns: Partial<Record<SfxKey, number>> = {

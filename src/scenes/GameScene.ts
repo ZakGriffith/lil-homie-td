@@ -271,10 +271,22 @@ export class GameScene extends Phaser.Scene {
     // boss overlaps set up when boss spawns (since it's created later)
 
     // input
-    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ONE,TWO,THREE,X,ESC');
-    this.input.keyboard!.on('keydown-ONE', () => this.toggleBuild('tower', 'arrow'));
-    this.input.keyboard!.on('keydown-TWO', () => this.toggleBuild('tower', 'cannon'));
-    this.input.keyboard!.on('keydown-THREE', () => this.toggleBuild('wall'));
+    this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ONE,TWO,THREE,FOUR,X,ESC');
+    this.input.keyboard!.on('keydown-ONE', () => {
+      const ts = this.game.registry.get('tutorialStep');
+      if (ts && ts !== 'game_press_1' && ts !== 'game_place_tower') return;
+      this.toggleBuild('tower', 'arrow');
+    });
+    this.input.keyboard!.on('keydown-TWO', () => {
+      if (this.game.registry.get('tutorialStep')) return; // blocked during tutorial
+      this.toggleBuild('tower', 'cannon');
+    });
+    // Key 3 reserved for mage tower (not yet implemented)
+    this.input.keyboard!.on('keydown-FOUR', () => {
+      const ts = this.game.registry.get('tutorialStep');
+      if (ts && ts !== 'game_press_4' && ts !== 'game_place_walls') return;
+      this.toggleBuild('wall');
+    });
     this.input.keyboard!.on('keydown-ESC', () => {
       if (this.selectedTower) this.deselectTower();
       else this.setBuild('none');
@@ -296,7 +308,16 @@ export class GameScene extends Phaser.Scene {
 
     // events from UI
     this.events.emit('hud', this.hudState());
-    this.game.events.on('ui-build', (k: BuildKind, tk?: TowerKind) => this.toggleBuild(k, tk));
+    this.game.events.on('ui-build', (k: BuildKind, tk?: TowerKind) => {
+      const ts = this.game.registry.get('tutorialStep');
+      if (ts) {
+        if (ts === 'game_press_1' && k === 'tower' && tk === 'arrow') { /* allowed */ }
+        else if ((ts === 'game_press_4' || ts === 'game_place_walls') && k === 'wall') { /* allowed */ }
+        else if (ts === 'game_place_tower' && k === 'tower' && tk === 'arrow') { /* allowed */ }
+        else return; // block everything else during tutorial
+      }
+      this.toggleBuild(k, tk);
+    });
     this.game.events.on('ui-sell', () => this.setBuild('none'));
     this.game.events.on('ui-speed', (mult: number) => this.setTimeScale(mult));
 
@@ -416,7 +437,7 @@ export class GameScene extends Phaser.Scene {
     if (k === 'tower' && towerKind) this.buildTowerKind = towerKind;
     this.ghost.setVisible(k !== 'none');
     if (this.gridOverlay) this.gridOverlay.setVisible(k !== 'none');
-    this.game.events.emit('build-mode', k !== 'none');
+    this.game.events.emit('build-mode', k !== 'none', k, towerKind);
     if (k === 'none') this.game.events.emit('build-error', '');
     if (k === 'tower') {
       this.ghost.setTexture(this.buildTowerKind === 'cannon' ? 'c_base' : 't_base');
@@ -519,6 +540,7 @@ export class GameScene extends Phaser.Scene {
       this.gridVersion++; this._wallCheckCache = { key: '', valid: false }; this.rebuildGapBlockers(); this.rebuildGapBlockers();
       this.pushHud();
       SFX.play('towerPlace');
+      if (this.game.registry.get('tutorialActive')) this.game.events.emit('tutorial-tower-placed');
       this.setBuild('none');
       return;
     }
@@ -543,6 +565,7 @@ export class GameScene extends Phaser.Scene {
     this.gridVersion++; this._wallCheckCache = { key: '', valid: false }; this.rebuildGapBlockers();
     this.pushHud();
     SFX.play('wallPlace');
+    if (this.game.registry.get('tutorialActive')) this.game.events.emit('tutorial-wall-placed');
   }
 
   sellAt(tx: number, ty: number) {
@@ -676,6 +699,7 @@ export class GameScene extends Phaser.Scene {
     this.selectedTower = t;
     this.drawSelectionRing(t);
     this.buildTowerPanel(t);
+    this.game.events.emit('tutorial-tower-selected');
     // Freeze game while tower panel is open
     if (!this.buildPaused) {
       this.buildPaused = true;
@@ -690,6 +714,7 @@ export class GameScene extends Phaser.Scene {
     this.selectionRing.clear().setVisible(false);
     this.towerPanel.removeAll(true);
     this.towerPanel.setVisible(false);
+    this.game.events.emit('tutorial-tower-deselected');
     // Unfreeze if no build mode active either
     if (this.buildPaused && this.buildKind === 'none') {
       this.buildPaused = false;
@@ -808,6 +833,7 @@ export class GameScene extends Phaser.Scene {
     t.upgrade();
     SFX.play('upgrade');
     this.floatText(t.x, t.y - 40, `LVL ${t.level + 1}`, '#7cf29a');
+    this.game.events.emit('tutorial-tower-upgraded');
     this.pushHud();
     // refresh ring + panel
     this.drawSelectionRing(t);
@@ -3162,6 +3188,7 @@ export class GameScene extends Phaser.Scene {
       this.player.kills++;
       this.waveKills++;
       this.pushHud();
+      if (this.game.registry.get('tutorialActive')) this.game.events.emit('tutorial-kill');
     }
   }
 
@@ -3351,6 +3378,7 @@ export class GameScene extends Phaser.Scene {
         this.player.money += coin.value;
         this.pushHud();
         SFX.play('coin');
+        this.game.events.emit('tutorial-coin-collected');
         const pop = this.add.sprite(coin.x, coin.y, 'fx_pop_0').setDepth(15).setScale(0.5);
         pop.play('fx-pop');
         pop.once('animationcomplete', () => pop.destroy());
@@ -3370,6 +3398,11 @@ export class GameScene extends Phaser.Scene {
   updateSpawning(time: number, delta: number) {
     // initial build phase — show countdown, don't spawn anything yet
     if (time < this.waveStartAt) {
+      if (this.waveStartAt === Infinity) {
+        this.countdownMsg = '';
+        this.pushHud();
+        return;
+      }
       const secs = Math.ceil((this.waveStartAt - time) / 1000);
       this.countdownMsg = `BUILD PHASE — ${secs}s`;
       this.countdownColor = '#7cc4ff';

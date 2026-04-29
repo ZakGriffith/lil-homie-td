@@ -5,6 +5,7 @@ import {
   LEVELS, LevelDef, Difficulty, DIFFICULTY_ORDER, DIFFICULTY_LABELS,
   MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, isLevelUnlocked, MedalStore
 } from '../levels';
+import { isTutorialNeeded } from './TutorialScene';
 
 export class LevelSelectScene extends Phaser.Scene {
   medalStore!: MedalStore;
@@ -89,6 +90,11 @@ export class LevelSelectScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: this.p(2)
     }).setOrigin(0.5).setDepth(2);
 
+    // Launch tutorial for first-time players
+    if (isTutorialNeeded()) {
+      this.game.registry.set('tutorialActive', true);
+      this.scene.launch('Tutorial');
+    }
   }
 
   // ---- PATH LINES ----
@@ -292,6 +298,8 @@ export class LevelSelectScene extends Phaser.Scene {
         .setInteractive({ useHandCursor: unlocked }).setDepth(5);
 
       hitZone.on('pointerdown', () => {
+        // During tutorial, only the Meadow node is clickable
+        if (this.game.registry.get('tutorialStep') === 'ls_click_meadow' && level.id !== 1) return;
         if (!unlocked) {
           const prevLevel = LEVELS.find(l => l.id === level.id - 1);
           const prevName = prevLevel ? prevLevel.name : `Level ${level.id - 1}`;
@@ -304,6 +312,9 @@ export class LevelSelectScene extends Phaser.Scene {
         }
         SFX.play('click');
         this.openDifficultyPanel(level);
+        if (this.game.registry.get('tutorialActive')) {
+          this.game.events.emit('tutorial-level-clicked', level.id);
+        }
       });
 
       // Hover glow
@@ -379,7 +390,10 @@ export class LevelSelectScene extends Phaser.Scene {
     // Backdrop
     const backdrop = this.add.rectangle(0, 0, W, H, 0x000000, 0.65)
       .setInteractive();
-    backdrop.on('pointerdown', () => this.closeDifficultyPanel());
+    backdrop.on('pointerdown', () => {
+      if (this.game.registry.get('tutorialActive')) return; // don't close during tutorial
+      this.closeDifficultyPanel();
+    });
 
     // Panel box
     const outerBox = this.add.graphics();
@@ -439,6 +453,7 @@ export class LevelSelectScene extends Phaser.Scene {
       }).setOrigin(0, 0.5);
 
       hitRect.on('pointerover', () => {
+        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
         btnBg.clear();
         btnBg.fillStyle(0x2a3760, 1);
         btnBg.fillRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
@@ -446,6 +461,7 @@ export class LevelSelectScene extends Phaser.Scene {
         btnBg.strokeRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
       });
       hitRect.on('pointerout', () => {
+        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
         const selected = this.selectedDiff === diff;
         btnBg.clear();
         btnBg.fillStyle(selected ? 0x2a3a60 : 0x1a2540, 1);
@@ -454,6 +470,8 @@ export class LevelSelectScene extends Phaser.Scene {
         btnBg.strokeRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
       });
       hitRect.on('pointerdown', () => {
+        // During tutorial, only Easy is selectable
+        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
         SFX.play('click');
         this.selectedDiff = diff;
         for (const btn of this.diffButtons) {
@@ -467,6 +485,9 @@ export class LevelSelectScene extends Phaser.Scene {
           btn.text.setColor(sel ? '#fff' : '#ccd');
         }
         this.updateStartButton();
+        if (this.game.registry.get('tutorialActive')) {
+          this.game.events.emit('tutorial-diff-clicked', diff);
+        }
       });
 
       this.diffButtons.push({ bg: btnBg, text: label, diff });

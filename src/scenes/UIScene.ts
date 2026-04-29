@@ -190,9 +190,10 @@ export class UIScene extends Phaser.Scene {
     }).setOrigin(0.5, 1).setDepth(900).setVisible(false);
 
     // Build mode cancel hint
-    this.buildHintText = this.add.text(W / 2, hotbarTop - this.p(38), 'Right-click or ESC to cancel', {
-      fontFamily: 'monospace', fontSize: this.fs(10), color: '#7a8a9a',
-      stroke: '#0b0f1a', strokeThickness: this.p(2)
+    this.buildHintText = this.add.text(W / 2, hotbarTop - this.p(38), 'Right-click or ESC to leave build menu', {
+      fontFamily: 'monospace', fontSize: this.fs(12), color: '#c8d8e8',
+      stroke: '#0b0f1a', strokeThickness: this.p(3),
+      backgroundColor: '#11172aDD', padding: { x: Number(this.p(8)), y: Number(this.p(4)) }
     }).setOrigin(0.5, 1).setDepth(900).setVisible(false);
 
     // listen for HUD updates

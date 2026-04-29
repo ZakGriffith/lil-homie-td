@@ -4,6 +4,7 @@ import { BootScene } from './scenes/BootScene';
 import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
+import { TutorialScene } from './scenes/TutorialScene';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
@@ -54,7 +55,7 @@ function start() {
       mode: Phaser.Scale.FIT,
       autoCenter: Phaser.Scale.NO_CENTER
     },
-    scene: [BootScene, LevelSelectScene, GameScene, UIScene]
+    scene: [BootScene, LevelSelectScene, GameScene, UIScene, TutorialScene]
   });
 
   // Hide overlay once GameScene is ready (after "Generating world..." from level select)
