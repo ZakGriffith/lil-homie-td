@@ -190,69 +190,39 @@
         line-height:1.4;
       }
 
-      /* ---- Twitter banner ---- */
-      .twitter-bar {
+      /* ---- Follow on X card ---- */
+      .x-card {
         margin-top:28px;
         display:flex;
+        align-items:center;
+        justify-content:center;
+        gap:12px;
+        padding:14px 24px;
         border:1px solid rgba(34,197,94,0.15);
         border-radius:12px;
-        overflow:hidden;
         background:rgba(10,18,30,0.7);
-      }
-      .twitter-left {
-        flex:1;
-        display:flex;
-        align-items:center;
-        gap:14px;
-        padding:16px 18px;
-      }
-      .twitter-left .tw-icon {
-        flex-shrink:0;
-        width:36px; height:36px;
-        background:linear-gradient(135deg, #1a3a5c, #0f2440);
-        border-radius:6px;
-        display:flex; align-items:center; justify-content:center;
-      }
-      .twitter-left .tw-text { text-align:left; }
-      .twitter-left .tw-label {
-        font-family:'Cinzel', serif;
-        font-weight:700;
-        font-size:13px;
-        color:#4ade80;
-        letter-spacing:1px;
-        text-transform:uppercase;
-      }
-      .twitter-left .tw-sub {
-        font-size:11px;
-        color:#7a8a9a;
-        margin-top:2px;
-      }
-      .twitter-right {
-        display:flex;
-        align-items:center;
-        gap:10px;
-        padding:16px 20px;
-        border-left:1px solid rgba(34,197,94,0.1);
         text-decoration:none;
         color:inherit;
-        transition:background 0.15s;
+        cursor:pointer;
+        transition:background 0.15s, border-color 0.15s;
       }
-      .twitter-right:hover { background:rgba(29,161,242,0.08); }
-      .twitter-right .tw-handle-label {
-        font-size:10px;
-        color:#5a7a9a;
-        text-transform:uppercase;
-        letter-spacing:1px;
+      .x-card:hover { background:rgba(255,255,255,0.05); border-color:rgba(34,197,94,0.3); }
+      .x-card .x-logo {
+        flex-shrink:0;
+        width:32px; height:32px;
       }
-      .twitter-right .tw-handle {
+      .x-card .x-text {
         font-family:'Cinzel', serif;
         font-weight:700;
         font-size:14px;
-        color:#5aace0;
+        color:#e0e0e0;
+        letter-spacing:1px;
       }
-
-      /* Twitter bird SVG color */
-      .tw-bird { fill:#1da1f2; }
+      .x-card .x-handle {
+        font-size:12px;
+        color:#7a8a9a;
+        margin-top:2px;
+      }
 
       /* ---- Footer ---- */
       .footer {
@@ -284,8 +254,6 @@
         .features .feat:nth-child(5) {
           grid-column: span 1;
         }
-        .twitter-bar { flex-direction:column; }
-        .twitter-right { border-left:none; border-top:1px solid rgba(34,197,94,0.1); justify-content:center; }
         .play-btn { padding:12px 40px; }
       }
       @media (max-width: 400px) {
@@ -377,25 +345,16 @@
           </div>
         </div>
 
-        <!-- Twitter bar -->
-        <div class="twitter-bar">
-          <div class="twitter-left">
-            <div class="tw-icon">
-              <svg width="20" height="20" viewBox="0 0 24 24"><path class="tw-bird" d="M23.643 4.937c-.835.37-1.732.62-2.675.733a4.67 4.67 0 002.048-2.578 9.3 9.3 0 01-2.958 1.13 4.66 4.66 0 00-7.938 4.25 13.229 13.229 0 01-9.602-4.868c-.4.69-.63 1.49-.63 2.342A4.66 4.66 0 003.96 9.824a4.647 4.647 0 01-2.11-.583v.06a4.66 4.66 0 003.737 4.568 4.692 4.692 0 01-2.104.08 4.661 4.661 0 004.352 3.234 9.348 9.348 0 01-5.786 1.995 9.5 9.5 0 01-1.112-.065 13.175 13.175 0 007.14 2.093c8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602a9.47 9.47 0 002.323-2.41l.002-.003z"/></svg>
-            </div>
-            <div class="tw-text">
-              <div class="tw-label">Follow Development</div>
-              <div class="tw-sub">Get updates, devlogs, and sneak peeks of what's coming next!</div>
-            </div>
+        <!-- Follow on X -->
+        <a class="x-card" href="https://x.com/ZakAgain" target="_blank" rel="noopener">
+          <svg class="x-logo" viewBox="0 0 24 24" fill="#e0e0e0" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/>
+          </svg>
+          <div>
+            <div class="x-text">Follow on X</div>
+            <div class="x-handle">@ZakAgain</div>
           </div>
-          <a class="twitter-right" href="https://twitter.com/ZakAgain" target="_blank" rel="noopener">
-            <svg width="18" height="18" viewBox="0 0 24 24"><path class="tw-bird" d="M23.643 4.937c-.835.37-1.732.62-2.675.733a4.67 4.67 0 002.048-2.578 9.3 9.3 0 01-2.958 1.13 4.66 4.66 0 00-7.938 4.25 13.229 13.229 0 01-9.602-4.868c-.4.69-.63 1.49-.63 2.342A4.66 4.66 0 003.96 9.824a4.647 4.647 0 01-2.11-.583v.06a4.66 4.66 0 003.737 4.568 4.692 4.692 0 01-2.104.08 4.661 4.661 0 004.352 3.234 9.348 9.348 0 01-5.786 1.995 9.5 9.5 0 01-1.112-.065 13.175 13.175 0 007.14 2.093c8.57 0 13.255-7.098 13.255-13.254 0-.2-.005-.402-.014-.602a9.47 9.47 0 002.323-2.41l.002-.003z"/></svg>
-            <div>
-              <div class="tw-handle-label">Follow on Twitter</div>
-              <div class="tw-handle">@ZakAgain</div>
-            </div>
-          </a>
-        </div>
+        </a>
 
         <p class="footer">&copy; Ranger Danger</p>
 

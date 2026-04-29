@@ -1,13 +1,13 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
-import { Difficulty, saveMedal } from '../levels';
+import { Difficulty, saveMedal, LEVELS, Biome } from '../levels';
 import { SFX } from '../audio/sfx';
 
 export class UIScene extends Phaser.Scene {
-  hpBarBg!: Phaser.GameObjects.Rectangle;
-  hpBar!: Phaser.GameObjects.Rectangle;
+  hpBarGfx!: Phaser.GameObjects.Graphics;
   nameText!: Phaser.GameObjects.Text;
   moneyText!: Phaser.GameObjects.Text;
+  goldBadgeGfx!: Phaser.GameObjects.Graphics;
   btnTower!: Phaser.GameObjects.Container;
   btnCannon!: Phaser.GameObjects.Container;
   btnMage!: Phaser.GameObjects.Container;
@@ -16,11 +16,11 @@ export class UIScene extends Phaser.Scene {
   speedLabel!: Phaser.GameObjects.Text;
   speedIdx = 0;
   endPanel?: Phaser.GameObjects.Container;
-  bossBarBg?: Phaser.GameObjects.Rectangle;
-  bossBar?: Phaser.GameObjects.Rectangle;
+  bossBarGfx?: Phaser.GameObjects.Graphics;
+  bossBarMaxW = 0;
+  bossBarMaxHp = 1;
   bossLabel?: Phaser.GameObjects.Text;
-  waveBarBg!: Phaser.GameObjects.Rectangle;
-  waveBar!: Phaser.GameObjects.Rectangle;
+  waveBarGfx!: Phaser.GameObjects.Graphics;
   waveLabel!: Phaser.GameObjects.Text;
   progressCircles: Phaser.GameObjects.Arc[] = [];
   progressLabels: Phaser.GameObjects.Text[] = [];
@@ -32,6 +32,7 @@ export class UIScene extends Phaser.Scene {
 
   levelId = 1;
   difficulty: Difficulty = 'easy';
+  biome: Biome = 'grasslands';
 
   /** Scale factor for native resolution rendering */
   private sf = 1;
@@ -45,14 +46,16 @@ export class UIScene extends Phaser.Scene {
   init(data: any) {
     this.levelId = data?.levelId ?? 1;
     this.difficulty = data?.difficulty ?? 'easy';
+    const levelDef = LEVELS.find(l => l.id === this.levelId);
+    this.biome = levelDef?.biome ?? 'grasslands';
     this.endPanel = undefined;
-    this.bossBarBg = undefined;
-    this.bossBar = undefined;
+    this.bossBarGfx = undefined;
     this.bossLabel = undefined;
     this.speedIdx = 0;
   }
 
   create() {
+    this.events.on('shutdown', this.shutdown, this);
     this.sf = this.game.registry.get('sf') || 1;
     const W = this.scale.width;
     const H = this.scale.height;
@@ -60,15 +63,19 @@ export class UIScene extends Phaser.Scene {
 
     // top-left HUD
     this.nameText = this.add.text(this.p(12), T, '', { fontFamily: 'monospace', fontSize: this.fs(14), color: '#7cc4ff' });
-    const hpBarW = this.p(180);
-    this.hpBarBg = this.add.rectangle(this.p(12), T + this.p(22), hpBarW, this.p(14), 0x111826).setOrigin(0, 0).setStrokeStyle(this.p(1), 0x2a3760);
-    this.hpBar = this.add.rectangle(this.p(13), T + this.p(23), hpBarW - this.p(2), this.p(12), 0xd94a4a).setOrigin(0, 0);
+    this.hpBarGfx = this.add.graphics();
 
     // Top-right gold badge (WoW-style)
     const coinX = W - this.p(60);
     const coinY = T + this.p(14);
-    // Dark inset panel behind the number
-    this.add.rectangle(coinX + this.p(6), coinY, this.p(80), this.p(26), 0x0b0f1a, 0.85).setOrigin(1, 0.5).setStrokeStyle(this.p(1), 0x3a3a1a);
+    // Dark inset panel with rounded corners
+    this.goldBadgeGfx = this.add.graphics();
+    const gbW = this.p(80), gbH = this.p(26), gbR = this.p(6);
+    const gbX = coinX + this.p(6) - gbW, gbY = coinY - gbH / 2;
+    this.goldBadgeGfx.fillStyle(0x0b0f1a, 0.85);
+    this.goldBadgeGfx.fillRoundedRect(gbX, gbY, gbW, gbH, gbR);
+    this.goldBadgeGfx.lineStyle(this.p(1.5), 0x5a4a1a, 0.7);
+    this.goldBadgeGfx.strokeRoundedRect(gbX, gbY, gbW, gbH, gbR);
     // Gold coin circle
     this.add.circle(coinX + this.p(12), coinY, this.p(13), 0x8a6a1a).setStrokeStyle(this.p(2), 0xc4a030);
     this.add.circle(coinX + this.p(12), coinY, this.p(9), 0xd4a820).setStrokeStyle(this.p(1), 0xffd84a);
@@ -133,7 +140,9 @@ export class UIScene extends Phaser.Scene {
     this.progressCircles = [];
     this.progressLabels = [];
     this.progressLines = [];
-    const totalNodes = CFG.spawn.waveCount + 1; // waves + boss
+    // Castle: 4 waves + queen skull + dragon skull = 6 nodes
+    // Others: waveCount waves + 1 boss = waveCount+1 nodes
+    const totalNodes = this.biome === 'castle' ? 6 : CFG.spawn.waveCount + 1;
     const nodeSpacing = this.p(36);
     const totalW = (totalNodes - 1) * nodeSpacing;
     const startX = (W - totalW) / 2;
@@ -154,8 +163,12 @@ export class UIScene extends Phaser.Scene {
       this.progressCircles.push(circle);
       items.push(circle);
       // label (number or skull)
-      const isBoss = i === totalNodes - 1;
-      const label = this.add.text(nx, nodeY, isBoss ? '\u2620' : `${i + 1}`, {
+      // Castle: nodes 2 (queen) and 5 (dragon) are boss skulls
+      const isBoss = this.biome === 'castle' ? (i === 2 || i === 5) : i === totalNodes - 1;
+      const waveNum = this.biome === 'castle'
+        ? (i < 2 ? i + 1 : i === 2 ? 0 : i < 5 ? i : 0) // 1,2,skull,3,4,skull
+        : i + 1;
+      const label = this.add.text(nx, nodeY, isBoss ? '\u2620' : `${waveNum}`, {
         fontFamily: 'monospace', fontSize: isBoss ? this.fs(12) : this.fs(10), color: '#556',
       }).setOrigin(0.5);
       this.progressLabels.push(label);
@@ -177,8 +190,7 @@ export class UIScene extends Phaser.Scene {
       fontFamily: 'monospace', fontSize: this.fs(14), color: '#7cc4ff',
       stroke: '#0b0f1a', strokeThickness: this.p(3)
     }).setOrigin(0.5);
-    this.waveBarBg = this.add.rectangle(barX, barY, barW, this.p(14), 0x11172a).setOrigin(0, 0).setStrokeStyle(this.p(2), 0x2a3760);
-    this.waveBar = this.add.rectangle(barX + this.p(2), barY + this.p(2), 0, this.p(10), 0x4a8ad9).setOrigin(0, 0);
+    this.waveBarGfx = this.add.graphics();
 
     // Build error message (persistent while hovering invalid tile)
     const hotbarTop = H - this.p(48) - this.p(32); // matches hotbarY
@@ -201,6 +213,7 @@ export class UIScene extends Phaser.Scene {
     this.game.events.on('game-end', (s: any) => this.showEnd(s));
     this.game.events.on('boss-spawn', (s: any) => this.showBossBar(s));
     this.game.events.on('boss-hp', (s: any) => this.updateBossBar(s));
+    this.game.events.on('boss-died', () => this.hideBossBar());
     this.game.events.on('build-error', (msg: string) => {
       if (msg) {
         this.buildErrorText.setText(msg).setVisible(true);
@@ -219,26 +232,51 @@ export class UIScene extends Phaser.Scene {
     const barW = this.p(420);
     const x = (W - barW) / 2;
     const y = this.p(58); // 20 (top pad) + 38
-    if (this.bossBarBg) return;
-    const bossName = s?.biome === 'forest' ? 'THE WENDIGO' : s?.biome === 'infected' ? 'THE BLIGHTED ONE' : s?.biome === 'river' ? 'THE FOG PHANTOM' : 'THE ANCIENT RAM';
+    // Destroy previous boss bar if any (for multi-boss levels)
+    this.hideBossBar();
+    if (this.bossBarGfx) return;
+    const bossName = s?.bossKind === 'queen' ? 'THE PHANTOM QUEEN'
+                   : s?.bossKind === 'dragon' ? 'THE CASTLE DRAGON'
+                   : s?.biome === 'forest' ? 'THE WENDIGO'
+                   : s?.biome === 'infected' ? 'THE BLIGHTED ONE'
+                   : s?.biome === 'river' ? 'THE FOG PHANTOM'
+                   : 'THE ANCIENT RAM';
     this.bossLabel = this.add.text(W / 2, y - this.p(16), bossName, {
       fontFamily: 'monospace', fontSize: this.fs(14), color: '#ff6a6a',
       stroke: '#0b0f1a', strokeThickness: this.p(3)
     }).setOrigin(0.5);
-    this.bossBarBg = this.add.rectangle(x, y, barW, this.p(14), 0x11172a).setOrigin(0, 0).setStrokeStyle(this.p(2), 0x6a1a1a);
-    this.bossBar = this.add.rectangle(x + this.p(2), y + this.p(2), barW - this.p(4), this.p(10), 0xd94a4a).setOrigin(0, 0);
-    this.bossBar.setDataEnabled();
-    this.bossBar.setData('maxW', barW - this.p(4));
-    this.bossBar.setData('maxHp', s?.maxHp ?? 1);
+    this.bossBarGfx = this.add.graphics();
+    this.bossBarMaxW = barW - this.p(4);
+    this.bossBarMaxHp = s?.maxHp ?? 1;
+  }
+
+  hideBossBar() {
+    if (this.bossBarGfx) { this.bossBarGfx.destroy(); this.bossBarGfx = undefined; }
+    if (this.bossLabel) { this.bossLabel.destroy(); this.bossLabel = undefined; }
   }
 
   updateBossBar(s: any) {
-    if (!this.bossBar) return;
-    const maxW = this.bossBar.getData('maxW');
-    const maxHp = this.bossBar.getData('maxHp') || s.maxHp || 1;
+    if (!this.bossBarGfx) return;
+    const W = this.scale.width;
+    const barW = this.p(420);
+    const x = (W - barW) / 2;
+    const y = this.p(58);
+    const bH = this.p(14), bR = this.p(5);
+    const maxHp = this.bossBarMaxHp || s.maxHp || 1;
     const pct = Math.max(0, (s.hp ?? 0) / maxHp);
-    this.bossBar.width = maxW * pct;
-    this.bossBar.fillColor = pct > 0.5 ? 0xd94a4a : pct > 0.25 ? 0xd97a4a : 0xff3030;
+    const bossColor = pct > 0.5 ? 0xd94a4a : pct > 0.25 ? 0xd97a4a : 0xff3030;
+    this.bossBarGfx.clear();
+    // Background
+    this.bossBarGfx.fillStyle(0x11172a, 1);
+    this.bossBarGfx.fillRoundedRect(x, y, barW, bH, bR);
+    this.bossBarGfx.lineStyle(this.p(1.5), 0x6a2a2a, 0.8);
+    this.bossBarGfx.strokeRoundedRect(x, y, barW, bH, bR);
+    // Fill
+    const fillW = this.bossBarMaxW * pct;
+    if (fillW > 0) {
+      this.bossBarGfx.fillStyle(bossColor, 1);
+      this.bossBarGfx.fillRoundedRect(x + this.p(2), y + this.p(2), fillW, bH - this.p(4), bR - this.p(1));
+    }
   }
 
   cycleSpeed() {
@@ -421,9 +459,22 @@ export class UIScene extends Phaser.Scene {
     if (!s) return;
     this.nameText.setText(s.name ?? 'Ranger');
     const pct = Math.max(0, s.hp / s.maxHp);
-    const hpBarInner = this.p(178);
-    this.hpBar.width = hpBarInner * pct;
-    this.hpBar.fillColor = pct > 0.5 ? 0x4ad96a : pct > 0.25 ? 0xd9a84a : 0xd94a4a;
+    const T = this.p(20);
+    const hpX = this.p(12), hpY = T + this.p(22);
+    const hpW = this.p(180), hpH = this.p(14), hpR = this.p(5);
+    const hpColor = pct > 0.5 ? 0x4ad96a : pct > 0.25 ? 0xd9a84a : 0xd94a4a;
+    this.hpBarGfx.clear();
+    // Background
+    this.hpBarGfx.fillStyle(0x111826, 1);
+    this.hpBarGfx.fillRoundedRect(hpX, hpY, hpW, hpH, hpR);
+    this.hpBarGfx.lineStyle(this.p(1.5), 0x3a4a70, 0.8);
+    this.hpBarGfx.strokeRoundedRect(hpX, hpY, hpW, hpH, hpR);
+    // Fill
+    const fillW = (hpW - this.p(4)) * pct;
+    if (fillW > 0) {
+      this.hpBarGfx.fillStyle(hpColor, 1);
+      this.hpBarGfx.fillRoundedRect(hpX + this.p(2), hpY + this.p(2), fillW, hpH - this.p(4), hpR - this.p(1));
+    }
     this.moneyText.setText(`${s.money}`);
 
     // Toggle countdown text vs progress graphic
@@ -438,64 +489,136 @@ export class UIScene extends Phaser.Scene {
     }
 
     // Update level progress circles
-    const waveCount = CFG.spawn.waveCount;
     const currentWave = s.wave ?? 1; // 1-indexed
-    for (let i = 0; i < this.progressCircles.length; i++) {
-      const isBoss = i === waveCount;
-      const waveNum = i + 1; // 1-indexed wave for this node
-      if (isBoss) {
-        if (s.bossSpawned) {
-          // Boss active - highlight red
-          this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
-          this.progressCircles[i].setFillStyle(0x3a1010);
-          this.progressLabels[i].setColor('#ff6a6a');
+    if (this.biome === 'castle') {
+      // Castle: 6 nodes — W1, W2, Queen, W3, W4, Dragon
+      // Map node index to progress state
+      const cp = s.castlePhase ?? 0;
+      for (let i = 0; i < this.progressCircles.length; i++) {
+        const isBossNode = (i === 2 || i === 5);
+        let completed = false;
+        let active = false;
+        let current = false;
+
+        if (i === 0) { // Wave 1
+          completed = currentWave > 1 || cp >= 1;
+          current = currentWave === 1 && cp === 0;
+        } else if (i === 1) { // Wave 2
+          completed = cp >= 1;
+          current = currentWave === 2 && cp === 0;
+        } else if (i === 2) { // Queen boss
+          completed = s.midBossDefeated;
+          active = cp === 1 && s.bossSpawned;
+        } else if (i === 3) { // Wave 3
+          completed = (cp >= 2 && currentWave > 3) || cp >= 3;
+          current = currentWave === 3 && cp === 2;
+        } else if (i === 4) { // Wave 4
+          completed = cp >= 3;
+          current = currentWave === 4 && cp === 2;
+        } else if (i === 5) { // Dragon boss
+          active = cp === 3 && s.bossSpawned;
+        }
+
+        if (isBossNode) {
+          if (completed) {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+            this.progressCircles[i].setFillStyle(0x1a3a1a);
+            this.progressLabels[i].setColor('#4ad96a');
+          } else if (active) {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
+            this.progressCircles[i].setFillStyle(0x3a1010);
+            this.progressLabels[i].setColor('#ff6a6a');
+          } else {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+            this.progressCircles[i].setFillStyle(0x11172a);
+            this.progressLabels[i].setColor('#556');
+          }
+        } else if (completed) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+          this.progressCircles[i].setFillStyle(0x1a3a1a);
+          this.progressLabels[i].setText('\u2713');
+          this.progressLabels[i].setColor('#4ad96a');
+        } else if (current) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
+          this.progressCircles[i].setFillStyle(0x1a2a4a);
+          this.progressLabels[i].setColor('#7cc4ff');
         } else {
-          // Boss not yet
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
           this.progressCircles[i].setFillStyle(0x11172a);
           this.progressLabels[i].setColor('#556');
         }
-      } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
-        // Completed wave - green with checkmark
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
-        this.progressCircles[i].setFillStyle(0x1a3a1a);
-        this.progressLabels[i].setText('\u2713');
-        this.progressLabels[i].setColor('#4ad96a');
-      } else if (waveNum === currentWave) {
-        // Current wave - bright blue highlight
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
-        this.progressCircles[i].setFillStyle(0x1a2a4a);
-        this.progressLabels[i].setText(`${waveNum}`);
-        this.progressLabels[i].setColor('#7cc4ff');
-      } else {
-        // Future wave - dim
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
-        this.progressCircles[i].setFillStyle(0x11172a);
-        this.progressLabels[i].setText(`${waveNum}`);
-        this.progressLabels[i].setColor('#556');
+        if (i < this.progressLines.length) {
+          if (completed) this.progressLines[i].setFillStyle(0x4ad96a);
+          else if (current || active) this.progressLines[i].setFillStyle(0x7cc4ff);
+          else this.progressLines[i].setFillStyle(0x2a3760);
+        }
       }
-      // Update connecting line colors
-      if (i < this.progressLines.length) {
-        if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
-          this.progressLines[i].setFillStyle(0x4ad96a);
+    } else {
+      const waveCount = CFG.spawn.waveCount;
+      for (let i = 0; i < this.progressCircles.length; i++) {
+        const isBoss = i === waveCount;
+        const waveNum = i + 1; // 1-indexed wave for this node
+        if (isBoss) {
+          if (s.bossSpawned) {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
+            this.progressCircles[i].setFillStyle(0x3a1010);
+            this.progressLabels[i].setColor('#ff6a6a');
+          } else {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+            this.progressCircles[i].setFillStyle(0x11172a);
+            this.progressLabels[i].setColor('#556');
+          }
+        } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+          this.progressCircles[i].setFillStyle(0x1a3a1a);
+          this.progressLabels[i].setText('\u2713');
+          this.progressLabels[i].setColor('#4ad96a');
         } else if (waveNum === currentWave) {
-          this.progressLines[i].setFillStyle(0x7cc4ff);
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
+          this.progressCircles[i].setFillStyle(0x1a2a4a);
+          this.progressLabels[i].setText(`${waveNum}`);
+          this.progressLabels[i].setColor('#7cc4ff');
         } else {
-          this.progressLines[i].setFillStyle(0x2a3760);
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+          this.progressCircles[i].setFillStyle(0x11172a);
+          this.progressLabels[i].setText(`${waveNum}`);
+          this.progressLabels[i].setColor('#556');
+        }
+        if (i < this.progressLines.length) {
+          if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
+            this.progressLines[i].setFillStyle(0x4ad96a);
+          } else if (waveNum === currentWave) {
+            this.progressLines[i].setFillStyle(0x7cc4ff);
+          } else {
+            this.progressLines[i].setFillStyle(0x2a3760);
+          }
         }
       }
     }
 
     // Wave progress bar
+    const W = this.scale.width;
+    const wbW = this.p(420), wbH = this.p(14), wbR = this.p(5);
+    const wbX = (W - wbW) / 2, wbY = this.p(20) + this.p(38);
+    this.waveBarGfx.clear();
     if (s.bossSpawned) {
-      // Hide wave bar when boss is active (boss bar takes its place)
       this.waveLabel.setVisible(false);
-      this.waveBarBg.setVisible(false);
-      this.waveBar.setVisible(false);
+      this.waveBarGfx.setVisible(false);
     } else {
-      const maxW = this.p(416); // barW - 4
+      this.waveBarGfx.setVisible(true);
+      this.waveLabel.setVisible(true);
+      // Background
+      this.waveBarGfx.fillStyle(0x11172a, 1);
+      this.waveBarGfx.fillRoundedRect(wbX, wbY, wbW, wbH, wbR);
+      this.waveBarGfx.lineStyle(this.p(1.5), 0x3a4a70, 0.8);
+      this.waveBarGfx.strokeRoundedRect(wbX, wbY, wbW, wbH, wbR);
+      // Fill (remaining enemies)
       const wavePct = s.waveSize > 0 ? Math.min(1, s.waveKills / s.waveSize) : 0;
-      this.waveBar.width = maxW * (1 - wavePct);
+      const fillW = (wbW - this.p(4)) * (1 - wavePct);
+      if (fillW > 0) {
+        this.waveBarGfx.fillStyle(0x4a8ad9, 1);
+        this.waveBarGfx.fillRoundedRect(wbX + this.p(2), wbY + this.p(2), fillW, wbH - this.p(4), wbR - this.p(1));
+      }
 
       if (s.waveBreakUntil > 0 && s.vTime < s.waveBreakUntil) {
         const secs = Math.ceil((s.waveBreakUntil - s.vTime) / 1000);
@@ -512,18 +635,114 @@ export class UIScene extends Phaser.Scene {
     if (this.endPanel) return;
     if (s.win) saveMedal(this.levelId, this.difficulty);
     const W = this.scale.width, H = this.scale.height;
-    const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0);
-    const box = this.add.rectangle(W / 2, H / 2, this.p(380), this.p(200), 0x11172a).setStrokeStyle(this.p(2), 0x2a3760);
-    const title = this.add.text(W / 2, H / 2 - this.p(60), s.win ? 'VICTORY' : 'DEFEAT',
-      { fontFamily: 'monospace', fontSize: this.fs(32), color: s.win ? '#7cf29a' : '#ff6a6a' }).setOrigin(0.5);
-    const sub = this.add.text(W / 2, H / 2 - this.p(10), `${s.name}   Kills: ${s.kills}   $ ${s.money}`,
-      { fontFamily: 'monospace', fontSize: this.fs(14), color: '#ccd' }).setOrigin(0.5);
-    const btn = this.makeButton(W / 2, H / 2 + this.p(40), this.p(140), this.p(32), 'RETURN TO MAP', () => {
+    const isWin = !!s.win;
+    const accent = isWin ? 0x4ad96a : 0xd94a4a;
+    const accentHex = isWin ? '#4ad96a' : '#d94a4a';
+    const accentBright = isWin ? '#7cf29a' : '#ff6a6a';
+    const panelW = this.p(340), panelH = this.p(240), panelR = this.p(14);
+    const px = W / 2 - panelW / 2, py = H / 2 - panelH / 2;
+
+    // Dim background
+    const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.75).setOrigin(0);
+
+    // Panel with rounded corners and layered border
+    const panelGfx = this.add.graphics();
+    // Outer glow
+    panelGfx.lineStyle(this.p(4), accent, 0.15);
+    panelGfx.strokeRoundedRect(px - this.p(3), py - this.p(3), panelW + this.p(6), panelH + this.p(6), panelR + this.p(2));
+    // Main panel fill
+    panelGfx.fillStyle(0x0d1220, 0.95);
+    panelGfx.fillRoundedRect(px, py, panelW, panelH, panelR);
+    // Inner border
+    panelGfx.lineStyle(this.p(1.5), accent, 0.5);
+    panelGfx.strokeRoundedRect(px, py, panelW, panelH, panelR);
+
+    // Decorative top accent line
+    panelGfx.lineStyle(this.p(2), accent, 0.8);
+    const lineInset = this.p(30);
+    panelGfx.lineBetween(px + lineInset, py + this.p(1), px + panelW - lineInset, py + this.p(1));
+
+    // Title
+    const title = this.add.text(W / 2, py + this.p(40), isWin ? 'VICTORY' : 'DEFEAT', {
+      fontFamily: 'monospace', fontSize: this.fs(30), fontStyle: 'bold',
+      color: accentBright,
+      stroke: '#000000', strokeThickness: this.p(4),
+    }).setOrigin(0.5);
+
+    // Divider line under title
+    panelGfx.lineStyle(this.p(1), 0x2a3760, 0.6);
+    panelGfx.lineBetween(px + this.p(20), py + this.p(62), px + panelW - this.p(20), py + this.p(62));
+
+    // Stats row
+    const statsY = py + this.p(90);
+    const statSpacing = this.p(90);
+    const statStartX = W / 2 - statSpacing;
+
+    // Kills stat
+    const killsLabel = this.add.text(statStartX, statsY - this.p(10), 'KILLS', {
+      fontFamily: 'monospace', fontSize: this.fs(9), color: '#6a7a8a',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    const killsVal = this.add.text(statStartX, statsY + this.p(10), `${s.kills}`, {
+      fontFamily: 'monospace', fontSize: this.fs(20), fontStyle: 'bold', color: '#e0e8f0',
+      stroke: '#0b0f1a', strokeThickness: this.p(2),
+    }).setOrigin(0.5);
+
+    // Gold stat
+    const goldLabel = this.add.text(W / 2, statsY - this.p(10), 'GOLD', {
+      fontFamily: 'monospace', fontSize: this.fs(9), color: '#6a7a8a',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    const goldVal = this.add.text(W / 2, statsY + this.p(10), `$${s.money}`, {
+      fontFamily: 'monospace', fontSize: this.fs(20), fontStyle: 'bold', color: '#ffd84a',
+      stroke: '#0b0f1a', strokeThickness: this.p(2),
+    }).setOrigin(0.5);
+
+    // Ranger name stat
+    const nameLabel = this.add.text(statStartX + statSpacing * 2, statsY - this.p(10), 'RANGER', {
+      fontFamily: 'monospace', fontSize: this.fs(9), color: '#6a7a8a',
+      letterSpacing: 2,
+    }).setOrigin(0.5);
+    const nameVal = this.add.text(statStartX + statSpacing * 2, statsY + this.p(10), `${s.name}`, {
+      fontFamily: 'monospace', fontSize: this.fs(16), fontStyle: 'bold', color: '#7cc4ff',
+      stroke: '#0b0f1a', strokeThickness: this.p(2),
+    }).setOrigin(0.5);
+
+    // Divider line above button
+    panelGfx.lineStyle(this.p(1), 0x2a3760, 0.4);
+    panelGfx.lineBetween(px + this.p(20), py + panelH - this.p(68), px + panelW - this.p(20), py + panelH - this.p(68));
+
+    // Return button — styled with accent color
+    const btnW = this.p(180), btnH = this.p(36), btnR = this.p(8);
+    const btnX = W / 2 - btnW / 2, btnY = py + panelH - this.p(52);
+    const btnGfx = this.add.graphics();
+    const drawBtn = (hover: boolean) => {
+      btnGfx.clear();
+      btnGfx.fillStyle(hover ? (isWin ? 0x2a5a3e : 0x5a2a2a) : (isWin ? 0x1a3a2a : 0x3a1a1a), 1);
+      btnGfx.fillRoundedRect(btnX, btnY, btnW, btnH, btnR);
+      btnGfx.lineStyle(this.p(1.5), accent, 0.7);
+      btnGfx.strokeRoundedRect(btnX, btnY, btnW, btnH, btnR);
+    };
+    drawBtn(false);
+    const btnText = this.add.text(W / 2, btnY + btnH / 2, 'RETURN TO MAP', {
+      fontFamily: 'monospace', fontSize: this.fs(12), fontStyle: 'bold', color: accentHex,
+    }).setOrigin(0.5);
+    const btnHit = this.add.rectangle(W / 2, btnY + btnH / 2, btnW, btnH, 0x000000, 0)
+      .setInteractive({ useHandCursor: true });
+    btnHit.on('pointerover', () => drawBtn(true));
+    btnHit.on('pointerout', () => drawBtn(false));
+    btnHit.on('pointerdown', () => {
+      SFX.play('click');
       this.scene.stop('Game');
       this.scene.stop('UI');
       this.scene.start('LevelSelect');
     });
-    this.endPanel = this.add.container(0, 0, [bg, box, title, sub, btn]);
+
+    this.endPanel = this.add.container(0, 0, [
+      bg, panelGfx, title,
+      killsLabel, killsVal, goldLabel, goldVal, nameLabel, nameVal,
+      btnGfx, btnText, btnHit,
+    ]);
   }
 
   shutdown() {
@@ -531,6 +750,7 @@ export class UIScene extends Phaser.Scene {
     this.game.events.off('game-end');
     this.game.events.off('boss-spawn');
     this.game.events.off('boss-hp');
+    this.game.events.off('boss-died');
     this.game.events.off('build-error');
     this.game.events.off('build-mode');
   }

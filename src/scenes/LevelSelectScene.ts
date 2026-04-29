@@ -310,7 +310,7 @@ export class LevelSelectScene extends Phaser.Scene {
           this.showTooltip(cx, cy - R - this.p(14), 'Coming Soon');
           return;
         }
-        SFX.play('click');
+        SFX.playPitched('doorOpen', 0.18, 2.2, 0.12);
         this.openDifficultyPanel(level);
         if (this.game.registry.get('tutorialActive')) {
           this.game.events.emit('tutorial-level-clicked', level.id);
@@ -472,7 +472,7 @@ export class LevelSelectScene extends Phaser.Scene {
       hitRect.on('pointerdown', () => {
         // During tutorial, only Easy is selectable
         if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
-        SFX.play('click');
+        SFX.playPitched('doorOpen', 0.14, 2.8, 0.12);
         this.selectedDiff = diff;
         for (const btn of this.diffButtons) {
           const sel = btn.diff === diff;
@@ -587,7 +587,7 @@ export class LevelSelectScene extends Phaser.Scene {
       text.setColor('#7cf29a');
       hit.setInteractive({ useHandCursor: true });
       hit.off('pointerdown');
-      hit.on('pointerdown', () => { SFX.play('click'); this.startMission(); });
+      hit.on('pointerdown', () => { SFX.playPitched('doorOpen', 0.2, 2.0, 0.12); this.startMission(); });
       hit.on('pointerover', () => {
         g.clear();
         g.fillStyle(0x2a6a3e, 1);

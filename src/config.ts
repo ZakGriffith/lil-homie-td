@@ -63,7 +63,14 @@ export const CFG = {
     dragonfly: { hp: 10, speed: 135, dmg: 4,  coin: 1, color: 0x28a0b4 },
     mosquito:  { hp: 14, speed: 50,  dmg: 3,  coin: 1, color: 0x504638 },
     // Infected ranged enemy
-    toad:      { hp: 30, speed: 45,  dmg: 8,  coin: 2, color: 0x9040d0 }
+    toad:      { hp: 30, speed: 45,  dmg: 8,  coin: 2, color: 0x9040d0 },
+    // Castle enemies
+    skeleton:    { hp: 22, speed: 55,  dmg: 8,  coin: 1, color: 0xd8d0c0 },
+    warlock:     { hp: 18, speed: 38,  dmg: 6,  coin: 2, color: 0x6a28a0 },
+    golem:       { hp: 55, speed: 28,  dmg: 14, coin: 3, color: 0x636d7a },
+    shadow_imp:  { hp: 16, speed: 90,  dmg: 6,  coin: 1, color: 0x2a1a38 },
+    castle_bat:  { hp: 10, speed: 120, dmg: 4,  coin: 1, color: 0x3a2a3a },
+    castle_rat:  { hp: 10, speed: 130, dmg: 4,  coin: 1, color: 0x5a4a38 }
   },
 
   coin: { magnetRange: 90, magnetSpeed: 420 },
@@ -130,6 +137,43 @@ export const CFG = {
     clusterMin: 2,
     clusterMax: 4,
     clusterSpread: 60, // looser than infected (40) but still grouped
+  },
+
+  castle: {
+    warlockRange: 220,         // px — distance at which warlock stops and casts
+    warlockFireRate: 2400,     // ms between shots
+    warlockBoltSpeed: 160,     // purple bolt speed
+    warlockBoltDmg: 6,
+    warlockBoltLifetime: 3000,
+    impPackSize: 4,
+    impPackCooldownMin: 8000,
+    impPackCooldownMax: 13000,
+    batPackSize: 5,
+    batPackCooldownMin: 7000,
+    batPackCooldownMax: 12000,
+    clusterMin: 2,
+    clusterMax: 3,
+    clusterSpread: 24,
+    // Phantom Queen (mid-boss)
+    queenHp: 1200,
+    queenSpeed: 34,
+    queenDmg: 16,
+    queenOrbSpeed: 160,
+    queenOrbDmg: 10,
+    queenOrbLifetime: 3500,
+    queenOrbBurstCount: 3,     // fires 3 orbs at a time
+    queenOrbFireRate: 2400,    // ms between bursts (faster)
+    queenTeleportCooldown: 4500, // ms between teleports (more frequent)
+    queenTeleportRange: 170,   // px closer to player
+    // Castle Dragon (final boss)
+    dragonHp: 2000,
+    dragonSpeed: 22,
+    dragonDmg: 22,
+    dragonFireballSpeed: 150,
+    dragonFireballDmg: 18,
+    dragonFireballSplash: 56,  // AoE radius
+    dragonFireballLifetime: 3500,
+    dragonFireballRate: 2200,  // ms between fireballs
   },
 
   winKills: 200, // kills needed to trigger the boss; defeating the boss wins

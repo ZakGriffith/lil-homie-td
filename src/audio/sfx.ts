@@ -23,6 +23,7 @@ const SFX_KEYS = [
   'victory',      // game won
   'gameOver',     // game lost
   'click',        // UI button click
+  'doorOpen',     // castle door / play button
 ] as const;
 
 export type SfxKey = typeof SFX_KEYS[number];
@@ -44,6 +45,7 @@ const AUDIO_FILES: Partial<Record<SfxKey, string>> = {
   // victory: '/audio/victory.wav',
   // gameOver: '/audio/gameOver.wav',
   // click: '/audio/click.wav',
+  doorOpen: '/audio/PlayButton.wav',
 };
 
 // ---- jsfxr fallbacks (b58 encoded) for sounds without a file ----
@@ -56,7 +58,7 @@ const FALLBACKS: Partial<Record<SfxKey, string>> = {
   wallPlace:   '12eZRSDGK2a8ncanb4HHKxEkayTgXz1bEGVRiT35nZXFBk38k5xYdmjADDLNFnMEJPG2gYFCMuHcepZzUbEKmhs6E6CM6oHRi7isDz48fB1m5WcUuAYrdGnHj5',
   boom:        '12eZRSDRnjsSkoovj21LDvGd5SbDnrfDbsaxdmMRaT3XK9Qa8jgXdTSa1MaBys6CgmNjtff7futsPfmfcRpWTZUnXr2TWv2gdboDKZmc6GTpUZxc97qpXJWtyD',
   bossSpawn:   '12eZRSDSVRrD67KRceReSAHfH5R3pqU9JuRJpxZuQ1eMG9Fn1aSWE8wmnE3HgvjZiNptQo2zpHgj9fqofhSaDFuEok9jcFWnVvN3cW1iDBbN4qzVuw8gJNnhKM',
-  playerHurt:  '12eZRSDGK26xkrJpNakcz4XTrH1g68EjAXHgAYGhaSMTiyy9kWZ2K1zGM4jjXyKhWXTYXmWo5n7nUEYm22Y12WbJfAHpY4VD37Va7qctx3UbXNTnEyTC9CP2EB',
+  // playerHurt uses a custom programmatic tone (see loadPlayerHurt below)
   // upgrade uses a custom programmatic tone (see loadUpgrade below)
   victory:     '12eZRSDSVRrD4ighYdxUJtJhbVM7kzBaESDDXD9y9c3gB9aqm7KCQmne61TQrJLPbeVZ55B9tgz9FcmqdQGuWbneGcgGAzT38WkhBUNh5tjysbwgkjcuPkTP51',
   gameOver:    '12eZRSDW9BpyimpJ2g3CzvFeX7gYUb8STeQhqTheS6kbAXPHtF43iMHM4X4FDyt6hu2Gpiiz5scgQdCbp1Kd9YLifs2Xp7PKJhDZqHPZAsDXZesN5w4R7vko6X',
@@ -89,10 +91,44 @@ class SfxManager {
   /** Per-sound volume multipliers (0–1, default 1) */
   private volumes: Partial<Record<SfxKey, number>> = {
     cannonShoot: 0.75,
+    playerHurt: 0.85,
+    doorOpen: 0.5,
   };
+
+  /** Load and play a single sound immediately, initializing audio context if needed. */
+  async playImmediate(path: string, volume = 0.5) {
+    if (!this.ctx) {
+      this.ctx = new AudioContext();
+      this.gainNode = this.ctx.createGain();
+      this.gainNode.gain.value = this._volume;
+      this.gainNode.connect(this.ctx.destination);
+      this.bgmGain = this.ctx.createGain();
+      this.bgmGain.gain.value = this._bgmVolume;
+      this.bgmGain.connect(this.ctx.destination);
+    }
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    try {
+      const resp = await fetch(path);
+      const arrayBuf = await resp.arrayBuffer();
+      const audioBuf = await this.ctx.decodeAudioData(arrayBuf);
+      const source = this.ctx.createBufferSource();
+      source.buffer = audioBuf;
+      // Speed up playback
+      source.playbackRate.value = 1.6;
+      const g = this.ctx.createGain();
+      g.gain.value = volume;
+      source.connect(g);
+      g.connect(this.gainNode!);
+      // Skip the first 0.15s to cut any dead air at the start
+      source.start(0, 0.15);
+    } catch (e) {
+      console.warn(`SFX: failed to play ${path}`);
+    }
+  }
 
   /** Call once at boot. Preloads all audio into AudioBuffers for zero-latency playback. */
   async init() {
+    if (this.ctx) return; // already initialized
     this.ctx = new AudioContext();
     this.gainNode = this.ctx.createGain();
     this.gainNode.gain.value = this._volume;
@@ -118,6 +154,7 @@ class SfxManager {
     this.loadClick();
     this.loadCoin();
     this.loadUpgrade();
+    this.loadPlayerHurt();
   }
 
   private async loadFile(key: SfxKey, path: string) {
@@ -138,7 +175,7 @@ class SfxManager {
     const len = Math.floor(sr * 0.035); // 35ms
     const buf = this.ctx!.createBuffer(1, len, sr);
     const ch = buf.getChannelData(0);
-    const freq = 1800; // Hz — crisp tap pitch
+    const freq = 1100; // Hz — softer tap pitch
     for (let i = 0; i < len; i++) {
       const t = i / sr;
       const env = 1 - i / len; // linear decay
@@ -196,6 +233,31 @@ class SfxManager {
     this.buffers.upgrade = buf;
   }
 
+  /** Soft thud with descending pitch — less harsh than jsfxr version */
+  private loadPlayerHurt() {
+    const sr = 44100;
+    const len = Math.floor(sr * 0.18); // 180ms
+    const buf = this.ctx!.createBuffer(1, len, sr);
+    const ch = buf.getChannelData(0);
+    const vol = 0.7;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const progress = i / len;
+      // Descending pitch from 400Hz to 160Hz for a noticeable thud
+      const freq = 400 - 240 * progress;
+      // Quick attack, smooth exponential decay
+      const env = Math.exp(-progress * 4) * (1 - Math.exp(-i / (sr * 0.003)));
+      // Mix sine + a touch of triangle for warmth
+      const phase = 2 * Math.PI * freq * t;
+      const sine = Math.sin(phase);
+      const tri = 2 * Math.abs(2 * ((freq * t) % 1) - 1) - 1;
+      ch[i] = (sine * 0.7 + tri * 0.3) * env * vol;
+    }
+    this.buffers.playerHurt = buf;
+  }
+
+
+
   private loadSfxr(key: SfxKey, b58: string) {
     const samples = sfxr.toBuffer(b58);
     if (!samples || samples.length === 0) return;
@@ -234,6 +296,22 @@ class SfxManager {
       source.connect(this.gainNode);
     }
     source.start(0);
+  }
+
+  /** Play a sound with custom pitch and volume. Useful for UI click variants. */
+  playPitched(key: SfxKey, volume: number, rate: number, startOffset = 0) {
+    if (this._muted || !this.ctx || !this.gainNode) return;
+    const buf = this.buffers[key];
+    if (!buf) return;
+    if (this.ctx.state === 'suspended') this.ctx.resume();
+    const source = this.ctx.createBufferSource();
+    source.buffer = buf;
+    source.playbackRate.value = rate;
+    const g = this.ctx.createGain();
+    g.gain.value = volume;
+    source.connect(g);
+    g.connect(this.gainNode);
+    source.start(0, startOffset);
   }
 
   get volume() { return this._volume; }

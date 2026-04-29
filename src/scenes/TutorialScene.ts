@@ -183,7 +183,7 @@ export class TutorialScene extends Phaser.Scene {
   onWallPlaced = () => {
     if (this.step === 'game_place_walls') {
       this.wallsPlaced++;
-      if (this.wallsPlaced >= 3) this.advanceTo('game_exit_build', 1500);
+      if (this.wallsPlaced >= 3) this.advanceTo('game_exit_build');
       else this.showStep(); // update counter
     }
   };
@@ -294,13 +294,13 @@ export class TutorialScene extends Phaser.Scene {
         this.hudClickZone.on('pointerdown', () => {
           this.cleanupHudLabels();
           this.resumeGame();
-          this.advanceTo('game_stand_still');
+          this.advanceTo('game_stand_still', 2000);
         });
         break;
       }
 
       case 'game_stand_still':
-        this.showPrompt('Your ranger fires automatically!\nStanding still gives full fire rate.\nMoving cuts your fire rate in half.', this.p(150));
+        this.showPrompt('Your ranger fires automatically!\nStanding still shoots faster than when moving.', this.p(150));
         break;
 
       case 'game_kill':
@@ -332,7 +332,7 @@ export class TutorialScene extends Phaser.Scene {
       case 'game_watch_tower':
         this.tutorialKills = 0; // reset from game_kill phase
         this.watchTimer = 0;
-        this.showPrompt('Your tower shoots enemies automatically!\nWatch it defend.', this.p(150));
+        this.showPrompt('Your tower shoots enemies automatically!', this.p(150));
         break;
 
       case 'game_press_4': {
@@ -367,19 +367,30 @@ export class TutorialScene extends Phaser.Scene {
       }
 
       case 'game_loot_coins':
-        this.showPrompt('Enemies drop coins when defeated!\nWalk near coins to collect them.', this.p(150));
+        this.showPrompt('Enemies drop coins when defeated!\nYou will automatically gather them when nearby.', this.p(150));
         break;
 
       case 'game_click_tower': {
         this.pauseGame();
         this.showPrompt('Click on your Arrow Tower to select it.', this.p(150));
-        // Highlight the first arrow tower placed
+        // Light dim over everything
+        this.overlay.fillStyle(0x000000, 0.45);
+        this.overlay.fillRect(0, 0, W, H);
+        // Bright pulsing highlight ring on the tower
         const gsTower = this.scene.get('Game') as any;
         const tower = gsTower?.towers?.[0];
         if (tower) {
-          const ts = this.p(48);
-          this.drawDimWithRect(tower.x - ts / 2, tower.y - ts / 2, ts, ts);
-          this.drawArrow(tower.x, tower.y - ts / 2 - this.p(8), 'down');
+          // Convert tower world coords to camera-relative screen coords
+          const cam = gsTower.cameras.main;
+          const sx = tower.x - cam.scrollX;
+          const sy = tower.y - cam.scrollY;
+          const r = CFG.tower.tiles * CFG.tile * 0.7;
+          // Glow rings
+          this.overlay.lineStyle(this.p(4), 0x4ad96a, 0.9);
+          this.overlay.strokeCircle(sx, sy, r);
+          this.overlay.lineStyle(this.p(8), 0x4ad96a, 0.3);
+          this.overlay.strokeCircle(sx, sy, r + this.p(4));
+          this.drawArrow(sx, sy - r - this.p(12), 'down');
         }
         break;
       }
@@ -539,11 +550,12 @@ export class TutorialScene extends Phaser.Scene {
         break;
 
       case 'game_stand_still':
-        if (this.stepDelay === 0) this.stepDelay = this.time.now + 5000;
-        if (this.time.now > this.stepDelay) {
+        if (this.stepDelay === 0) this.stepDelay = this.time.now + 7000; // show prompt for 7s
+        if (this.stepDelay > 0 && this.time.now > this.stepDelay) {
           this.stepDelay = 0;
+          // Hide prompt, then wait 2s before spawning enemies
           this.spawnTutorialEnemies(gameScene, 6);
-          this.advanceTo('game_kill');
+          this.advanceTo('game_kill', 2000);
         }
         break;
 

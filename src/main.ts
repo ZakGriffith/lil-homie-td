@@ -5,11 +5,16 @@ import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { TutorialScene } from './scenes/TutorialScene';
+import { SFX } from './audio/sfx';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
 
 let started = false;
+
+// Preload play button sound so it's instant on click
+let playBtnBuffer: ArrayBuffer | null = null;
+fetch('/audio/PlayButton.wav').then(r => r.arrayBuffer()).then(b => { playBtnBuffer = b; }).catch(() => {});
 
 // Keep the screen awake so the game doesn't pause/restart when the user
 // walks away. Re-acquires the lock whenever the tab becomes visible again.
@@ -35,6 +40,21 @@ document.addEventListener('visibilitychange', () => {
 function start() {
   if (started) return;
   started = true;
+
+  // Play preloaded castle door sound instantly
+  if (playBtnBuffer) {
+    const ctx = new AudioContext();
+    ctx.decodeAudioData(playBtnBuffer.slice(0)).then(audioBuf => {
+      const src = ctx.createBufferSource();
+      src.buffer = audioBuf;
+      src.playbackRate.value = 1.6;
+      const g = ctx.createGain();
+      g.gain.value = 0.16;
+      src.connect(g);
+      g.connect(ctx.destination);
+      src.start(0, 0.15);
+    });
+  }
 
   // Hide overlay immediately — level select appears fast since art is deferred
   overlay.classList.add('hidden');

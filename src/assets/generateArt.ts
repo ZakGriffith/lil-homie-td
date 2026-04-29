@@ -3252,6 +3252,176 @@ function drawGroundWorld(tileX: number, tileY: number) {
   };
 }
 
+// Castle ground — smooth flagstone and courtyard dirt with decorations
+function drawGroundCastle(tileX: number, tileY: number) {
+  return (put: Put) => {
+    let s = ((tileX * 73856093 + tileY * 19349669) >>> 0) % 2147483647;
+    const rnd = () => { s = (s * 16807) % 2147483647; return s / 2147483647; };
+
+    // Use noise to decide flagstone vs dirt zones
+    const sampleN = precomputeNoise(tileX, tileY, 5000, 3000, 600);
+
+    // Flagstone shades
+    const stoneShades = ['#4e5864', '#5a6270', '#525c68', '#636d7a'];
+    // Dirt shades
+    const dirtShades = ['#4a3a28', '#5a4a38', '#6a5a46', '#524232'];
+    // Mortar color
+    const mortar = '#3e4654';
+
+    // Per-pixel hash for dithering at transitions
+    const pxHash = (x: number, y: number) => {
+      let h = ((x * 374761393 + y * 668265263 + 1274126177) >>> 0);
+      h = ((h ^ (h >> 13)) * 1103515245 + 12345) >>> 0;
+      return (h & 0xffff) / 0xffff;
+    };
+    const transitionW = 0.06; // noise range over which we dither
+
+    for (let py = 0; py < 32; py++) {
+      for (let px = 0; px < 32; px++) {
+        const n = sampleN(px, py);
+        const worldPx = tileX * 32 + px;
+        const worldPy = tileY * 32 + py;
+
+        // Transition dithering: in the band around 0.45, randomly mix both textures
+        const threshold = 0.45;
+        let useStone: boolean;
+        if (n > threshold + transitionW) {
+          useStone = true;
+        } else if (n < threshold - transitionW) {
+          useStone = false;
+        } else {
+          // Dither zone: probability ramps from 0 to 1 across the band
+          const t = (n - (threshold - transitionW)) / (2 * transitionW);
+          useStone = pxHash(worldPx, worldPy) < t;
+        }
+
+        if (useStone) {
+          // Flagstone zone
+          // Grid pattern for stone slabs (16x16 slabs with offset rows)
+          const slabRow = Math.floor(worldPy / 16);
+          const slabOff = (slabRow % 2) * 8;
+          const localX = (worldPx + slabOff) % 16;
+          const localY = worldPy % 16;
+          // Mortar lines
+          if (localX === 0 || localY === 0) {
+            put(px, py, mortar);
+          } else {
+            // Shade variation per slab
+            const slabSeed = ((Math.floor((worldPx + slabOff) / 16) * 7919 + slabRow * 104729) >>> 0) % 4;
+            put(px, py, stoneShades[slabSeed]);
+          }
+        } else {
+          // Dirt zone
+          const di = Math.floor(rnd() * dirtShades.length);
+          put(px, py, dirtShades[di < dirtShades.length ? di : 0]);
+        }
+      }
+    }
+
+    // Subtle stone speckles in flagstone areas
+    for (let i = 0; i < 20; i++) {
+      const sx = Math.floor(rnd() * 32), sy = Math.floor(rnd() * 32);
+      const n = sampleN(sx, sy);
+      if (n > 0.45) put(sx, sy, rnd() > 0.5 ? '#6a747e' : '#4a5462');
+    }
+
+    // Pebbles in dirt areas
+    for (let i = 0; i < 8; i++) {
+      const sx = Math.floor(rnd() * 32), sy = Math.floor(rnd() * 32);
+      const n = sampleN(sx, sy);
+      if (n <= 0.45) put(sx, sy, '#7a7060');
+    }
+
+    // --- Decorations (deterministic per tile) ---
+
+    // Crack pattern (~12% of tiles)
+    if (rnd() < 0.12) {
+      const cx = 4 + Math.floor(rnd() * 24);
+      const cy = 4 + Math.floor(rnd() * 24);
+      const len = 4 + Math.floor(rnd() * 8);
+      const dx = rnd() > 0.5 ? 1 : 0;
+      const dy = rnd() > 0.5 ? 1 : (dx === 0 ? 1 : 0);
+      for (let i = 0; i < len; i++) {
+        put(cx + i * dx + Math.floor(rnd() * 2 - 0.5), cy + i * dy + Math.floor(rnd() * 2 - 0.5), '#3a4250');
+      }
+    }
+
+    // Scorch mark (~2% of tiles)
+    if (rnd() < 0.02) {
+      const sx = 8 + Math.floor(rnd() * 16);
+      const sy = 8 + Math.floor(rnd() * 16);
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (dx * dx + dy * dy <= 9) {
+            const px2 = sx + dx, py2 = sy + dy;
+            if (px2 >= 0 && px2 < 32 && py2 >= 0 && py2 < 32) {
+              put(px2, py2, dx * dx + dy * dy <= 4 ? '#1a1a22' : '#2a2a30');
+            }
+          }
+        }
+      }
+    }
+
+    // Moss patch (~10% of tiles)
+    if (rnd() < 0.10) {
+      const mx = 8 + Math.floor(rnd() * 16);
+      const my = 8 + Math.floor(rnd() * 16);
+      for (let i = 0; i < 8; i++) {
+        put(mx + Math.floor(rnd() * 6 - 3), my + Math.floor(rnd() * 6 - 3), rnd() > 0.5 ? '#2e4a2a' : '#3e5f38');
+      }
+    }
+
+    // Bones (~6% of tiles) — varied patterns
+    if (rnd() < 0.06) {
+      const bx = 6 + Math.floor(rnd() * 20);
+      const by = 8 + Math.floor(rnd() * 16);
+      const bone = '#c8c0b0';
+      const boneHi = '#d8d0c0';
+      const boneLo = '#a8a090';
+      const pattern = Math.floor(rnd() * 5);
+      if (pattern === 0) {
+        // Femur — diagonal with knobs
+        put(bx, by, boneHi); put(bx + 1, by, bone);
+        put(bx + 1, by + 1, bone); put(bx + 2, by + 1, bone);
+        put(bx + 2, by + 2, bone); put(bx + 3, by + 2, boneHi);
+        put(bx - 1, by, boneLo); put(bx + 4, by + 2, boneLo);
+      } else if (pattern === 1) {
+        // Skull fragment — small circle
+        put(bx, by, bone); put(bx + 1, by, boneHi); put(bx + 2, by, bone);
+        put(bx, by + 1, boneHi); put(bx + 1, by + 1, '#2a2228'); put(bx + 2, by + 1, boneHi);
+        put(bx, by + 2, boneLo); put(bx + 1, by + 2, boneLo); put(bx + 2, by + 2, boneLo);
+      } else if (pattern === 2) {
+        // Ribcage — curved lines
+        put(bx, by, bone); put(bx + 1, by - 1, bone); put(bx + 2, by - 1, boneHi); put(bx + 3, by, bone);
+        put(bx, by + 2, boneLo); put(bx + 1, by + 1, boneLo); put(bx + 2, by + 1, bone); put(bx + 3, by + 2, boneLo);
+      } else if (pattern === 3) {
+        // Crossed bones — X shape
+        put(bx, by, boneHi); put(bx + 3, by, boneHi);
+        put(bx + 1, by + 1, bone); put(bx + 2, by + 1, bone);
+        put(bx + 1, by + 2, bone); put(bx + 2, by + 2, bone);
+        put(bx, by + 3, boneLo); put(bx + 3, by + 3, boneLo);
+      } else {
+        // Scattered small bones — 2-3 fragments
+        put(bx, by, bone); put(bx + 1, by, boneHi);
+        put(bx + 3, by + 2, bone); put(bx + 4, by + 2, boneLo);
+        if (rnd() > 0.4) { put(bx + 1, by + 3, boneLo); put(bx + 2, by + 3, bone); }
+      }
+    }
+
+    // Fallen leaves (~10% of tiles)
+    if (rnd() < 0.10) {
+      const leafColors = ['#6a4a20', '#8a5a20', '#5a3a10', '#9a6a30'];
+      for (let i = 0; i < 3; i++) {
+        const lx = 4 + Math.floor(rnd() * 24);
+        const ly = 4 + Math.floor(rnd() * 24);
+        const col = leafColors[Math.floor(rnd() * leafColors.length)];
+        put(lx, ly, col);
+        put(lx + 1, ly, col);
+      }
+    }
+  };
+}
+
 // Forest ground — darker greens with brown dirt patches, leaf litter, mushrooms, moss
 function drawGroundForest(tileX: number, tileY: number) {
   return (put: Put) => {
@@ -4828,6 +4998,7 @@ export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: n
       const draw = biome === 'forest' ? drawGroundForest(worldTX, worldTY)
                  : biome === 'infected' ? drawGroundInfected(worldTX, worldTY)
                  : biome === 'river' ? drawGroundRiver(worldTX, worldTY)
+                 : biome === 'castle' ? drawGroundCastle(worldTX, worldTY)
                  : drawGroundWorld(worldTX, worldTY);
       const ox = tx * tileSize;
       const oy = ty * tileSize;
@@ -4851,6 +5022,1215 @@ export function createGroundChunk(scene: Phaser.Scene, chunkX: number, chunkY: n
   if (scene.textures.exists(key)) scene.textures.remove(key);
   scene.textures.addCanvas(key, canvas);
   return key;
+}
+
+// ==================================================================
+//  CASTLE BOSS 1 — Phantom Queen (ghostly queen wraith, 64x64)
+// ==================================================================
+interface PhantomQueenOpts {
+  bob?: number;
+  flash?: boolean;
+  chargeGlow?: boolean;
+  pockets?: number;
+  rearUp?: boolean;
+  orbPhase?: number;
+  mouthOpen?: boolean;
+}
+
+function drawPhantomQueenBody(put: Put, opts: PhantomQueenOpts) {
+  const cx = 32;
+  const bob = opts.bob ?? 0;
+  const baseCy = 30 + bob;
+  const phase = opts.orbPhase ?? 0;
+
+  const col = {
+    out:  opts.flash ? P.white : P.outline,
+    d:    opts.flash ? P.white : '#3a5a7a',
+    m:    opts.flash ? P.white : '#4a6a8a',
+    b:    opts.flash ? P.white : '#6a8aaa',
+    l:    opts.flash ? P.white : '#8abadd',
+    glow: opts.flash ? P.white : '#aad0ff',
+    hair: opts.flash ? P.white : '#5a7a9a',
+    hairL:opts.flash ? P.white : '#8aaac8',
+    crown:opts.flash ? P.white : '#8abadd',
+    crownL:opts.flash? P.white : '#aad0ff',
+    jewel:opts.flash ? P.white : '#4060ff',
+    eye:  opts.flash ? P.white : '#ffffff',
+    wisp: opts.flash ? P.white : '#6a8aaa',
+  };
+
+  // Ground shadow
+  for (let dy = -2; dy <= 2; dy++)
+    for (let dx = -12; dx <= 12; dx++)
+      if ((dx * dx) / 144 + (dy * dy) / 5 <= 1) put(cx + dx, 60 + dy, P.shadow);
+
+  // Flowing dress — tapers to wisps at bottom
+  // Upper dress (torso region)
+  for (let y = baseCy + 2; y < baseCy + 24; y++) {
+    const t = (y - (baseCy + 2)) / 22;
+    const hw = Math.round(6 + t * 10);
+    for (let dx = -hw; dx <= hw; dx++) {
+      const edge = Math.abs(dx) / hw;
+      // Wispy bottom: skip some pixels for taper effect
+      if (t > 0.7 && ((dx + y) % 3 === 0 || Math.abs(dx) > hw - 2)) continue;
+      if (t > 0.85 && (dx + y) % 2 === 0) continue;
+      let c: string;
+      if (edge < 0.3) c = col.l;
+      else if (edge < 0.6) c = col.b;
+      else if (edge < 0.85) c = col.m;
+      else c = col.d;
+      put(cx + dx, y, c);
+    }
+  }
+  // Wispy tendrils at dress bottom
+  for (let t = 0; t < 5; t++) {
+    const tx = cx - 8 + t * 4 + Math.round(Math.sin(phase * 0.5 + t) * 2);
+    for (let dy = 0; dy < 6 + (phase + t) % 3; dy++) {
+      if ((dy + t) % 2 === 0) put(tx, baseCy + 24 + dy, col.d);
+    }
+  }
+
+  // Upper body / torso
+  ellipse(put, cx, baseCy, 8, 6, col.d);
+  ellipse(put, cx, baseCy, 7, 5, col.m);
+  ellipse(put, cx, baseCy - 1, 5, 4, col.b);
+
+  // Neck
+  rect(put, cx - 1, baseCy - 7, 3, 3, col.b);
+
+  // Head
+  disc(put, cx, baseCy - 12, 7, col.d);
+  disc(put, cx, baseCy - 12, 6, col.m);
+  disc(put, cx, baseCy - 12, 5, col.b);
+  disc(put, cx, baseCy - 13, 3, col.l);
+
+  // Flowing hair — long strands down the sides
+  for (let side = -1; side <= 1; side += 2) {
+    for (let y = baseCy - 16; y < baseCy + 8; y++) {
+      const sway = Math.round(Math.sin((y + phase) * 0.3) * 1.5);
+      const baseX = cx + side * 7 + sway;
+      put(baseX, y, col.hair);
+      put(baseX + side, y, col.hairL);
+      if (y < baseCy - 8) put(baseX - side, y, col.hair);
+    }
+  }
+
+  // Crown
+  const crownY = baseCy - 19;
+  for (let dx = -5; dx <= 5; dx++) put(cx + dx, crownY + 2, col.crown);
+  for (let dx = -4; dx <= 4; dx++) put(cx + dx, crownY + 1, col.crownL);
+  // Crown points
+  put(cx - 4, crownY, col.crown); put(cx - 3, crownY - 1, col.crownL);
+  put(cx, crownY, col.crown); put(cx, crownY - 1, col.crownL);
+  put(cx + 4, crownY, col.crown); put(cx + 3, crownY - 1, col.crownL);
+  // Jewels
+  put(cx - 2, crownY + 1, col.jewel);
+  put(cx + 2, crownY + 1, col.jewel);
+  put(cx, crownY + 2, col.jewel);
+
+  // Eyes — hollow glowing white
+  put(cx - 3, baseCy - 13, col.out);
+  put(cx - 2, baseCy - 13, col.eye);
+  put(cx - 1, baseCy - 13, col.out);
+  put(cx + 1, baseCy - 13, col.out);
+  put(cx + 2, baseCy - 13, col.eye);
+  put(cx + 3, baseCy - 13, col.out);
+  // Eye glow
+  put(cx - 2, baseCy - 14, col.glow);
+  put(cx + 2, baseCy - 14, col.glow);
+
+  // Mouth — wailing
+  const mw = opts.mouthOpen ? 4 : 2;
+  const mh = opts.mouthOpen ? 3 : 1;
+  for (let dx = -mw; dx <= mw; dx++)
+    for (let dy = 0; dy < mh; dy++)
+      put(cx + dx, baseCy - 9 + dy, col.out);
+  if (opts.mouthOpen) {
+    for (let dx = -mw + 1; dx <= mw - 1; dx++)
+      put(cx + dx, baseCy - 8, col.d);
+  }
+
+  // Arms (raised in attack, down normally)
+  if (opts.rearUp || opts.mouthOpen) {
+    // Arms raised
+    for (let dy = -6; dy <= 0; dy++) {
+      put(cx - 9 - dy, baseCy + dy, col.b);
+      put(cx + 9 + dy, baseCy + dy, col.b);
+    }
+  } else {
+    // Arms at sides
+    for (let dy = -2; dy <= 6; dy++) {
+      put(cx - 8, baseCy + dy, col.b);
+      put(cx + 8, baseCy + dy, col.b);
+    }
+  }
+
+  // Orbiting ghost orbs (3 orbs at different positions based on phase)
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2 + phase * 0.8;
+    const orbR = opts.rearUp ? 8 : 16;
+    const orbX = Math.round(cx + Math.cos(angle) * orbR);
+    const orbY = Math.round(baseCy - 4 + Math.sin(angle) * orbR * 0.5);
+    disc(put, orbX, orbY, 2, col.glow);
+    put(orbX, orbY, col.eye);
+  }
+
+  // Charge glow — body pulses bright
+  if (opts.chargeGlow) {
+    disc(put, cx, baseCy, 16, col.glow);
+    disc(put, cx, baseCy, 12, col.l);
+    disc(put, cx, baseCy - 12, 8, col.glow);
+  }
+
+  // Birth animation — summoning spirits
+  if (opts.pockets != null) {
+    const p = opts.pockets;
+    for (let t = 0; t < 4; t++) {
+      const a = (t / 4) * Math.PI * 2 + 0.3;
+      const len = 5 + p * 3;
+      for (let i = 0; i < len; i++) {
+        const r = 14 + i * 1.5;
+        const px = Math.round(cx + Math.cos(a) * r);
+        const py = Math.round(baseCy + Math.sin(a) * r * 0.5);
+        if (i % 2 === 0) put(px, py, col.glow);
+        else put(px, py, col.wisp);
+      }
+    }
+    if (p >= 3) {
+      for (let t = 0; t < 4; t++) {
+        const a = (t / 4) * Math.PI * 2 + 0.3;
+        const r = 14 + (5 + p * 3) * 1.5;
+        disc(put, Math.round(cx + Math.cos(a) * r), Math.round(baseCy + Math.sin(a) * r * 0.5), 2, col.glow);
+      }
+    }
+  }
+}
+
+function drawPhantomQueenDie(put: Put, step: number) {
+  const cx = 32, cy = 30;
+  // Dissolve from bottom up
+  const cutoff = 60 - step * 10;
+  const r = Math.max(0, 12 - step * 2);
+  if (r > 0) {
+    // Draw remaining body above cutoff
+    for (let dy = -r; dy <= r; dy++) {
+      if (cy + dy > cutoff) continue;
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy) / r;
+        put(cx + dx, cy + dy, dist < 0.5 ? '#8abadd' : '#4a6a8a');
+      }
+    }
+  }
+  // Dispersing wisps
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + step * 0.5;
+    const d = step * 6 + 4;
+    const x = Math.round(cx + Math.cos(a) * d);
+    const y = Math.round(cy + Math.sin(a) * d * 0.6);
+    put(x, y, '#6a8aaa');
+    put(x + 1, y, '#aad0ff');
+    if (i % 3 === 0) put(x, y - 1, '#ffffff');
+  }
+  if (step < 2) disc(put, cx, cy, 4, '#aad0ff');
+}
+
+function drawPhantomQueen(frame: BossFrame) {
+  return (put: Put) => {
+    switch (frame) {
+      case 'idle0':      return drawPhantomQueenBody(put, { bob: 0, orbPhase: 0 });
+      case 'idle1':      return drawPhantomQueenBody(put, { bob: -1, orbPhase: 1 });
+      case 'move0':      return drawPhantomQueenBody(put, { bob: 0, orbPhase: 0 });
+      case 'move1':      return drawPhantomQueenBody(put, { bob: -1, orbPhase: 1 });
+      case 'move2':      return drawPhantomQueenBody(put, { bob: -2, orbPhase: 2 });
+      case 'move3':      return drawPhantomQueenBody(put, { bob: -1, orbPhase: 3 });
+      case 'atk0':       return drawPhantomQueenBody(put, { rearUp: true, mouthOpen: true, bob: -2, orbPhase: 0 });
+      case 'atk1':       return drawPhantomQueenBody(put, { bob: 1, mouthOpen: true, orbPhase: 2 });
+      case 'chargeWind': return drawPhantomQueenBody(put, { chargeGlow: true, bob: 0, orbPhase: 0 });
+      case 'hit':        return drawPhantomQueenBody(put, { flash: true, orbPhase: 0 });
+      case 'birth0':     return drawPhantomQueenBody(put, { pockets: 0, orbPhase: 0 });
+      case 'birth1':     return drawPhantomQueenBody(put, { pockets: 1, orbPhase: 1 });
+      case 'birth2':     return drawPhantomQueenBody(put, { pockets: 2, orbPhase: 2 });
+      case 'birth3':     return drawPhantomQueenBody(put, { pockets: 3, orbPhase: 3 });
+      case 'birth4':     return drawPhantomQueenBody(put, { pockets: 4, orbPhase: 0 });
+      case 'die0':       return drawPhantomQueenDie(put, 0);
+      case 'die1':       return drawPhantomQueenDie(put, 1);
+      case 'die2':       return drawPhantomQueenDie(put, 2);
+      case 'die3':       return drawPhantomQueenDie(put, 3);
+      case 'die4':       return drawPhantomQueenDie(put, 4);
+    }
+  };
+}
+
+// ==================================================================
+//  CASTLE BOSS 2 — Castle Dragon (massive red dragon, 64x64)
+// ==================================================================
+interface CastleDragonOpts {
+  bob?: number;
+  flash?: boolean;
+  chargeGlow?: boolean;
+  pockets?: number;
+  rearUp?: boolean;
+  legStep?: number;
+  mouthOpen?: boolean;
+  wingsSpread?: boolean;
+}
+
+function drawCastleDragonBody(put: Put, opts: CastleDragonOpts) {
+  const bob = opts.bob ?? 0;
+  const by = bob;           // vertical bob offset
+
+  const col = {
+    out:    opts.flash ? P.white : P.outline,
+    d:      opts.flash ? P.white : '#6a1818',
+    m:      opts.flash ? P.white : '#8a2020',
+    b:      opts.flash ? P.white : '#a03030',
+    l:      opts.flash ? P.white : '#b04040',
+    belly:  opts.flash ? P.white : '#b06030',
+    bellyL: opts.flash ? P.white : '#c07040',
+    bellyM: opts.flash ? P.white : '#d08050',
+    horn:   opts.flash ? P.white : '#5a3a18',
+    hornD:  opts.flash ? P.white : '#4a2a10',
+    hornL:  opts.flash ? P.white : '#6a4a20',
+    eye:    opts.flash ? P.white : '#ffa020',
+    eyeL:   opts.flash ? P.white : '#ffd040',
+    fire:   opts.flash ? P.white : '#ff6020',
+    fireL:  opts.flash ? P.white : '#ffa040',
+    fireW:  opts.flash ? P.white : '#ffd060',
+    fireH:  opts.flash ? P.white : '#ffe880',
+    fireD:  opts.flash ? P.white : '#ff2000',
+    wingD:  opts.flash ? P.white : '#4a1010',
+    wing:   opts.flash ? P.white : '#6a2020',
+    wingL:  opts.flash ? P.white : '#8a3030',
+    scale:  opts.flash ? P.white : '#905020',
+    tooth:  opts.flash ? P.white : '#e8e0d0',
+    toothD: opts.flash ? P.white : '#d8d0c0',
+    claw:   opts.flash ? P.white : '#4a2a10',
+    smoke:  opts.flash ? P.white : '#4a4a4a',
+    browD:  opts.flash ? P.white : '#8a1818',
+    nostril:opts.flash ? P.white : '#6a2020',
+  };
+
+  // Ground shadow
+  for (let dy = -2; dy <= 2; dy++)
+    for (let dx = -16; dx <= 16; dx++)
+      if ((dx * dx) / 256 + (dy * dy) / 4 <= 1) put(32 + dx, 59 + dy, P.shadow);
+
+  // === Tail (curving left, wavy) ===
+  for (let i = 0; i < 22; i++) {
+    const tx = 18 - i;
+    const ty = 38 + by + Math.round(Math.sin(i * 0.4) * 4);
+    const tr = Math.max(1, 3 - Math.floor(i / 6));
+    disc(put, tx, ty, tr, col.m);
+    if (tr > 1) disc(put, tx, ty, tr - 1, col.b);
+  }
+  // Tail spikes
+  put(0, 36 + by, col.hornD); put(1, 35 + by, col.horn);
+  put(0, 38 + by, col.hornD); put(1, 39 + by, col.horn);
+
+  // === Left wing (behind body) ===
+  const wingSpread = opts.wingsSpread ? 4 : 0;
+  for (let i = 0; i < 22; i++) {
+    const wy = 14 + Math.floor(i * 0.4) - wingSpread + Math.floor(i * wingSpread / 22);
+    const wh = 6 + Math.floor(i * 0.3);
+    rect(put, 4 + i, wy + by, 2, wh, col.wing);
+    if (i % 3 === 0) put(4 + i, wy + by, col.wingL); // membrane veins
+  }
+  // Wing bone
+  line(put, 14, 20 + by - Math.floor(wingSpread / 2), 4, 14 + by - wingSpread, col.wingD);
+
+  // === Right wing (behind body) ===
+  for (let i = 0; i < 18; i++) {
+    const wy = 14 + Math.floor(i * 0.4) - wingSpread + Math.floor(i * wingSpread / 18);
+    const wh = 5 + Math.floor(i * 0.2);
+    rect(put, 38 + i, wy + by, 2, wh, col.wing);
+    if (i % 3 === 0) put(38 + i, wy + by, col.wingL);
+  }
+  line(put, 38, 20 + by - Math.floor(wingSpread / 2), 54, 14 + by - wingSpread, col.wingD);
+
+  // === Legs ===
+  const ls = opts.legStep ?? 0;
+  rect(put, 24, 44 + by + (ls > 0 ? -1 : 0), 6, 12, col.m);
+  rect(put, 36, 44 + by + (ls < 0 ? -1 : 0), 6, 12, col.m);
+  // Claws
+  for (let i = 0; i < 3; i++) {
+    put(24 + i * 2, 55 + by + (ls > 0 ? -1 : 0), col.claw);
+    put(36 + i * 2, 55 + by + (ls < 0 ? -1 : 0), col.claw);
+  }
+
+  // === Body (large round) ===
+  disc(put, 32, 34 + by, 14, col.m);
+  disc(put, 32, 33 + by, 12, col.b);
+  // Belly scales (lighter center)
+  disc(put, 32, 36 + by, 8, col.belly);
+  disc(put, 32, 36 + by, 6, col.bellyL);
+  disc(put, 32, 36 + by, 4, col.bellyM);
+  // Scale detail
+  for (let y = 30; y < 42; y += 3)
+    for (let x = 26; x < 38; x += 4)
+      put(x, y + by, col.scale);
+
+  // === Neck (thick, angled right) ===
+  rect(put, 34, 18 + by, 10, 14, col.b);
+  rect(put, 35, 19 + by, 8, 12, col.l);
+  // Neck scales
+  for (let y = 20; y < 30; y += 2) put(36, y + by, col.m);
+
+  // === Head (detailed, facing right) ===
+  rect(put, 36, 12 + by, 18, 12, col.b);
+  rect(put, 38, 13 + by, 16, 10, col.l);
+  // Snout
+  rect(put, 50, 15 + by, 8, 6, col.l);
+  rect(put, 52, 16 + by, 6, 4, '#c05050');
+  // Nostrils
+  put(57, 17 + by, col.nostril); put(57, 19 + by, col.nostril);
+  // Jaw
+  rect(put, 40, 22 + by, 16, 3, col.m);
+  rect(put, 42, 22 + by, 12, 2, col.b);
+  // Teeth
+  for (let x = 42; x < 54; x += 3) {
+    put(x, 22 + by, col.tooth); put(x, 23 + by, col.toothD);
+  }
+  // Brow ridge
+  rect(put, 38, 12 + by, 14, 2, col.browD);
+
+  // === Horns ===
+  rect(put, 40, 6 + by, 3, 8, col.hornD);
+  rect(put, 41, 4 + by, 2, 4, col.horn);
+  rect(put, 48, 6 + by, 3, 8, col.hornD);
+  rect(put, 49, 4 + by, 2, 4, col.horn);
+  put(41, 3 + by, col.hornL); put(49, 3 + by, col.hornL);
+
+  // === Eye (glowing orange, menacing) ===
+  rect(put, 44, 14 + by, 4, 3, col.out);
+  put(45, 14 + by, col.eye);
+  put(46, 14 + by, col.eyeL);
+  put(45, 15 + by, col.eye);
+
+  // === Mouth open with fire (attack frames) ===
+  if (opts.mouthOpen) {
+    // Wider open jaw
+    rect(put, 50, 21 + by, 8, 4, col.m);
+    rect(put, 52, 22 + by, 6, 2, col.b);
+    // Fire breath (expanding cone to the right)
+    for (let i = 0; i < 6; i++) {
+      const spread = Math.floor(i * 0.6);
+      for (let s = -spread; s <= spread; s++) {
+        const fx = 58 + i;
+        const fy = 19 + by + s;
+        if (fx < 64 && fy >= 0 && fy < 64) {
+          const colors = [col.fireD, col.fire, col.fireL, col.fireW, col.fireH];
+          put(fx, fy, colors[Math.min(Math.abs(s), 4)]);
+        }
+      }
+    }
+  } else {
+    // Smoke from nostrils when not breathing
+    put(58, 17 + by, col.smoke);
+    put(59, 16 + by, col.smoke);
+    put(58, 19 + by, col.smoke);
+  }
+
+  // === Back spines along body top ===
+  for (let x = 26; x < 38; x += 3) {
+    put(x, 24 + by, col.d);
+    put(x, 23 + by, col.l);
+  }
+
+  // Charge glow — fire aura building
+  if (opts.chargeGlow) {
+    for (let i = 0; i < 10; i++) {
+      const a = (i / 10) * Math.PI * 2;
+      const r = 18;
+      const gx = Math.round(32 + Math.cos(a) * r);
+      const gy = Math.round(34 + by + Math.sin(a) * r * 0.6);
+      disc(put, gx, gy, 2, col.fire);
+      put(gx, gy, col.fireL);
+    }
+    disc(put, 56, 18 + by, 3, col.fireL);
+  }
+
+  // Rear up pose (attack windup) — wings spread wider
+  if (opts.rearUp) {
+    for (let i = 0; i < 5; i++) {
+      put(4 - i, 10 + by + i, col.wingL);
+      put(56 + i, 10 + by + i, col.wingL);
+    }
+  }
+
+  // Birth animation — roaring/summoning
+  if (opts.pockets != null) {
+    const p = opts.pockets;
+    for (let t = 0; t < 6; t++) {
+      const a = (t / 6) * Math.PI * 2;
+      const r = 8 + p * 3;
+      const fx = Math.round(32 + Math.cos(a) * r);
+      const fy = Math.round(34 + by + Math.sin(a) * r * 0.5);
+      put(fx, fy, col.fire);
+      if (p >= 2) put(fx + 1, fy, col.fireL);
+      if (p >= 4) disc(put, fx, fy, 2, col.fireL);
+    }
+  }
+}
+
+function drawCastleDragonDie(put: Put, step: number) {
+  const cx = 32, cy = 34;
+  const r = Math.max(0, 14 - step * 3);
+  if (r > 0) {
+    disc(put, cx, cy, r, '#8a2020');
+    disc(put, cx, cy, Math.max(0, r - 2), '#a03030');
+    disc(put, cx, cy, Math.max(0, r - 4), '#b04040');
+  }
+  // Flames dying out — chunks dispersing
+  for (let i = 0; i < 12; i++) {
+    const a = (i / 12) * Math.PI * 2 + step * 0.4;
+    const d = step * 5 + 5;
+    const x = Math.round(cx + Math.cos(a) * d);
+    const y = Math.round(cy + Math.sin(a) * d * 0.6);
+    put(x, y, '#8a2020');
+    put(x + 1, y, i % 3 === 0 ? '#5a3a18' : '#6a1818');
+    if (i % 2 === 0) put(x, y - 1, step < 3 ? '#ff6020' : '#c07040');
+  }
+  // Central flame dying
+  if (step < 2) disc(put, cx, cy, 4, '#ff8020');
+  if (step < 1) disc(put, cx, cy, 6, '#ffaa40');
+}
+
+function drawCastleDragon(frame: BossFrame) {
+  return (put: Put) => {
+    switch (frame) {
+      case 'idle0':      return drawCastleDragonBody(put, { bob: 0 });
+      case 'idle1':      return drawCastleDragonBody(put, { bob: 1 });
+      case 'move0':      return drawCastleDragonBody(put, { bob: 0, legStep: 1 });
+      case 'move1':      return drawCastleDragonBody(put, { bob: 1, legStep: 0 });
+      case 'move2':      return drawCastleDragonBody(put, { bob: 0, legStep: -1 });
+      case 'move3':      return drawCastleDragonBody(put, { bob: 1, legStep: 0 });
+      case 'atk0':       return drawCastleDragonBody(put, { rearUp: true, mouthOpen: true, bob: -2 });
+      case 'atk1':       return drawCastleDragonBody(put, { bob: 1, mouthOpen: true });
+      case 'chargeWind': return drawCastleDragonBody(put, { chargeGlow: true, wingsSpread: true, bob: 0 });
+      case 'hit':        return drawCastleDragonBody(put, { flash: true });
+      case 'birth0':     return drawCastleDragonBody(put, { pockets: 0, mouthOpen: true });
+      case 'birth1':     return drawCastleDragonBody(put, { pockets: 1, mouthOpen: true });
+      case 'birth2':     return drawCastleDragonBody(put, { pockets: 2, mouthOpen: true });
+      case 'birth3':     return drawCastleDragonBody(put, { pockets: 3, mouthOpen: true });
+      case 'birth4':     return drawCastleDragonBody(put, { pockets: 4, mouthOpen: true });
+      case 'die0':       return drawCastleDragonDie(put, 0);
+      case 'die1':       return drawCastleDragonDie(put, 1);
+      case 'die2':       return drawCastleDragonDie(put, 2);
+      case 'die3':       return drawCastleDragonDie(put, 3);
+      case 'die4':       return drawCastleDragonDie(put, 4);
+    }
+  };
+}
+
+// ==================================================================
+//  QUEEN ORB projectile (32x32) — blue-white glowing orb
+// ==================================================================
+function drawQueenOrb(frame: 0|1) {
+  return (put: Put) => {
+    const cx = 16, cy = 16, r = 5;
+    // Outer glow
+    disc(put, cx, cy, r + 1, '#3a5a8a');
+    // Main orb body
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy) / r;
+        let color: string;
+        if (dist < 0.3) color = '#ffffff';
+        else if (dist < 0.5) color = '#cce0ff';
+        else if (dist < 0.7) color = '#8abadd';
+        else color = '#4a6a8a';
+        put(cx + dx, cy + dy, color);
+      }
+    }
+    // Specular highlight — shifts per frame for spin
+    const hx = frame === 0 ? cx - 2 : cx - 1;
+    const hy = frame === 0 ? cy - 2 : cy - 3;
+    put(hx, hy, '#ffffff');
+    put(hx + 1, hy, '#cce0ff');
+    // Wispy trail
+    put(cx + 3 + frame, cy + 2, '#6a8aaa');
+    put(cx + 4 + frame, cy + 3, '#4a6a8a');
+  };
+}
+
+// ==================================================================
+//  DRAGON FIREBALL projectile (32x32) — round flame ball with flickering wisps
+// ==================================================================
+function drawDragonFireball(frame: 0|1|2|3) {
+  return (put: Put) => {
+    const cx = 16, cy = 16, r = 7;
+    const rot = frame * 0.8; // rotation offset per frame
+
+    // Outer fire glow — soft halo
+    for (let dy = -(r + 3); dy <= r + 3; dy++) {
+      for (let dx = -(r + 3); dx <= r + 3; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > (r + 3) * (r + 3) || d2 <= (r + 1) * (r + 1)) continue;
+        put(cx + dx, cy + dy, '#6a1800');
+      }
+    }
+
+    // Main flame body — layered with color gradient
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (dx * dx + dy * dy > r * r) continue;
+        const dist = Math.sqrt(dx * dx + dy * dy) / r;
+        // Angle-based color variation for flame feel
+        const ang = Math.atan2(dy, dx) + rot;
+        const flicker = Math.sin(ang * 3) * 0.12;
+        const d = dist + flicker;
+        let color: string;
+        if (d < 0.2) color = '#ffffcc';
+        else if (d < 0.35) color = '#ffee60';
+        else if (d < 0.5) color = '#ffaa40';
+        else if (d < 0.7) color = '#ff6020';
+        else color = '#c04010';
+        put(cx + dx, cy + dy, color);
+      }
+    }
+
+    // Outline ring
+    for (let dy = -(r + 1); dy <= r + 1; dy++) {
+      for (let dx = -(r + 1); dx <= r + 1; dx++) {
+        const d2 = dx * dx + dy * dy;
+        if (d2 > (r + 1) * (r + 1) || d2 <= r * r) continue;
+        if (Math.sqrt(d2) > r && Math.sqrt(d2) <= r + 1.2) put(cx + dx, cy + dy, '#8a2010');
+      }
+    }
+
+    // Flame wisps radiating outward (rotating per frame)
+    for (let i = 0; i < 6; i++) {
+      const a = (i / 6) * Math.PI * 2 + rot;
+      for (let d = r; d < r + 3 + (i % 2); d++) {
+        const fx = Math.round(cx + Math.cos(a) * d);
+        const fy = Math.round(cy + Math.sin(a) * d);
+        const colors = ['#ff6020', '#ff8030', '#c04010', '#ff4000'];
+        put(fx, fy, colors[(i + frame) % colors.length]);
+      }
+    }
+
+    // Hot center specular
+    const hx = cx + (frame < 2 ? -1 : 0);
+    const hy = cy + (frame % 2 === 0 ? -2 : -1);
+    put(hx, hy, '#ffffff');
+    put(hx + 1, hy, '#ffffcc');
+    put(hx, hy + 1, '#ffee60');
+  };
+}
+
+// ==================================================================
+//  DRAGON FIREBALL EXPLOSION (32x32) — fiery burst, 5 frames
+// ==================================================================
+function drawDragonFireExplosion(frame: number) {
+  return (put: Put) => {
+    const cx = 16, cy = 16;
+    // Expanding ring of fire
+    const outerR = 3 + frame * 3;
+    const innerR = Math.max(0, frame * 2 - 1);
+    const alpha = 1 - frame * 0.15;
+
+    // Outer fire ring
+    for (let dy = -outerR; dy <= outerR; dy++) {
+      for (let dx = -outerR; dx <= outerR; dx++) {
+        const d = Math.sqrt(dx * dx + dy * dy);
+        if (d > outerR || d < innerR) continue;
+        const norm = (d - innerR) / (outerR - innerR);
+        let color: string;
+        if (norm < 0.3) color = frame < 2 ? '#ffffcc' : '#ffee60';
+        else if (norm < 0.5) color = '#ffaa40';
+        else if (norm < 0.7) color = '#ff6020';
+        else color = '#c04010';
+        if (alpha < 0.6 && norm > 0.5) continue; // fade outer edges
+        put(cx + dx, cy + dy, color);
+      }
+    }
+
+    // Flying ember chunks
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + frame * 0.3;
+      const d = outerR + 1 + frame;
+      const ex = Math.round(cx + Math.cos(a) * d);
+      const ey = Math.round(cy + Math.sin(a) * d);
+      if (ex >= 0 && ex < 32 && ey >= 0 && ey < 32) {
+        const colors = ['#ff4000', '#ff8030', '#ffaa40', '#c04010'];
+        put(ex, ey, colors[i % colors.length]);
+        if (frame < 3) put(ex + (i % 2 === 0 ? 1 : -1), ey, '#ff6020');
+      }
+    }
+
+    // Central bright core (fades out)
+    if (frame < 3) {
+      const coreR = Math.max(0, 3 - frame);
+      disc(put, cx, cy, coreR, frame === 0 ? '#ffffff' : '#ffee60');
+    }
+
+    // Smoke wisps (later frames)
+    if (frame >= 3) {
+      for (let i = 0; i < 4; i++) {
+        const a = (i / 4) * Math.PI * 2 + frame * 0.5;
+        const d = outerR - 2;
+        const sx = Math.round(cx + Math.cos(a) * d);
+        const sy = Math.round(cy + Math.sin(a) * d);
+        if (sx >= 0 && sx < 32 && sy >= 0 && sy < 32) {
+          put(sx, sy, '#4a4a4a');
+        }
+      }
+    }
+  };
+}
+
+// ==================================================================
+//  SKELETON SOLDIER (32x32) — bone-white warrior with rusty sword
+// ==================================================================
+function drawEnemySkeleton(f: EFrame) {
+  return (rawPut: Put) => {
+    const put = f.startsWith('die') ? rawPut : mirrorX(rawPut);
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 8 - step * 2;
+      if (r <= 0) return;
+      disc(put, 16, 18, Math.max(0, r), '#d8d0c0');
+      disc(put, 16, 18, Math.max(0, r - 2), '#c8c0a8');
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + step * 0.5;
+        const d = step * 3 + 2;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(18 + Math.sin(a) * d), '#b8b098');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const bone = flash ? P.white : '#d8d0c0';
+    const boneD = flash ? P.white : '#c8c0a8';
+    const boneDD = flash ? P.white : '#b8b098';
+    const cloth = flash ? P.white : '#3a4a5a';
+    const sword = flash ? P.white : '#8892a0';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 2 : 0;
+    const bob = [0, -1, 0, 1][phase];
+
+    // Skull
+    rect(put, 14, 4 + bob, 5, 5, bone);
+    rect(put, 15, 3 + bob, 3, 1, bone);
+    // Eye sockets
+    put(14, 6 + bob, P.outline); put(15, 6 + bob, P.outline);
+    put(17, 6 + bob, P.outline); put(18, 6 + bob, P.outline);
+    // Nose
+    put(16, 7 + bob, boneDD);
+    // Jaw
+    rect(put, 14, 9 + bob, 5, 1, boneD);
+    put(14, 9 + bob, boneDD); put(18, 9 + bob, boneDD);
+
+    // Spine
+    rect(put, 16, 10 + bob, 1, 3, boneD);
+
+    // Ribcage
+    rect(put, 13, 11 + bob, 7, 4, boneD);
+    // Rib gaps
+    put(14, 12 + bob, cloth); put(18, 12 + bob, cloth);
+    put(14, 14 + bob, cloth); put(18, 14 + bob, cloth);
+    put(16, 12 + bob, cloth); put(16, 14 + bob, cloth);
+
+    // Tattered cloth around waist
+    rect(put, 13, 15 + bob, 7, 3, cloth);
+    put(13, 17 + bob, null); put(15, 17 + bob, null); put(19, 17 + bob, null);
+
+    // Arms — bone segments
+    // Left arm
+    put(12, 11 + bob, boneD); put(11, 12 + bob, boneD); put(10, 13 + bob, boneD);
+    // Right arm holding sword
+    put(20, 11 + bob, boneD); put(21, 12 + bob, boneD); put(22, 13 + bob, boneD);
+
+    // Sword in right hand
+    if (f === 'atk0') {
+      // Sword raised
+      put(22, 10 + bob, sword); put(22, 9 + bob, sword); put(22, 8 + bob, sword);
+      put(22, 7 + bob, sword); put(22, 6 + bob, '#a0a8b8');
+    } else if (f === 'atk1') {
+      // Sword swung down
+      put(23, 14 + bob, sword); put(24, 15 + bob, sword); put(25, 16 + bob, sword);
+      put(26, 17 + bob, sword); put(27, 18 + bob, '#a0a8b8');
+    } else {
+      // Sword at rest, angled
+      put(23, 12 + bob, sword); put(24, 11 + bob, sword); put(25, 10 + bob, sword);
+      put(26, 9 + bob, sword); put(27, 8 + bob, '#a0a8b8');
+    }
+
+    // Legs — bone with cloth
+    const legOff = [0, 1, 0, -1][phase];
+    // Left leg
+    put(14, 18 + bob, boneD); put(14, 19 + bob + legOff, boneD);
+    put(14, 20 + bob + legOff, boneD); put(14, 21 + bob + legOff, boneD);
+    put(13, 22 + bob + legOff, boneDD); put(14, 22 + bob + legOff, boneDD);
+    // Right leg
+    put(18, 18 + bob, boneD); put(18, 19 + bob - legOff, boneD);
+    put(18, 20 + bob - legOff, boneD); put(18, 21 + bob - legOff, boneD);
+    put(17, 22 + bob - legOff, boneDD); put(18, 22 + bob - legOff, boneDD);
+  };
+}
+
+// ==================================================================
+//  WARLOCK (32x32) — dark robed magic caster with glowing purple eyes
+// ==================================================================
+function drawEnemyWarlock(f: EFrame) {
+  return (rawPut: Put) => {
+    const put = f.startsWith('die') ? rawPut : mirrorX(rawPut);
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 8 - step * 2;
+      if (r <= 0) return;
+      disc(put, 16, 18, Math.max(0, r), '#2a0a3a');
+      disc(put, 16, 18, Math.max(0, r - 2), '#3a1a4a');
+      for (let i = 0; i < 7; i++) {
+        const a = (i / 7) * Math.PI * 2 + step * 0.6;
+        const d = step * 3 + 2;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(18 + Math.sin(a) * d), '#aa40ff');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const robe = flash ? P.white : '#2a0a3a';
+    const robeM = flash ? P.white : '#3a1a4a';
+    const glow = flash ? P.white : '#aa40ff';
+    const glowL = flash ? P.white : '#dd80ff';
+    const hands = flash ? P.white : '#6a8a5a';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 2 : 0;
+    const bob = [0, -1, 0, 1][phase];
+
+    // Hood
+    rect(put, 13, 4 + bob, 7, 6, robe);
+    rect(put, 12, 5 + bob, 1, 4, robe);
+    rect(put, 20, 5 + bob, 1, 4, robe);
+    rect(put, 14, 3 + bob, 5, 1, robeM);
+
+    // Face shadow inside hood
+    rect(put, 14, 6 + bob, 5, 3, '#1a0828');
+
+    // Glowing purple eyes
+    put(15, 7 + bob, glow); put(17, 7 + bob, glow);
+    put(15, 6 + bob, glowL); put(17, 6 + bob, glowL);
+
+    // Robe body
+    rect(put, 13, 10 + bob, 7, 8, robe);
+    rect(put, 12, 12 + bob, 1, 6, robeM);
+    rect(put, 20, 12 + bob, 1, 6, robeM);
+    // Robe flare at bottom
+    rect(put, 11, 18 + bob, 11, 3, robe);
+    rect(put, 12, 21 + bob, 9, 1, robeM);
+    // Ragged bottom edge
+    put(11, 20 + bob, null); put(21, 20 + bob, null);
+    put(13, 21 + bob, null); put(19, 21 + bob, null);
+
+    // Staff in left hand
+    put(11, 8 + bob, '#5a3a1a'); put(11, 9 + bob, '#5a3a1a');
+    put(11, 10 + bob, '#5a3a1a'); put(11, 11 + bob, '#5a3a1a');
+    put(11, 12 + bob, '#5a3a1a'); put(11, 13 + bob, '#5a3a1a');
+    put(11, 14 + bob, '#5a3a1a'); put(11, 15 + bob, '#5a3a1a');
+    put(11, 16 + bob, '#5a3a1a'); put(11, 17 + bob, '#5a3a1a');
+    // Crystal on top
+    put(11, 6 + bob, glow); put(11, 5 + bob, glowL);
+    put(10, 6 + bob, glow); put(12, 6 + bob, glow);
+    put(11, 7 + bob, glow);
+
+    // Left hand on staff
+    put(12, 13 + bob, hands);
+    // Right casting hand
+    put(20, 14 + bob, hands); put(21, 14 + bob, hands);
+
+    // Casting effect on attack
+    if (f === 'atk0') {
+      put(22, 13 + bob, glow); put(23, 13 + bob, glow);
+      put(22, 14 + bob, glowL); put(23, 14 + bob, glow);
+      put(22, 15 + bob, glow); put(23, 15 + bob, glow);
+    } else if (f === 'atk1') {
+      disc(put, 23, 14 + bob, 2, glowL);
+      put(25, 14 + bob, glow); put(26, 14 + bob, glow);
+      put(23, 12 + bob, glow); put(23, 16 + bob, glow);
+    }
+
+    // Robe sway on walk
+    const legOff = [0, 1, 0, -1][phase];
+    put(14, 21 + bob + legOff, robeM);
+    put(18, 21 + bob - legOff, robeM);
+  };
+}
+
+// ==================================================================
+//  GOLEM (32x32) — massive stone guardian with glowing orange runes
+// ==================================================================
+function drawEnemyGolem(f: EFrame) {
+  return (rawPut: Put) => {
+    const put = f.startsWith('die') ? rawPut : mirrorX(rawPut);
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 10 - step * 2;
+      if (r <= 0) return;
+      disc(put, 16, 16, Math.max(0, r), '#5a6270');
+      disc(put, 16, 16, Math.max(0, r - 2), '#636d7a');
+      for (let i = 0; i < 8; i++) {
+        const a = (i / 8) * Math.PI * 2 + step * 0.4;
+        const d = step * 3 + 3;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(16 + Math.sin(a) * d), '#ffa020');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const stone = flash ? P.white : '#5a6270';
+    const stoneD = flash ? P.white : '#4a5260';
+    const stoneL = flash ? P.white : '#636d7a';
+    const rune = flash ? P.white : '#ffa020';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 2 : 0;
+    const bob = [0, -1, 0, 1][phase];
+
+    // Massive blocky head
+    rect(put, 12, 2 + bob, 9, 7, stone);
+    rect(put, 13, 1 + bob, 7, 1, stoneL);
+    // Glowing eyes
+    put(14, 5 + bob, rune); put(15, 5 + bob, rune);
+    put(18, 5 + bob, rune); put(19, 5 + bob, rune);
+    // Brow ridge
+    rect(put, 13, 4 + bob, 7, 1, stoneD);
+    // Jaw
+    rect(put, 13, 8 + bob, 7, 1, stoneD);
+
+    // Massive torso
+    rect(put, 10, 9 + bob, 13, 10, stone);
+    rect(put, 9, 10 + bob, 1, 8, stoneD);
+    rect(put, 23, 10 + bob, 1, 8, stoneD);
+    // Chest rune lines
+    put(16, 11 + bob, rune); put(16, 12 + bob, rune); put(16, 13 + bob, rune);
+    put(14, 12 + bob, rune); put(18, 12 + bob, rune);
+    put(13, 13 + bob, rune); put(19, 13 + bob, rune);
+
+    // Shoulders (blocky)
+    rect(put, 7, 9 + bob, 3, 4, stoneL);
+    rect(put, 23, 9 + bob, 3, 4, stoneL);
+
+    // Arms
+    const atkSwing = f === 'atk1' ? 3 : 0;
+    // Left arm
+    rect(put, 7, 13 + bob, 3, 5, stone);
+    put(7, 18 + bob, stoneD); put(8, 18 + bob, stoneD); put(9, 18 + bob, stoneD);
+    // Right arm
+    rect(put, 23, 13 + bob - atkSwing, 3, 5, stone);
+    put(23, 18 + bob - atkSwing, stoneD); put(24, 18 + bob - atkSwing, stoneD); put(25, 18 + bob - atkSwing, stoneD);
+
+    // Arm runes
+    put(8, 15 + bob, rune);
+    put(24, 15 + bob - atkSwing, rune);
+
+    // Legs — thick pillars
+    const legOff = [0, 1, 0, -1][phase];
+    // Left leg
+    rect(put, 11, 19 + bob, 4, 5 + legOff, stone);
+    rect(put, 11, 24 + bob + legOff, 5, 1, stoneD);
+    // Right leg
+    rect(put, 18, 19 + bob, 4, 5 - legOff, stone);
+    rect(put, 17, 24 + bob - legOff, 5, 1, stoneD);
+    // Leg runes
+    put(13, 21 + bob + legOff, rune);
+    put(19, 21 + bob - legOff, rune);
+
+    // Attack: fist glow
+    if (f === 'atk0') {
+      put(24, 17 + bob, rune); put(25, 17 + bob, rune);
+    } else if (f === 'atk1') {
+      put(24, 14 + bob, rune); put(25, 14 + bob, rune);
+      put(23, 15 + bob, rune); put(26, 15 + bob, rune);
+    }
+  };
+}
+
+// ==================================================================
+//  SHADOW IMP (32x32) — small dark fiend with horns, orange eyes
+// ==================================================================
+function drawEnemyShadowImp(f: EFrame) {
+  return (rawPut: Put) => {
+    const put = f.startsWith('die') ? rawPut : mirrorX(rawPut);
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 6 - step * 1.5;
+      if (r <= 0) return;
+      disc(put, 16, 20, Math.max(0, Math.round(r)), '#1a1028');
+      for (let i = 0; i < 5; i++) {
+        const a = (i / 5) * Math.PI * 2 + step * 0.6;
+        const d = step * 3 + 2;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(20 + Math.sin(a) * d), '#3a2a48');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const body = flash ? P.white : '#1a1028';
+    const bodyM = flash ? P.white : '#2a1a38';
+    const bodyL = flash ? P.white : '#3a2a48';
+    const eyes = flash ? P.white : '#ff8800';
+    const grin = flash ? P.white : '#ff4040';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 2 : 0;
+    const bob = [0, -1, 0, 1][phase];
+
+    // Shadow on ground
+    for (let dy = -1; dy <= 0; dy++)
+      for (let dx = -3; dx <= 3; dx++)
+        if (Math.abs(dx) + Math.abs(dy) <= 3) put(16 + dx, 27 + dy, P.shadow);
+
+    // Small body
+    disc(put, 16, 18 + bob, 4, body);
+    disc(put, 16, 18 + bob, 3, bodyM);
+
+    // Head
+    disc(put, 16, 12 + bob, 4, bodyM);
+    disc(put, 16, 12 + bob, 3, bodyL);
+
+    // Horns
+    put(12, 10 + bob, bodyL); put(11, 9 + bob, bodyL); put(10, 8 + bob, body);
+    put(20, 10 + bob, bodyL); put(21, 9 + bob, bodyL); put(22, 8 + bob, body);
+
+    // Eyes — bright orange
+    put(14, 12 + bob, eyes); put(18, 12 + bob, eyes);
+    // Eye glow
+    put(14, 11 + bob, '#ffaa44'); put(18, 11 + bob, '#ffaa44');
+
+    // Red grin
+    put(14, 14 + bob, grin); put(15, 14 + bob, grin); put(16, 14 + bob, grin);
+    put(17, 14 + bob, grin); put(18, 14 + bob, grin);
+
+    // Thin arms
+    put(11, 17 + bob, bodyL); put(10, 18 + bob, bodyL); put(9, 19 + bob, bodyL);
+    put(21, 17 + bob, bodyL); put(22, 18 + bob, bodyL); put(23, 19 + bob, bodyL);
+
+    // Claws
+    put(8, 19 + bob, grin); put(9, 20 + bob, grin);
+    put(24, 19 + bob, grin); put(23, 20 + bob, grin);
+
+    // Small legs
+    const legOff = [0, 1, 0, -1][phase];
+    put(14, 22 + bob + legOff, bodyL); put(14, 23 + bob + legOff, bodyL);
+    put(13, 24 + bob + legOff, body);
+    put(18, 22 + bob - legOff, bodyL); put(18, 23 + bob - legOff, bodyL);
+    put(19, 24 + bob - legOff, body);
+
+    // Pointed tail
+    put(16, 22 + bob, body); put(17, 23 + bob, body); put(18, 24 + bob, bodyL);
+    put(19, 25 + bob, bodyL);
+
+    // Smoky wisps
+    if (phase % 2 === 0) {
+      put(13, 20 + bob, bodyL); put(19, 16 + bob, bodyL);
+    } else {
+      put(19, 20 + bob, bodyL); put(13, 16 + bob, bodyL);
+    }
+
+    // Attack: claws forward
+    if (f === 'atk0') {
+      put(8, 17 + bob, grin); put(7, 17 + bob, grin);
+      put(24, 17 + bob, grin); put(25, 17 + bob, grin);
+    } else if (f === 'atk1') {
+      put(7, 16 + bob, grin); put(6, 15 + bob, grin);
+      put(25, 16 + bob, grin); put(26, 15 + bob, grin);
+    }
+  };
+}
+
+// ==================================================================
+//  CASTLE BAT (32x32) — dark bat with spread wings, red eyes, fangs
+// ==================================================================
+function drawEnemyCastleBat(f: EFrame) {
+  return (put: Put) => {
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 7 - step * 2;
+      if (r <= 0) return;
+      disc(put, 16, 18, Math.max(0, r), '#2a1a2a');
+      disc(put, 16, 18, Math.max(0, r - 1), '#3a2a3a');
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + step * 0.4;
+        const d = step * 3 + 3;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(18 + Math.sin(a) * d), '#1a0a1a');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const body = flash ? P.white : '#2a1a2a';
+    const bodyD = flash ? P.white : '#1a0a1a';
+    const bodyL = flash ? P.white : '#3a2a3a';
+    const membrane = flash ? P.white : '#221428';
+    const membraneL = flash ? P.white : '#3a2838';
+    const eyeC = flash ? P.white : '#ff2020';
+    const fang = flash ? P.white : '#d8d0c0';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 1 : 0;
+    const bob = [0, -1, 0, 1][phase];
+    const wingA = [0, -5, -6, -3][phase];
+
+    // Shadow
+    for (let dy = -1; dy <= 1; dy++)
+      for (let dx = -6; dx <= 6; dx++)
+        if ((dx * dx) / 36 + (dy * dy) / 1.5 <= 1) put(16 + dx, 28 + dy, P.shadow);
+
+    // Wing membranes
+    for (let i = 0; i < 12; i++) {
+      const t = i / 11;
+      const wy = 15 + bob + Math.round(wingA * Math.sin(t * Math.PI));
+      const memH = Math.round(3 + Math.sin(t * Math.PI) * 4);
+      for (let dy = 0; dy <= memH; dy++) {
+        put(12 - i, wy + dy, membrane);
+        put(20 + i, wy + dy, membrane);
+      }
+      // Wing bones
+      put(12 - i, wy, membraneL);
+      put(20 + i, wy, membraneL);
+    }
+    // Wing claw tips
+    put(0, 15 + bob + wingA, bodyL);
+    put(31, 15 + bob + wingA, bodyL);
+
+    // Body — oval
+    for (let dy = -4; dy <= 4; dy++)
+      for (let dx = -3; dx <= 3; dx++)
+        if ((dx * dx) / 9 + (dy * dy) / 16 <= 1) put(16 + dx, 17 + bob + dy, body);
+    // Lighter belly
+    for (let dy = 0; dy <= 3; dy++)
+      for (let dx = -2; dx <= 2; dx++)
+        if ((dx * dx) / 4 + (dy * dy) / 9 <= 1) put(16 + dx, 18 + bob + dy, bodyL);
+
+    // Head
+    disc(put, 16, 11 + bob, 3, bodyL);
+    disc(put, 16, 11 + bob, 2, body);
+
+    // Pointed ears
+    put(12, 8 + bob, bodyL); put(12, 7 + bob, bodyL); put(13, 9 + bob, bodyL);
+    put(20, 8 + bob, bodyL); put(20, 7 + bob, bodyL); put(19, 9 + bob, bodyL);
+
+    // Red eyes
+    put(14, 11 + bob, eyeC); put(18, 11 + bob, eyeC);
+    // Eye glow
+    put(14, 10 + bob, '#ff4040'); put(18, 10 + bob, '#ff4040');
+
+    // Fangs
+    put(15, 14 + bob, fang); put(17, 14 + bob, fang);
+    if (f === 'atk0' || f === 'atk1') {
+      put(15, 15 + bob, fang); put(17, 15 + bob, fang);
+      if (f === 'atk1') {
+        put(15, 16 + bob, fang); put(17, 16 + bob, fang);
+      }
+    }
+
+    // Mouth
+    put(15, 13 + bob, bodyD); put(16, 13 + bob, bodyD); put(17, 13 + bob, bodyD);
+  };
+}
+
+// ==================================================================
+//  CASTLE RAT (32x32) — plague rat, dark castle themed
+// ==================================================================
+function drawEnemyCastleRat(f: EFrame) {
+  return (rawPut: Put) => {
+    const put = f.startsWith('die') ? rawPut : mirrorX(rawPut);
+    if (f.startsWith('die')) {
+      const step = parseInt(f.slice(3));
+      const r = 7 - step * 2;
+      if (r <= 0) return;
+      disc(put, 16, 20, Math.max(0, r), '#4a3a2a');
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * Math.PI * 2 + step * 0.5;
+        const d = step * 3 + 2;
+        put(Math.round(16 + Math.cos(a) * d), Math.round(20 + Math.sin(a) * d), '#5a4a38');
+      }
+      return;
+    }
+    const flash = f === 'hit';
+    const bodyA = flash ? P.white : '#4a3a2a';
+    const bodyB = flash ? P.white : '#5a4a38';
+    const bodyC = flash ? P.white : '#3a2a1a';
+    const tail = flash ? P.white : '#6a5a48';
+
+    const phase = f === 'move0' ? 0 : f === 'move1' ? 1 : f === 'move2' ? 2 : f === 'move3' ? 3 :
+                  f === 'atk0' ? 0 : f === 'atk1' ? 2 : 0;
+
+    const rats = [
+      { x: 10, y: 19 + [0, 1, 0, -1][phase], c: bodyA },
+      { x: 16, y: 17 + [0, -1, 0, 1][(phase + 1) % 4], c: bodyB },
+      { x: 14, y: 22 + [0, 1, 0, -1][(phase + 2) % 4], c: bodyA },
+    ];
+
+    // Tails first (behind)
+    for (let i = 0; i < rats.length; i++) {
+      const r = rats[i];
+      const tw = [0, 1, 0, -1][(phase + i) % 4];
+      put(r.x + 6, r.y + 1 + tw, tail);
+      put(r.x + 7, r.y + tw, tail);
+      put(r.x + 8, r.y + tw, tail);
+      put(r.x + 9, r.y - 1 + tw, tail);
+    }
+
+    // Rat bodies
+    for (let i = 0; i < rats.length; i++) {
+      const r = rats[i];
+      const legOff = [0, 1, 0, 1][(phase + i) % 4];
+      // Body
+      rect(put, r.x, r.y, 7, 4, r.c);
+      rect(put, r.x + 1, r.y - 1, 5, 1, r.c);
+      // Darker stripe
+      rect(put, r.x + 1, r.y, 5, 1, bodyC);
+      // Legs
+      put(r.x, r.y + 4 - legOff, bodyC);
+      put(r.x + 1, r.y + 4 - legOff, bodyC);
+      put(r.x + 5, r.y + 4 + legOff, bodyC);
+      put(r.x + 6, r.y + 4 + legOff, bodyC);
+      // Head
+      rect(put, r.x - 2, r.y, 3, 3, r.c);
+      // Ear
+      put(r.x - 1, r.y - 1, '#8a6a5a');
+      // Eye — red
+      put(r.x - 2, r.y + 1, '#ff2020');
+      // Pink nose
+      put(r.x - 3, r.y + 1, '#e0a0a0');
+    }
+  };
+}
+
+// ==================================================================
+//  WARLOCK MAGIC BOLT (32x32) — purple orb projectile
+// ==================================================================
+function drawWarlockBolt(f: 'bolt0' | 'bolt1') {
+  return (put: Put) => {
+    const phase = f === 'bolt0' ? 0 : 1;
+    const glow = '#aa40ff';
+    const glowL = '#dd80ff';
+    const core = '#ffffff';
+    const trail = '#6a20c0';
+
+    // Outer glow
+    disc(put, 16, 16, 5, trail);
+    disc(put, 16, 16, 4, glow);
+    disc(put, 16, 16, 2, glowL);
+    // Core
+    put(16, 16, core); put(15, 16, core); put(17, 16, core);
+    put(16, 15, core); put(16, 17, core);
+
+    // Sparkle effect rotating between frames
+    if (phase === 0) {
+      put(12, 16, glowL); put(20, 16, glowL);
+      put(16, 12, glowL); put(16, 20, glowL);
+    } else {
+      put(13, 13, glowL); put(19, 13, glowL);
+      put(13, 19, glowL); put(19, 19, glowL);
+    }
+
+    // Trail wisps
+    put(10, 16 + (phase === 0 ? -1 : 1), trail);
+    put(9, 16, trail);
+    put(8, 16 + (phase === 0 ? 1 : -1), trail);
+  };
 }
 
 let artGenerated = false;
@@ -4905,6 +6285,17 @@ export function generateAllArt(scene: Phaser.Scene) {
   add(scene, 'mdart_1', makeCanvas(16, drawMosquitoDart('dart1')));
   // Bird poop splat
   add(scene, 'bird_poop', makeCanvas(16, drawBirdPoop()));
+
+  // Castle enemies
+  for (const f of eFrames) add(scene, `esk_${f}`, makeCanvas(32, drawEnemySkeleton(f)));
+  for (const f of eFrames) add(scene, `ewl_${f}`, makeCanvas(32, drawEnemyWarlock(f)));
+  for (const f of eFrames) add(scene, `ego_${f}`, makeCanvas(32, drawEnemyGolem(f)));
+  for (const f of eFrames) add(scene, `esi_${f}`, makeCanvas(32, drawEnemyShadowImp(f)));
+  for (const f of eFrames) add(scene, `ecb_${f}`, makeCanvas(32, drawEnemyCastleBat(f)));
+  for (const f of eFrames) add(scene, `ecrat_${f}`, makeCanvas(32, drawEnemyCastleRat(f)));
+  // Warlock magic bolt projectile
+  add(scene, 'wbolt_0', makeCanvas(32, drawWarlockBolt('bolt0')));
+  add(scene, 'wbolt_1', makeCanvas(32, drawWarlockBolt('bolt1')));
 
   // Shared helper to copy a loaded PNG texture to a new key
   const copyTex = (src: string, dst: string) => {
@@ -5131,6 +6522,25 @@ export function generateAllArt(scene: Phaser.Scene) {
 
   // River boss (Fog Phantom) textures
   for (const f of bossFrames) add(scene, `rboss_${f}`, makeCanvas(64, drawFogPhantom(f)));
+
+  // Castle boss (Phantom Queen) textures
+  for (const f of bossFrames) add(scene, `cqboss_${f}`, makeCanvas(64, drawPhantomQueen(f)));
+  // Castle boss (Castle Dragon) textures
+  for (const f of bossFrames) add(scene, `cdboss_${f}`, makeCanvas(64, drawCastleDragon(f)));
+
+  // Queen orb projectile
+  add(scene, 'qorb_0', makeCanvas(32, drawQueenOrb(0)));
+  add(scene, 'qorb_1', makeCanvas(32, drawQueenOrb(1)));
+
+  // Dragon fireball projectile (4 frames for rotation)
+  add(scene, 'dfball_0', makeCanvas(32, drawDragonFireball(0)));
+  add(scene, 'dfball_1', makeCanvas(32, drawDragonFireball(1)));
+  add(scene, 'dfball_2', makeCanvas(32, drawDragonFireball(2)));
+  add(scene, 'dfball_3', makeCanvas(32, drawDragonFireball(3)));
+
+  // Dragon fireball explosion (5 frames)
+  for (let i = 0; i < 5; i++)
+    add(scene, `dfexpl_${i}`, makeCanvas(32, drawDragonFireExplosion(i)));
 }
 
 function framesFromKeys(keys: string[]): Phaser.Types.Animations.AnimationFrame[] {
@@ -5238,6 +6648,40 @@ export function registerAnimations(scene: Phaser.Scene) {
   // Mosquito dart
   mk('mdart-spin', ['mdart_0','mdart_1'], 8, -1);
 
+  // Castle enemies
+  mk('esk-move', ['esk_move0','esk_move1','esk_move2','esk_move3'], 8, -1);
+  mk('esk-atk',  ['esk_atk0','esk_atk1'], 8, -1);
+  mk('esk-hit',  ['esk_hit'], 10, 0);
+  mk('esk-die',  ['esk_die0','esk_die1','esk_die2','esk_die3'], 10, 0);
+
+  mk('ewl-move', ['ewl_move0','ewl_move1','ewl_move2','ewl_move3'], 8, -1);
+  mk('ewl-atk',  ['ewl_atk0','ewl_atk1'], 8, -1);
+  mk('ewl-hit',  ['ewl_hit'], 10, 0);
+  mk('ewl-die',  ['ewl_die0','ewl_die1','ewl_die2','ewl_die3'], 10, 0);
+
+  mk('ego-move', ['ego_move0','ego_move1','ego_move2','ego_move3'], 6, -1);
+  mk('ego-atk',  ['ego_atk0','ego_atk1'], 6, -1);
+  mk('ego-hit',  ['ego_hit'], 8, 0);
+  mk('ego-die',  ['ego_die0','ego_die1','ego_die2','ego_die3'], 8, 0);
+
+  mk('esi-move', ['esi_move0','esi_move1','esi_move2','esi_move3'], 10, -1);
+  mk('esi-atk',  ['esi_atk0','esi_atk1'], 10, -1);
+  mk('esi-hit',  ['esi_hit'], 10, 0);
+  mk('esi-die',  ['esi_die0','esi_die1','esi_die2','esi_die3'], 10, 0);
+
+  mk('ecb-move', ['ecb_move0','ecb_move1','ecb_move2','ecb_move3'], 6, -1);
+  mk('ecb-atk',  ['ecb_atk0','ecb_atk1'], 6, -1);
+  mk('ecb-hit',  ['ecb_hit'], 8, 0);
+  mk('ecb-die',  ['ecb_die0','ecb_die1','ecb_die2','ecb_die3'], 8, 0);
+
+  mk('ecrat-move', ['ecrat_move0','ecrat_move1','ecrat_move2','ecrat_move3'], 10, -1);
+  mk('ecrat-atk',  ['ecrat_atk0','ecrat_atk1'], 10, -1);
+  mk('ecrat-hit',  ['ecrat_hit'], 10, 0);
+  mk('ecrat-die',  ['ecrat_die0','ecrat_die1','ecrat_die2','ecrat_die3'], 10, 0);
+
+  // Warlock bolt
+  mk('wbolt-spin', ['wbolt_0','wbolt_1'], 8, -1);
+
   mk('tower-top-idle',  ['t_top_0'], 1, 0);
   mk('tower-top-shoot', ['t_top_1','t_top_0'], 14, 0);
   mk('cannon-top-idle',  ['c_top_0'], 1, 0);
@@ -5303,6 +6747,31 @@ export function registerAnimations(scene: Phaser.Scene) {
   mk('rboss-hit',        ['rboss_hit'], 10, 0);
   mk('rboss-birth',      ['rboss_birth0','rboss_birth1','rboss_birth2','rboss_birth3','rboss_birth4'], 4, 0);
   mk('rboss-die',        ['rboss_die0','rboss_die1','rboss_die2','rboss_die3','rboss_die4'], 6, 0);
+
+  // Castle boss (Phantom Queen) animations
+  mk('cqboss-idle',       ['cqboss_idle0','cqboss_idle1'], 2, -1);
+  mk('cqboss-move',       ['cqboss_move0','cqboss_move1','cqboss_move2','cqboss_move3'], 5, -1);
+  mk('cqboss-atk',        ['cqboss_atk0','cqboss_atk1'], 4, 0);
+  mk('cqboss-chargewind', ['cqboss_chargeWind','cqboss_idle0'], 6, -1);
+  mk('cqboss-hit',        ['cqboss_hit'], 10, 0);
+  mk('cqboss-birth',      ['cqboss_birth0','cqboss_birth1','cqboss_birth2','cqboss_birth3','cqboss_birth4'], 4, 0);
+  mk('cqboss-die',        ['cqboss_die0','cqboss_die1','cqboss_die2','cqboss_die3','cqboss_die4'], 6, 0);
+
+  // Castle boss (Castle Dragon) animations
+  mk('cdboss-idle',       ['cdboss_idle0','cdboss_idle1'], 2, -1);
+  mk('cdboss-move',       ['cdboss_move0','cdboss_move1','cdboss_move2','cdboss_move3'], 5, -1);
+  mk('cdboss-atk',        ['cdboss_atk0','cdboss_atk1'], 4, 0);
+  mk('cdboss-chargewind', ['cdboss_chargeWind','cdboss_idle0'], 6, -1);
+  mk('cdboss-hit',        ['cdboss_hit'], 10, 0);
+  mk('cdboss-birth',      ['cdboss_birth0','cdboss_birth1','cdboss_birth2','cdboss_birth3','cdboss_birth4'], 4, 0);
+  mk('cdboss-die',        ['cdboss_die0','cdboss_die1','cdboss_die2','cdboss_die3','cdboss_die4'], 6, 0);
+
+  // Queen orb spin animation
+  mk('qorb-spin', ['qorb_0','qorb_1'], 8, -1);
+
+  // Dragon fireball spin animation
+  mk('dfball-spin', ['dfball_0','dfball_1','dfball_2','dfball_3'], 10, -1);
+  mk('dfexpl', ['dfexpl_0','dfexpl_1','dfexpl_2','dfexpl_3','dfexpl_4'], 14, 0);
 
   // Pre-render river squiggle textures (small clusters of dashes)
   for (let vi = 0; vi < 5; vi++) {
