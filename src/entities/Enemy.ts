@@ -1,7 +1,7 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
 
-export type EnemyKind = 'basic' | 'heavy' | 'runner' | 'snake' | 'rat' | 'deer' | 'wolf' | 'bear' | 'spider' | 'infected_basic' | 'infected_heavy' | 'infected_runner' | 'toad' | 'crow' | 'bat' | 'dragonfly' | 'mosquito';
+export type EnemyKind = 'basic' | 'heavy' | 'runner' | 'snake' | 'rat' | 'deer' | 'wolf' | 'bear' | 'spider' | 'infected_basic' | 'infected_heavy' | 'infected_runner' | 'toad' | 'crow' | 'bat' | 'dragonfly' | 'mosquito' | 'skeleton' | 'warlock' | 'golem' | 'shadow_imp' | 'castle_bat' | 'castle_rat';
 
 export class Enemy extends Phaser.Physics.Arcade.Sprite {
   kind: EnemyKind;
@@ -28,6 +28,8 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       wolf: CFG.enemy.wolf, bear: CFG.enemy.bear, spider: CFG.enemy.spider,
       infected_basic: CFG.enemy.basic, infected_heavy: CFG.enemy.heavy, infected_runner: CFG.enemy.runner, toad: CFG.enemy.toad,
       crow: CFG.enemy.crow, bat: CFG.enemy.bat, dragonfly: CFG.enemy.dragonfly, mosquito: CFG.enemy.mosquito,
+      skeleton: CFG.enemy.skeleton, warlock: CFG.enemy.warlock, golem: CFG.enemy.golem,
+      shadow_imp: CFG.enemy.shadow_imp, castle_bat: CFG.enemy.castle_bat, castle_rat: CFG.enemy.castle_rat,
     };
     const data = dataMap[kind];
     const texPrefix = Enemy.texPrefix(kind);
@@ -132,6 +134,32 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
         this.play('emq-move');
         this.flying = true;
         break;
+      // Castle enemies
+      case 'skeleton':
+        this.setScale(0.5).setSize(24, 24).setOffset(20, 24);
+        this.play('esk-move');
+        break;
+      case 'warlock':
+        this.setScale(0.5).setSize(24, 24).setOffset(20, 24);
+        this.play('ewl-move');
+        break;
+      case 'golem':
+        this.setScale(0.55).setSize(30, 30).setOffset(17, 20);
+        this.play('ego-move');
+        break;
+      case 'shadow_imp':
+        this.setScale(0.45).setSize(20, 20).setOffset(22, 26);
+        this.play('esi-move');
+        break;
+      case 'castle_bat':
+        this.setScale(0.45).setSize(20, 20).setOffset(22, 22);
+        this.play('ecb-move');
+        this.flying = true;
+        break;
+      case 'castle_rat':
+        this.setScale(0.45).setSize(22, 20).setOffset(20, 24);
+        this.play('ecrat-move');
+        break;
     }
   }
 
@@ -152,6 +180,12 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
       case 'bat': return 'ebt';
       case 'dragonfly': return 'edf';
       case 'mosquito': return 'emq';
+      case 'skeleton': return 'esk';
+      case 'warlock': return 'ewl';
+      case 'golem': return 'ego';
+      case 'shadow_imp': return 'esi';
+      case 'castle_bat': return 'ecb';
+      case 'castle_rat': return 'ecrat';
       default: return 'eb';
     }
   }
@@ -175,7 +209,7 @@ export class Enemy extends Phaser.Physics.Arcade.Sprite {
 
   /** Returns true if this enemy kind should rotate to face movement direction. */
   get rotates(): boolean {
-    return this.kind === 'snake' || this.kind === 'rat';
+    return this.kind === 'snake' || this.kind === 'rat' || this.kind === 'castle_rat';
   }
 
   /** Set rotation from a movement vector. Sprites face right at rotation 0.

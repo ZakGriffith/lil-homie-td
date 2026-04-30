@@ -85,6 +85,17 @@ export class GameScene extends Phaser.Scene {
   bossSpawned = false;
   bossCountdownUntil = 0;       // set once the last wave is cleared, boss spawns at this time
 
+  // Castle multi-boss state
+  castlePhase = 0;              // 0 = waves 1-2, 1 = queen boss, 2 = waves 3-4, 3 = dragon boss
+  midBoss: Boss | null = null;
+  midBossDefeated = false;
+  warlockBolts!: Phaser.Physics.Arcade.Group;
+  queenOrbs!: Phaser.Physics.Arcade.Group;
+  dragonFireballs!: Phaser.Physics.Arcade.Group;
+  nextQueenTeleport = 0;
+  nextQueenOrb = 0;
+  nextDragonFireball = 0;
+
   killsTarget = CFG.winKills;
   gameOver = false;
   levelId = 1;
@@ -177,6 +188,12 @@ export class GameScene extends Phaser.Scene {
     this.dying = false;
     this.winDelayUntil = 0;
     this.winCollectedAt = 0;
+    this.castlePhase = 0;
+    this.midBoss = null;
+    this.midBossDefeated = false;
+    this.nextQueenTeleport = 0;
+    this.nextQueenOrb = 0;
+    this.nextDragonFireball = 0;
 
     // Per-level spawn tuning (from level def, fall back to CFG defaults)
     this.levelRampFactor = levelDef?.rampFactor ?? CFG.spawn.rampFactor;
@@ -198,6 +215,8 @@ export class GameScene extends Phaser.Scene {
   }
 
   create() {
+    this.events.on('shutdown', this.shutdown, this);
+
     // Generate art on first game start (deferred from boot for instant level select)
     generateAllArt(this);
     registerAnimations(this);
@@ -220,6 +239,9 @@ export class GameScene extends Phaser.Scene {
     this.enemyDarts = this.physics.add.group({ runChildUpdate: false });
     this.toadGlobs = this.physics.add.group({ runChildUpdate: false });
     this.coins = this.physics.add.group({ classType: Coin, runChildUpdate: false });
+    this.warlockBolts = this.physics.add.group({ runChildUpdate: false });
+    this.queenOrbs = this.physics.add.group({ runChildUpdate: false });
+    this.dragonFireballs = this.physics.add.group({ runChildUpdate: false });
     this.wallGroup = this.physics.add.staticGroup();
     this.towerGroup = this.physics.add.staticGroup();
     this.gapBlockers = this.physics.add.staticGroup();
@@ -323,6 +345,13 @@ export class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.enemyDarts, this.towerGroup, (_d, _t) => { (_d as Phaser.Physics.Arcade.Sprite).destroy(); });
     // Toad globs hit the player (they arc over walls/towers — no wall/tower overlap)
     this.physics.add.overlap(this.player, this.toadGlobs, (_p, g) => this.toadGlobHitsPlayer(g as Phaser.Physics.Arcade.Sprite));
+    // Castle warlock bolts, queen orbs, dragon fireballs
+    this.physics.add.overlap(this.player, this.warlockBolts, (_p, b) => this.castleBoltHitsPlayer(b as Phaser.Physics.Arcade.Sprite));
+    this.physics.add.overlap(this.warlockBolts, this.wallGroup, (_b, _w) => { (_b as Phaser.Physics.Arcade.Sprite).destroy(); });
+    this.physics.add.overlap(this.player, this.queenOrbs, (_p, o) => this.castleBoltHitsPlayer(o as Phaser.Physics.Arcade.Sprite));
+    this.physics.add.overlap(this.player, this.dragonFireballs, (_p, f) => this.dragonFireballHitsPlayer(f as Phaser.Physics.Arcade.Sprite));
+    this.physics.add.overlap(this.dragonFireballs, this.wallGroup, (_f, _w) => this.dragonFireballExplode(_f as Phaser.Physics.Arcade.Sprite));
+    this.physics.add.overlap(this.dragonFireballs, this.towerGroup, (_f, _t) => this.dragonFireballExplode(_f as Phaser.Physics.Arcade.Sprite));
     // boss overlaps set up when boss spawns (since it's created later)
 
     // input
@@ -476,6 +505,8 @@ export class GameScene extends Phaser.Scene {
       vTime: this.vTime,
       countdownMsg: this.countdownMsg,
       countdownColor: this.countdownColor,
+      castlePhase: this.castlePhase,
+      midBossDefeated: this.midBossDefeated,
     };
   }
 
@@ -585,6 +616,7 @@ export class GameScene extends Phaser.Scene {
 
     // sell with X held + click
     if (this.keys.X.isDown) {
+      if (this.game.registry.get('tutorialActive')) return; // no selling during tutorial
       this.sellAt(tx, ty);
       return;
     }
@@ -657,6 +689,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   sellAt(tx: number, ty: number) {
+    if (this.game.registry.get('tutorialActive')) return;
     // tower: click anywhere inside the footprint
     const ti = this.towers.findIndex(t =>
       tx >= t.tileX && tx < t.tileX + t.size &&
@@ -900,6 +933,7 @@ export class GameScene extends Phaser.Scene {
     sellBg.setInteractive({ useHandCursor: true });
     sellBg.on('pointerdown', (_p: any, _lx: any, _ly: any, ev: any) => {
       ev?.stopPropagation?.();
+      if (this.game.registry.get('tutorialActive')) return;
       this.doSellSelected();
     });
     sellBg.on('pointerover', () => sellBg.setFillStyle(0x8a3a3a));
@@ -1226,6 +1260,7 @@ export class GameScene extends Phaser.Scene {
     this.updateEnemyDarts();
     this.updateToadGlobs();
     this.updateBoulders(time);
+    this.updateCastleProjectiles();
     this.updateCoins(vd);
     this.updateSpawning(time, vd);
     this.updateDepthSort();
@@ -1239,19 +1274,17 @@ export class GameScene extends Phaser.Scene {
     const pad = 28; // distance from screen edge
     const cx = cam.width / 2;
     const cy = cam.height / 2;
+    const margin = 40;
+    // Visible world rect — accounts for camera zoom so off-screen detection
+    // is correct on high-DPI displays (sf > 1) where cam.width != worldView width.
+    const wv = cam.worldView;
 
     // Track which towers are still alive for cleanup
     const alive = new Set(this.towers);
 
     for (const t of this.towers) {
-      // Tower screen position
-      const sx = t.x - cam.scrollX;
-      const sy = t.y - cam.scrollY;
-
-      // Is tower on screen? (with margin)
-      const margin = 40;
-      const onScreen = sx > -margin && sx < cam.width + margin &&
-                       sy > -margin && sy < cam.height + margin;
+      const onScreen = t.x > wv.x - margin && t.x < wv.right + margin &&
+                       t.y > wv.y - margin && t.y < wv.bottom + margin;
 
       // Get or create indicator
       let ind = this.towerIndicators.get(t);
@@ -1271,9 +1304,9 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      // Ray from screen center to tower screen pos, intersect with screen rect
-      const dx = sx - cx;
-      const dy = sy - cy;
+      // Direction in world space → project onto screen-space rect for the edge marker
+      const dx = t.x - cam.midPoint.x;
+      const dy = t.y - cam.midPoint.y;
       if (dx === 0 && dy === 0) continue;
 
       const scaleX = dx !== 0 ? (cx - pad) / Math.abs(dx) : Infinity;
@@ -1285,7 +1318,6 @@ export class GameScene extends Phaser.Scene {
       const angle = Math.atan2(dy, dx);
 
       ind.bg.setPosition(edgeX, edgeY).setVisible(true);
-      // Pointer offset from bg center, pointing toward tower
       ind.ptr.setPosition(edgeX + Math.cos(angle) * 18, edgeY + Math.sin(angle) * 18)
         .setRotation(angle).setVisible(true);
     }
@@ -1299,14 +1331,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    // Boss off-screen indicator
+    // Boss off-screen indicator — covers regular bosses and castle bosses
+    // (queen + dragon, both stored in this.boss by spawnCastleBoss)
     const b = this.boss;
     if (b && b.active && !b.dying) {
-      const bsx = b.x - cam.scrollX;
-      const bsy = b.y - cam.scrollY;
-      const margin = 40;
-      const bossOnScreen = bsx > -margin && bsx < cam.width + margin &&
-                           bsy > -margin && bsy < cam.height + margin;
+      const bossOnScreen = b.x > wv.x - margin && b.x < wv.right + margin &&
+                           b.y > wv.y - margin && b.y < wv.bottom + margin;
 
       if (!this.bossIndicator) {
         const bg = this.add.sprite(0, 0, 'ind_boss')
@@ -1320,8 +1350,8 @@ export class GameScene extends Phaser.Scene {
         this.bossIndicator.bg.setVisible(false);
         this.bossIndicator.ptr.setVisible(false);
       } else {
-        const dx = bsx - cx;
-        const dy = bsy - cy;
+        const dx = b.x - cam.midPoint.x;
+        const dy = b.y - cam.midPoint.y;
         if (dx !== 0 || dy !== 0) {
           const scaleX = dx !== 0 ? (cx - pad) / Math.abs(dx) : Infinity;
           const scaleY = dy !== 0 ? (cy - pad) / Math.abs(dy) : Infinity;
@@ -1681,6 +1711,27 @@ export class GameScene extends Phaser.Scene {
       if (
         this.player.anims.currentAnim?.key !== 'player-idle'
       ) this.player.play('player-idle');
+    }
+
+    // Tutorial leash: keep tower visible on screen
+    if (this.game.registry.get('tutorialActive') && this.towers.length > 0) {
+      const anchor = this.towers[0];
+      const cam = this.cameras.main;
+      const margin = 40; // keep tower at least this far from screen edge
+      const maxDx = (cam.width / 2) - margin;
+      const maxDy = (cam.height / 2) - margin;
+      // Clamp player position so the tower stays within the viewport
+      const body = this.player.body as Phaser.Physics.Arcade.Body;
+      let clamped = false;
+      if (this.player.x > anchor.x + maxDx) { this.player.x = anchor.x + maxDx; clamped = true; }
+      if (this.player.x < anchor.x - maxDx) { this.player.x = anchor.x - maxDx; clamped = true; }
+      if (this.player.y > anchor.y + maxDy) { this.player.y = anchor.y + maxDy; clamped = true; }
+      if (this.player.y < anchor.y - maxDy) { this.player.y = anchor.y - maxDy; clamped = true; }
+      if (clamped) {
+        // Zero out velocity on clamped axes
+        if (this.player.x === anchor.x + maxDx || this.player.x === anchor.x - maxDx) body.velocity.x = 0;
+        if (this.player.y === anchor.y + maxDy || this.player.y === anchor.y - maxDy) body.velocity.y = 0;
+      }
     }
 
     // Bow follows player with offset based on aim direction
@@ -2118,6 +2169,44 @@ export class GameScene extends Phaser.Scene {
         return true;
       }
 
+      // Castle Warlock — ranged magic caster, stops at range and shoots purple bolts
+      if (e.kind === 'warlock') {
+        const wlRange = CFG.castle.warlockRange;
+        const dist = Math.sqrt(dist2);
+        e.setFlipX(tx - e.x < 0);
+
+        if (dist < 30) {
+          // Too close — melee
+          e.setVelocity(0, 0);
+          if (e.anims.currentAnim?.key !== `${prefix}-atk`) e.play(`${prefix}-atk`);
+          if (time > e.attackCd) {
+            e.attackCd = time + 800;
+            this.player.hurt(e.dmg, this);
+            this.pushHud();
+            if (this.player.hp <= 0) this.lose();
+          }
+          return true;
+        }
+
+        if (dist < wlRange && this.hasLineOfSight(e.x, e.y, tx, ty)) {
+          // In range — stop and cast
+          e.setVelocity(0, 0);
+          if (e.anims.currentAnim?.key !== `${prefix}-atk`) e.play(`${prefix}-atk`);
+          if (time > e.attackCd) {
+            e.attackCd = time + CFG.castle.warlockFireRate;
+            this.spawnWarlockBolt(e.x, e.y, tx, ty);
+          }
+          return true;
+        }
+
+        // Walk toward player
+        const dx = tx - e.x, dy = ty - e.y;
+        const d = dist || 1;
+        e.setVelocity((dx / d) * e.speed, (dy / d) * e.speed);
+        if (e.anims.currentAnim?.key !== `${prefix}-move`) e.play(`${prefix}-move`);
+        return true;
+      }
+
       // Melee attack when close to player
       if (dist2 < 30 * 30) {
         e.setVelocity(0, 0);
@@ -2355,23 +2444,85 @@ export class GameScene extends Phaser.Scene {
     const distToPlayer = Math.hypot(px - b.x, py - b.y);
 
     // ability triggers (in priority order)
-    // Birthing happens passively while chasing — not during charge or slam
-    if (time >= b.nextBirth && b.state === 'chase') {
+    const isCastleBoss = b.bossKind === 'queen' || b.bossKind === 'dragon';
+
+    // Birthing happens passively while chasing — not during charge or slam (skip for castle bosses)
+    if (!isCastleBoss && time >= b.nextBirth && b.state === 'chase') {
       this.bossBirthSpawn(b);
       b.nextBirth = time + 3800;
     }
     const cam = this.cameras.main;
     const onScreen = b.x >= cam.worldView.x && b.x <= cam.worldView.right
                   && b.y >= cam.worldView.y && b.y <= cam.worldView.bottom;
-    if (time >= b.nextCharge && distToPlayer > 40 && onScreen) {
+
+    // --- Phantom Queen abilities ---
+    if (b.bossKind === 'queen') {
+      // Teleport closer to player periodically
+      if (time >= this.nextQueenTeleport && distToPlayer > 120) {
+        const ang = Math.atan2(py - b.y, px - b.x);
+        const teleportDist = Math.min(CFG.castle.queenTeleportRange, distToPlayer - 60);
+        const nx = b.x + Math.cos(ang) * teleportDist;
+        const ny = b.y + Math.sin(ang) * teleportDist;
+        // Teleport VFX: fade out, move, fade in
+        b.setAlpha(0.2);
+        b.setPosition(nx, ny);
+        this.tweens.add({ targets: b, alpha: 1, duration: 300, ease: 'Cubic.Out' });
+        // Purple particle burst at origin and destination
+        for (const pos of [{ x: b.x - Math.cos(ang) * teleportDist, y: b.y - Math.sin(ang) * teleportDist }, { x: nx, y: ny }]) {
+          for (let i = 0; i < 8; i++) {
+            const pa = (i / 8) * Math.PI * 2;
+            const p = this.add.circle(pos.x, pos.y, 3, 0x9040e0, 0.8).setDepth(15);
+            this.tweens.add({ targets: p, x: pos.x + Math.cos(pa) * 30, y: pos.y + Math.sin(pa) * 30, alpha: 0, duration: 400, onComplete: () => p.destroy() });
+          }
+        }
+        this.nextQueenTeleport = time + CFG.castle.queenTeleportCooldown;
+      }
+      // Fire burst of 3 orbs toward player
+      if (time >= this.nextQueenOrb && onScreen) {
+        const burstCount = CFG.castle.queenOrbBurstCount;
+        const spread = 0.3; // radians spread between orbs
+        const baseAngle = Math.atan2(py - b.y, px - b.x);
+        for (let i = 0; i < burstCount; i++) {
+          const a = baseAngle + (i - (burstCount - 1) / 2) * spread;
+          const orbTx = b.x + Math.cos(a) * 300;
+          const orbTy = b.y + Math.sin(a) * 300;
+          this.spawnQueenOrb(b.x, b.y, orbTx, orbTy);
+        }
+        this.nextQueenOrb = time + CFG.castle.queenOrbFireRate;
+      }
+    }
+
+    // --- Castle Dragon abilities ---
+    if (b.bossKind === 'dragon') {
+      // Fireball aimed at player
+      if (time >= this.nextDragonFireball && onScreen) {
+        this.spawnDragonFireball(b.x, b.y, px, py);
+        this.nextDragonFireball = time + CFG.castle.dragonFireballRate;
+      }
+      // Dragon spawns skeleton minions periodically
+      if (time >= b.nextBirth) {
+        const spawnCount = 3;
+        for (let i = 0; i < spawnCount; i++) {
+          const sa = (i / spawnCount) * Math.PI * 2;
+          const se = new Enemy(this, b.x + Math.cos(sa) * 40, b.y + Math.sin(sa) * 40, 'skeleton');
+          this.applyEnemyDifficulty(se);
+          se.noCoinDrop = true;
+          this.enemies.add(se);
+        }
+        b.nextBirth = time + 8000;
+      }
+    }
+
+    // Non-castle bosses: charge and boulder throw
+    if (!isCastleBoss && time >= b.nextCharge && distToPlayer > 40 && onScreen) {
       b.state = 'charge_wind';
       b.stateEnd = time + 1200;
       b.setVelocity(0, 0);
       b.play(`${ap}-chargewind`);
       return;
     }
-    // Boulder throw — targets nearest tower or wall in range (not meadow boss)
-    if (this.biome !== 'grasslands' && time >= b.nextBoulder && onScreen) {
+    // Boulder throw — targets nearest tower or wall in range (not meadow or castle boss)
+    if (!isCastleBoss && this.biome !== 'grasslands' && time >= b.nextBoulder && onScreen) {
       const boulderRange = 280;
       let bestDist = boulderRange;
       let target: { x: number; y: number } | null = null;
@@ -3051,6 +3202,59 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(300, 0.005);
   }
 
+  spawnCastleBoss(kind: 'queen' | 'dragon') {
+    this.bossSpawned = true;
+    const spawnR = CFG.spawnDist * CFG.tile;
+    const px = this.player.x, py = this.player.y;
+    const corners = [
+      { x: px - spawnR, y: py - spawnR },
+      { x: px + spawnR, y: py - spawnR },
+      { x: px - spawnR, y: py + spawnR },
+      { x: px + spawnR, y: py + spawnR }
+    ];
+    const pick = corners[Math.floor(Math.random() * corners.length)];
+    const b = new Boss(this, pick.x, pick.y, 'castle', kind);
+
+    if (kind === 'queen') {
+      b.hp = CFG.castle.queenHp; b.maxHp = CFG.castle.queenHp;
+      b.dmg = CFG.castle.queenDmg; b.speed = CFG.castle.queenSpeed;
+      this.midBoss = b;
+      this.castlePhase = 1;
+      this.nextQueenOrb = this.vTime + CFG.castle.queenOrbFireRate;
+      this.nextQueenTeleport = this.vTime + CFG.castle.queenTeleportCooldown;
+    } else {
+      b.hp = CFG.castle.dragonHp; b.maxHp = CFG.castle.dragonHp;
+      b.dmg = CFG.castle.dragonDmg; b.speed = CFG.castle.dragonSpeed;
+      this.castlePhase = 3;
+      this.nextDragonFireball = this.vTime + CFG.castle.dragonFireballRate;
+    }
+
+    this.boss = b;
+    this.pushHud();
+    this.physics.add.overlap(this.projectiles, b, (a: any, bb: any) => {
+      const pr = (a instanceof Projectile ? a : bb) as Projectile;
+      const bs = (a instanceof Boss ? a : bb) as Boss;
+      this.projectileHitsBoss(pr, bs);
+    });
+    // Castle bosses collide with structures
+    const onStructureHit = () => {
+      if (this.boss && this.boss.state === 'charging') {
+        this.boss.stateEnd = 0;
+      }
+    };
+    this.physics.add.collider(b, this.wallGroup, onStructureHit);
+    this.physics.add.collider(b, this.towerGroup, onStructureHit);
+
+    const bossTitle = kind === 'queen' ? 'THE PHANTOM QUEEN' : 'THE CASTLE DRAGON';
+    this.game.events.emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: 'castle', bossKind: kind });
+    SFX.play('bossSpawn');
+    this.countdownMsg = `${bossTitle} APPROACHES`;
+    this.countdownColor = '#ff5050';
+    this.pushHud();
+    this.time.delayedCall(3000, () => { this.countdownMsg = ''; this.pushHud(); });
+    this.cameras.main.shake(300, 0.005);
+  }
+
   enemyHitsPlayer(e: Enemy) {
     if (!e.active || e.dying) return;
     // mosquitoes handle their own melee in the update loop
@@ -3214,6 +3418,151 @@ export class GameScene extends Phaser.Scene {
 
       return true;
     });
+  }
+
+  // ---------- CASTLE PROJECTILES ----------
+
+  spawnWarlockBolt(sx: number, sy: number, tx: number, ty: number) {
+    const bolt = this.physics.add.sprite(sx, sy, 'wbolt_0');
+    bolt.setScale(0.5).setDepth(10);
+    bolt.play('wbolt-spin');
+    this.warlockBolts.add(bolt);
+    const dx = tx - sx, dy = ty - sy;
+    const d = Math.hypot(dx, dy) || 1;
+    const spd = CFG.castle.warlockBoltSpeed;
+    bolt.setVelocity((dx / d) * spd, (dy / d) * spd);
+    (bolt as any)._born = this.vTime;
+    (bolt as any)._dmg = CFG.castle.warlockBoltDmg;
+  }
+
+  spawnQueenOrb(sx: number, sy: number, tx: number, ty: number) {
+    const orb = this.physics.add.sprite(sx, sy, 'qorb_0');
+    orb.setScale(0.5).setDepth(10);
+    orb.play('qorb-spin');
+    this.queenOrbs.add(orb);
+    const dx = tx - sx, dy = ty - sy;
+    const d = Math.hypot(dx, dy) || 1;
+    const spd = CFG.castle.queenOrbSpeed;
+    orb.setVelocity((dx / d) * spd, (dy / d) * spd);
+    (orb as any)._born = this.vTime;
+    (orb as any)._dmg = CFG.castle.queenOrbDmg;
+  }
+
+  spawnDragonFireball(sx: number, sy: number, tx: number, ty: number) {
+    const fb = this.physics.add.sprite(sx, sy, 'dfball_0');
+    fb.setScale(0.6).setDepth(10);
+    fb.play('dfball-spin');
+    this.dragonFireballs.add(fb);
+    const dx = tx - sx, dy = ty - sy;
+    const d = Math.hypot(dx, dy) || 1;
+    const spd = CFG.castle.dragonFireballSpeed;
+    fb.setVelocity((dx / d) * spd, (dy / d) * spd);
+    (fb as any)._born = this.vTime;
+    (fb as any)._dmg = CFG.castle.dragonFireballDmg;
+    (fb as any)._splash = CFG.castle.dragonFireballSplash;
+    (fb as any)._tx = tx;
+    (fb as any)._ty = ty;
+    (fb as any)._totalDist = d;
+    (fb as any)._startX = sx;
+    (fb as any)._startY = sy;
+  }
+
+  castleBoltHitsPlayer(bolt: Phaser.Physics.Arcade.Sprite) {
+    if (!bolt.active) return;
+    const dmg = (bolt as any)._dmg ?? 6;
+    this.player.hurt(dmg, this);
+    this.pushHud();
+    if (this.player.hp <= 0) this.lose();
+    bolt.destroy();
+  }
+
+  dragonFireballHitsPlayer(fb: Phaser.Physics.Arcade.Sprite) {
+    if (!fb.active) return;
+    const dmg = (fb as any)._dmg ?? 15;
+    // Direct hit to player
+    this.player.hurt(dmg, this);
+    this.pushHud();
+    if (this.player.hp <= 0) this.lose();
+    // Tag as direct hit so explode doesn't double-damage the player
+    (fb as any)._directHit = true;
+    // Explode with AoE
+    this.dragonFireballExplode(fb);
+  }
+
+  /** Explode a dragon fireball at its current position — AoE damage + animation */
+  dragonFireballExplode(fb: Phaser.Physics.Arcade.Sprite) {
+    if (!fb.active) return;
+    const x = fb.x, y = fb.y;
+    const dmg = (fb as any)._dmg ?? 15;
+    const splash = (fb as any)._splash ?? 48;
+    fb.destroy();
+
+    // Explosion animation
+    const expl = this.add.sprite(x, y, 'dfexpl_0').setScale(1.2).setDepth(12);
+    expl.play('dfexpl');
+    expl.once('animationcomplete', () => expl.destroy());
+
+    // AoE damage to player if in range (and not already hit by direct contact)
+    if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < splash) {
+      if (!(fb as any)._directHit) {
+        this.player.hurt(dmg, this);
+        this.pushHud();
+        if (this.player.hp <= 0) this.lose();
+      }
+    }
+
+    // Damage nearby towers
+    for (const t of this.towers) {
+      if (Phaser.Math.Distance.Between(x, y, t.x, t.y) < splash) {
+        t.hurt(Math.floor(dmg * 0.5));
+        if (t.hp <= 0) this.destroyTower(t);
+      }
+    }
+    // Damage nearby walls
+    for (const w of this.walls) {
+      if (Phaser.Math.Distance.Between(x, y, w.x, w.y) < splash) {
+        w.hurt(Math.floor(dmg * 0.5));
+        if (w.hp <= 0) this.destroyWall(w);
+      }
+    }
+  }
+
+  updateCastleProjectiles() {
+    // Warlock bolts
+    this.warlockBolts.children.iterate((c: any) => {
+      if (!c || !c.active) return true;
+      if (this.vTime - c._born > CFG.castle.warlockBoltLifetime) { c.destroy(); return true; }
+      return true;
+    });
+    // Queen orbs
+    this.queenOrbs.children.iterate((c: any) => {
+      if (!c || !c.active) return true;
+      if (this.vTime - c._born > CFG.castle.queenOrbLifetime) { c.destroy(); return true; }
+      return true;
+    });
+    // Dragon fireballs — explode on reaching target or timeout
+    const fbToExplode: Phaser.Physics.Arcade.Sprite[] = [];
+    this.dragonFireballs.children.iterate((c: any) => {
+      if (!c || !c.active) return true;
+      if (this.vTime - c._born > CFG.castle.dragonFireballLifetime) {
+        fbToExplode.push(c);
+        return true;
+      }
+      return true;
+    });
+    for (const fb of fbToExplode) {
+      // AoE damage to player at explosion site
+      const splash = (fb as any)._splash ?? 48;
+      const dmg = (fb as any)._dmg ?? 15;
+      if (Phaser.Math.Distance.Between(fb.x, fb.y, this.player.x, this.player.y) < splash) {
+        this.player.hurt(dmg, this);
+        this.pushHud();
+        if (this.player.hp <= 0) this.lose();
+        // Tag as already damaged so dragonFireballExplode skips player damage
+        (fb as any)._directHit = true;
+      }
+      this.dragonFireballExplode(fb);
+    }
   }
 
   // ---------- PROJECTILES ----------
@@ -3564,8 +3913,30 @@ export class GameScene extends Phaser.Scene {
     }
 
     const waveSize = this.levelWaveSize;
-    const lastWaveIdx = CFG.spawn.waveCount - 1;
-    const isLastWave = this.wave >= lastWaveIdx;
+    // Castle has 4 waves (0-3) with mid-boss after wave 1, final boss after wave 3
+    const totalWaves = this.biome === 'castle' ? 4 : CFG.spawn.waveCount;
+    const lastWaveIdx = totalWaves - 1;
+    // Castle: wave 1 triggers queen, wave 3 triggers dragon
+    const isBossWave = this.biome === 'castle'
+      ? (this.castlePhase === 0 && this.wave === 1) || (this.castlePhase === 2 && this.wave === 3)
+      : this.wave >= lastWaveIdx;
+
+    // Castle mid-boss phase: waiting for queen to die before resuming waves
+    // Must come before the bossSpawned early-return so phase advancement can happen
+    if (this.biome === 'castle' && this.castlePhase === 1) {
+      if (this.midBossDefeated) {
+        // Queen is dead — advance to phase 2 (waves 3-4)
+        this.castlePhase = 2;
+        this.wave = 2;
+        this.waveSpawned = 0;
+        this.waveKills = 0;
+        this.bossSpawned = false;
+        this.boss = null;
+        this.bossCountdownUntil = 0;
+        this.waveBreakUntil = time + CFG.spawn.waveBreak;
+      }
+      return;
+    }
 
     // Boss already out — nothing to show/spawn here
     if (this.bossSpawned) {
@@ -3580,8 +3951,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Boss lead-in: only on the final wave once every enemy has been spawned.
-    if (isLastWave && this.waveSpawned >= waveSize) {
+    // Boss lead-in: on the boss wave once every enemy has been spawned.
+    if (isBossWave && this.waveSpawned >= waveSize) {
       const live = this.liveEnemyCount();
       const left = Math.max(live, waveSize - this.waveKills);
       if (left > 0) {
@@ -3593,11 +3964,22 @@ export class GameScene extends Phaser.Scene {
           this.bossCountdownUntil = time + CFG.boss.prepTime;
         }
         if (time >= this.bossCountdownUntil) {
-          this.spawnBoss();
+          if (this.biome === 'castle' && this.castlePhase === 0) {
+            this.spawnCastleBoss('queen');
+          } else if (this.biome === 'castle' && this.castlePhase === 2) {
+            this.spawnCastleBoss('dragon');
+          } else {
+            this.spawnBoss();
+          }
           return;
         }
         const secs = Math.ceil((this.bossCountdownUntil - time) / 1000);
-        const bossName = this.biome === 'forest' ? 'WENDIGO' : this.biome === 'infected' ? 'BLIGHTED ONE' : this.biome === 'river' ? 'FOG PHANTOM' : 'ANCIENT RAM';
+        const bossName = this.biome === 'forest' ? 'WENDIGO'
+                       : this.biome === 'infected' ? 'BLIGHTED ONE'
+                       : this.biome === 'river' ? 'FOG PHANTOM'
+                       : this.biome === 'castle' && this.castlePhase === 0 ? 'PHANTOM QUEEN'
+                       : this.biome === 'castle' && this.castlePhase === 2 ? 'CASTLE DRAGON'
+                       : 'ANCIENT RAM';
         this.countdownMsg = `${bossName} SPAWNING IN ${secs}`;
         this.countdownColor = '#ff5050';
         this.pushHud();
@@ -3605,8 +3987,8 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Non-last wave finished → start build break, advance wave counter.
-    if (!isLastWave && this.waveSpawned >= waveSize && this.waveKills >= waveSize) {
+    // Non-boss wave finished → start build break, advance wave counter.
+    if (!isBossWave && this.waveSpawned >= waveSize && this.waveKills >= waveSize) {
       this.wave++;
       this.waveSpawned = 0;
       this.waveKills = 0;
@@ -3636,10 +4018,12 @@ export class GameScene extends Phaser.Scene {
       const cdMin = this.biome === 'forest' ? CFG.forest.wolfPackCooldownMin
                   : this.biome === 'infected' ? CFG.infected.runnerPackCooldownMin
                   : this.biome === 'river' ? CFG.river.dragonflyPackCooldownMin
+                  : this.biome === 'castle' ? CFG.castle.impPackCooldownMin
                   : CFG.spawn.runnerPackCooldownMin;
       const cdMax = this.biome === 'forest' ? CFG.forest.wolfPackCooldownMax
                   : this.biome === 'infected' ? CFG.infected.runnerPackCooldownMax
                   : this.biome === 'river' ? CFG.river.dragonflyPackCooldownMax
+                  : this.biome === 'castle' ? CFG.castle.impPackCooldownMax
                   : CFG.spawn.runnerPackCooldownMax;
       if (this.nextRunnerPack === 0) {
         this.nextRunnerPack = time + Phaser.Math.Between(cdMin, cdMax);
@@ -3663,12 +4047,21 @@ export class GameScene extends Phaser.Scene {
     const isForest = this.biome === 'forest';
     const isInfected = this.biome === 'infected';
     const isRiver = this.biome === 'river';
+    const isCastle = this.biome === 'castle';
     const base = isForest ? CFG.forest.wolfPackSize
                : isInfected ? CFG.infected.runnerPackSize
                : isRiver ? CFG.river.dragonflyPackSize
+               : isCastle ? CFG.castle.impPackSize
                : CFG.spawn.runnerPackSize;
     const n = isForest ? base + Phaser.Math.Between(0, 5) : base;
-    const packKind: EnemyKind = isForest ? 'wolf' : isInfected ? 'infected_runner' : isRiver ? 'dragonfly' : 'rat';
+    // Castle alternates between bat packs, rat packs, and imp packs
+    let packKind: EnemyKind;
+    if (isCastle) {
+      const r = Math.random();
+      packKind = r < 0.33 ? 'castle_bat' : r < 0.66 ? 'castle_rat' : 'shadow_imp';
+    } else {
+      packKind = isForest ? 'wolf' : isInfected ? 'infected_runner' : isRiver ? 'dragonfly' : 'rat';
+    }
     // Stagger spawns with small delays to create a snake-line formation
     const delay = 150; // ms between each mob in the pack
     const toSpawn = Math.min(n, waveSize - this.waveSpawned);
@@ -3724,6 +4117,12 @@ export class GameScene extends Phaser.Scene {
       if (r < this.heavyChance) kind = 'bat';
       else if (r < 0.4) kind = 'mosquito';
       else kind = 'crow';
+    } else if (this.biome === 'castle') {
+      const r = Math.random();
+      if (r < this.heavyChance) kind = 'golem';
+      else if (r < this.heavyChance + 0.15) kind = 'warlock';
+      else if (r < this.heavyChance + 0.35) kind = 'shadow_imp';
+      else kind = 'skeleton';
     } else {
       kind = Math.random() < this.heavyChance ? 'deer' : 'snake';
     }
@@ -3749,6 +4148,23 @@ export class GameScene extends Phaser.Scene {
     if (this.biome === 'infected' && kind !== 'toad') {
       const n = Math.min(Phaser.Math.Between(CFG.infected.clusterMin, CFG.infected.clusterMax), this.levelClusterMax);
       const spread = CFG.infected.clusterSpread;
+      const waveSize = this.levelWaveSize;
+      const toSpawn = Math.min(n, waveSize - this.waveSpawned);
+      for (let i = 0; i < toSpawn; i++) {
+        const sx = x + Phaser.Math.Between(-spread, spread);
+        const sy = y + Phaser.Math.Between(-spread, spread);
+        const se = new Enemy(this, sx, sy, kind);
+        this.applyEnemyDifficulty(se);
+        this.enemies.add(se);
+        if (i > 0) this.waveSpawned++;
+      }
+      return;
+    }
+
+    // Castle enemies spawn in small clusters (warlocks spawn solo)
+    if (this.biome === 'castle' && kind !== 'warlock') {
+      const n = Math.min(Phaser.Math.Between(CFG.castle.clusterMin, CFG.castle.clusterMax), this.levelClusterMax);
+      const spread = CFG.castle.clusterSpread;
       const waveSize = this.levelWaveSize;
       const toSpawn = Math.min(n, waveSize - this.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
@@ -3801,6 +4217,19 @@ export class GameScene extends Phaser.Scene {
   checkEndConditions() {
     // Level is won by defeating the boss, not by a kill count.
     if (this.bossSpawned && (!this.boss || this.boss.dying || !this.boss.active)) {
+      // Castle mid-boss (queen) death: don't win — trigger next phase
+      if (this.biome === 'castle' && this.castlePhase < 3) {
+        if (!this.midBossDefeated && this.castlePhase === 1) {
+          this.midBossDefeated = true;
+          this.game.events.emit('boss-died');
+          // Kill remaining enemies
+          for (const e of this.enemies.getChildren() as Enemy[]) {
+            if (!e.dying && e.active) e.hurt(9999);
+          }
+        }
+        // Don't enter win flow until the dragon (phase 3) is dead
+        return;
+      }
       // Start a collection window so the player can grab coins
       if (this.winDelayUntil === 0) {
         this.winDelayUntil = this.vTime + 12000;
@@ -3913,6 +4342,9 @@ export class GameScene extends Phaser.Scene {
       });
     }, 900);
 
+    // Fade BGM during the death animation so the defeat screen lands in silence
+    SFX.fadeOutBgm(2500);
+
     // Show defeat screen after the full animation (real-time)
     setTimeout(() => {
       if (!this.scene.isActive()) return;
@@ -3933,6 +4365,7 @@ export class GameScene extends Phaser.Scene {
     if (this.gameOver) return;
     this.gameOver = true;
     this.physics.pause();
+    SFX.fadeOutBgm(1500);
     SFX.play('victory');
     const payload = { win: true, name: 'Ranger', kills: this.player.kills, money: this.player.money };
     this.game.registry.set('gameEndState', payload);

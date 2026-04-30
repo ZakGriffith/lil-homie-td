@@ -38,9 +38,17 @@ export class Boss extends Phaser.Physics.Arcade.Sprite {
   // Animation prefix — 'boss' for meadow, 'fboss' for forest
   animPrefix: string;
 
-  constructor(scene: Phaser.Scene, x: number, y: number, biome: Biome = 'grasslands') {
-    const prefix = biome === 'forest' ? 'fboss' : biome === 'infected' ? 'iboss' : biome === 'river' ? 'rboss' : 'ram';
+  bossKind: string = ''; // e.g. 'queen', 'dragon' for castle bosses
+
+  constructor(scene: Phaser.Scene, x: number, y: number, biome: Biome = 'grasslands', bossKind = '') {
+    const prefix = bossKind === 'queen' ? 'cqboss'
+                 : bossKind === 'dragon' ? 'cdboss'
+                 : biome === 'forest' ? 'fboss'
+                 : biome === 'infected' ? 'iboss'
+                 : biome === 'river' ? 'rboss'
+                 : 'ram';
     super(scene, x, y, `${prefix}_idle0`);
+    this.bossKind = bossKind;
     this.animPrefix = prefix;
     this.setScale(0.5);
     scene.add.existing(this);

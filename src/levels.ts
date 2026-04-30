@@ -1,5 +1,5 @@
 export type Difficulty = 'easy' | 'medium' | 'hard' | 'oneHP';
-export type Biome = 'grasslands' | 'forest' | 'infected' | 'river' | 'desert' | 'tundra' | 'volcanic';
+export type Biome = 'grasslands' | 'forest' | 'infected' | 'river' | 'castle' | 'desert' | 'tundra' | 'volcanic';
 
 export interface LevelDef {
   id: number;
@@ -27,7 +27,8 @@ export const LEVELS: LevelDef[] = [
     rampFactor: 0.88, minInterval: 250, waveSize: 120, clusterMax: 3 },
   { id: 4,  name: 'Rivers',        biome: 'river',      x: 168, y: 200, connectsTo: [5],    unlockCost: 4,  implemented: true,
     rampFactor: 0.86, minInterval: 220, waveSize: 130, clusterMax: 2 },
-  { id: 5,  name: 'The Castle',    biome: 'grasslands', x: 125, y: 95, connectsTo: [6],    unlockCost: 5,  implemented: false },
+  { id: 5,  name: 'The Castle',    biome: 'castle',     x: 125, y: 95, connectsTo: [6],    unlockCost: 5,  implemented: true,
+    rampFactor: 0.90, minInterval: 300, waveSize: 90, clusterMax: 3 },
   // Desert — top-center/right (ruins & dunes)
   { id: 6,  name: 'Oasis',         biome: 'desert',     x: 430, y: 170, connectsTo: [7],    unlockCost: 7,  implemented: false },
   { id: 7,  name: 'Sand Dunes',    biome: 'desert',     x: 540, y: 110, connectsTo: [8],    unlockCost: 9,  implemented: false },
@@ -60,6 +61,7 @@ export const BIOME_COLORS: Record<Biome, { fill: number; label: string; textHex:
   forest:     { fill: 0x1a3a14, label: 'Forest',     textHex: '#3a7a2e' },
   infected:   { fill: 0x2a1a3a, label: 'Infected',    textHex: '#a040d0' },
   river:      { fill: 0x1e3a4a, label: 'River',      textHex: '#4a9aba' },
+  castle:     { fill: 0x3a3a4a, label: 'Castle',     textHex: '#8a8aaa' },
   desert:     { fill: 0x5a4a28, label: 'Desert',     textHex: '#d4a84a' },
   tundra:     { fill: 0x2a3a4e, label: 'Tundra',     textHex: '#8ab4d0' },
   volcanic:   { fill: 0x4a1a1a, label: 'Volcanic',   textHex: '#d45a3a' },

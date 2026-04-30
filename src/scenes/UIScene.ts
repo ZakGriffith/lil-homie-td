@@ -1,6 +1,6 @@
 import Phaser from 'phaser';
 import { CFG } from '../config';
-import { Difficulty, saveMedal } from '../levels';
+import { Difficulty, saveMedal, LEVELS, Biome } from '../levels';
 import { SFX } from '../audio/sfx';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
 
@@ -33,6 +33,7 @@ export class UIScene extends Phaser.Scene {
 
   levelId = 1;
   difficulty: Difficulty = 'easy';
+  biome: Biome = 'grasslands';
 
   /** Scale factor for native resolution rendering */
   private sf = 1;
@@ -56,6 +57,8 @@ export class UIScene extends Phaser.Scene {
   init(data: any) {
     this.levelId = data?.levelId ?? 1;
     this.difficulty = data?.difficulty ?? 'easy';
+    const levelDef = LEVELS.find(l => l.id === this.levelId);
+    this.biome = levelDef?.biome ?? 'grasslands';
     this.endPanel = undefined;
     this.bossBarBg = undefined;
     this.bossBar = undefined;
@@ -156,7 +159,9 @@ export class UIScene extends Phaser.Scene {
     this.progressCircles = [];
     this.progressLabels = [];
     this.progressLines = [];
-    const totalNodes = CFG.spawn.waveCount + 1; // waves + boss
+    // Castle: 4 waves + queen skull + dragon skull = 6 nodes
+    // Others: waveCount waves + 1 boss = waveCount+1 nodes
+    const totalNodes = this.biome === 'castle' ? 6 : CFG.spawn.waveCount + 1;
     const nodeSpacing = this.p(36);
     const totalW = (totalNodes - 1) * nodeSpacing;
     const startX = (W - totalW) / 2;
@@ -177,8 +182,12 @@ export class UIScene extends Phaser.Scene {
       this.progressCircles.push(circle);
       items.push(circle);
       // label (number or skull)
-      const isBoss = i === totalNodes - 1;
-      const label = this.add.text(nx, nodeY, isBoss ? '\u2620' : `${i + 1}`, {
+      // Castle: nodes 2 (queen) and 5 (dragon) are boss skulls
+      const isBoss = this.biome === 'castle' ? (i === 2 || i === 5) : i === totalNodes - 1;
+      const waveNum = this.biome === 'castle'
+        ? (i < 2 ? i + 1 : i === 2 ? 0 : i < 5 ? i : 0) // 1,2,skull,3,4,skull
+        : i + 1;
+      const label = this.add.text(nx, nodeY, isBoss ? '\u2620' : `${waveNum}`, {
         fontFamily: 'monospace', fontSize: isBoss ? this.fs(12) : this.fs(10), color: '#556',
       }).setOrigin(0.5);
       this.progressLabels.push(label);
@@ -339,8 +348,14 @@ export class UIScene extends Phaser.Scene {
     const barW = this.p(Math.min(420, this.dw() - 40));
     const x = (W - barW) / 2;
     const y = this.p(58); // 20 (top pad) + 38
-    if (this.bossBarBg) return;
-    const bossName = s?.biome === 'forest' ? 'THE WENDIGO' : s?.biome === 'infected' ? 'THE BLIGHTED ONE' : s?.biome === 'river' ? 'THE FOG PHANTOM' : 'THE ANCIENT RAM';
+    // Destroy previous boss bar if any (for multi-boss levels like Castle)
+    this.hideBossBar();
+    const bossName = s?.bossKind === 'queen' ? 'THE PHANTOM QUEEN'
+                   : s?.bossKind === 'dragon' ? 'THE CASTLE DRAGON'
+                   : s?.biome === 'forest' ? 'THE WENDIGO'
+                   : s?.biome === 'infected' ? 'THE BLIGHTED ONE'
+                   : s?.biome === 'river' ? 'THE FOG PHANTOM'
+                   : 'THE ANCIENT RAM';
     this.bossLabel = this.add.text(W / 2, y - this.p(16), bossName, {
       fontFamily: 'monospace', fontSize: this.fs(14), color: '#ff6a6a',
       stroke: '#0b0f1a', strokeThickness: this.p(3)
@@ -350,6 +365,12 @@ export class UIScene extends Phaser.Scene {
     this.bossBar.setDataEnabled();
     this.bossBar.setData('maxW', barW - this.p(4));
     this.bossBar.setData('maxHp', s?.maxHp ?? 1);
+  }
+
+  hideBossBar() {
+    if (this.bossBarBg) { this.bossBarBg.destroy(); this.bossBarBg = undefined; }
+    if (this.bossBar) { this.bossBar.destroy(); this.bossBar = undefined; }
+    if (this.bossLabel) { this.bossLabel.destroy(); this.bossLabel = undefined; }
   }
 
   updateBossBar(s: any) {
@@ -583,50 +604,115 @@ export class UIScene extends Phaser.Scene {
     }
 
     // Update level progress circles
-    const waveCount = CFG.spawn.waveCount;
     const currentWave = s.wave ?? 1; // 1-indexed
-    for (let i = 0; i < this.progressCircles.length; i++) {
-      const isBoss = i === waveCount;
-      const waveNum = i + 1; // 1-indexed wave for this node
-      if (isBoss) {
-        if (s.bossSpawned) {
-          // Boss active - highlight red
-          this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
-          this.progressCircles[i].setFillStyle(0x3a1010);
-          this.progressLabels[i].setColor('#ff6a6a');
+    if (this.biome === 'castle') {
+      // Castle: 6 nodes — W1, W2, Queen, W3, W4, Dragon
+      // Map node index to progress state
+      const cp = s.castlePhase ?? 0;
+      for (let i = 0; i < this.progressCircles.length; i++) {
+        const isBossNode = (i === 2 || i === 5);
+        let completed = false;
+        let active = false;
+        let current = false;
+
+        if (i === 0) { // Wave 1
+          completed = currentWave > 1 || cp >= 1;
+          current = currentWave === 1 && cp === 0;
+        } else if (i === 1) { // Wave 2
+          completed = cp >= 1;
+          current = currentWave === 2 && cp === 0;
+        } else if (i === 2) { // Queen boss
+          completed = s.midBossDefeated;
+          active = cp === 1 && s.bossSpawned;
+        } else if (i === 3) { // Wave 3
+          completed = (cp >= 2 && currentWave > 3) || cp >= 3;
+          current = currentWave === 3 && cp === 2;
+        } else if (i === 4) { // Wave 4
+          completed = cp >= 3;
+          current = currentWave === 4 && cp === 2;
+        } else if (i === 5) { // Dragon boss
+          active = cp === 3 && s.bossSpawned;
+        }
+
+        if (isBossNode) {
+          if (completed) {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+            this.progressCircles[i].setFillStyle(0x1a3a1a);
+            this.progressLabels[i].setColor('#4ad96a');
+          } else if (active) {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
+            this.progressCircles[i].setFillStyle(0x3a1010);
+            this.progressLabels[i].setColor('#ff6a6a');
+          } else {
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+            this.progressCircles[i].setFillStyle(0x11172a);
+            this.progressLabels[i].setColor('#556');
+          }
+        } else if (completed) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+          this.progressCircles[i].setFillStyle(0x1a3a1a);
+          this.progressLabels[i].setText('\u2713');
+          this.progressLabels[i].setColor('#4ad96a');
+        } else if (current) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
+          this.progressCircles[i].setFillStyle(0x1a2a4a);
+          this.progressLabels[i].setColor('#7cc4ff');
         } else {
-          // Boss not yet
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
           this.progressCircles[i].setFillStyle(0x11172a);
           this.progressLabels[i].setColor('#556');
         }
-      } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
-        // Completed wave - green with checkmark
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
-        this.progressCircles[i].setFillStyle(0x1a3a1a);
-        this.progressLabels[i].setText('\u2713');
-        this.progressLabels[i].setColor('#4ad96a');
-      } else if (waveNum === currentWave) {
-        // Current wave - bright blue highlight
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
-        this.progressCircles[i].setFillStyle(0x1a2a4a);
-        this.progressLabels[i].setText(`${waveNum}`);
-        this.progressLabels[i].setColor('#7cc4ff');
-      } else {
-        // Future wave - dim
-        this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
-        this.progressCircles[i].setFillStyle(0x11172a);
-        this.progressLabels[i].setText(`${waveNum}`);
-        this.progressLabels[i].setColor('#556');
+        if (i < this.progressLines.length) {
+          if (completed) this.progressLines[i].setFillStyle(0x4ad96a);
+          else if (current || active) this.progressLines[i].setFillStyle(0x7cc4ff);
+          else this.progressLines[i].setFillStyle(0x2a3760);
+        }
       }
-      // Update connecting line colors
-      if (i < this.progressLines.length) {
-        if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
-          this.progressLines[i].setFillStyle(0x4ad96a);
+    } else {
+      const waveCount = CFG.spawn.waveCount;
+      for (let i = 0; i < this.progressCircles.length; i++) {
+        const isBoss = i === waveCount;
+        const waveNum = i + 1; // 1-indexed wave for this node
+        if (isBoss) {
+          if (s.bossSpawned) {
+            // Boss active - highlight red
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
+            this.progressCircles[i].setFillStyle(0x3a1010);
+            this.progressLabels[i].setColor('#ff6a6a');
+          } else {
+            // Boss not yet
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+            this.progressCircles[i].setFillStyle(0x11172a);
+            this.progressLabels[i].setColor('#556');
+          }
+        } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
+          // Completed wave - green with checkmark
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
+          this.progressCircles[i].setFillStyle(0x1a3a1a);
+          this.progressLabels[i].setText('\u2713');
+          this.progressLabels[i].setColor('#4ad96a');
         } else if (waveNum === currentWave) {
-          this.progressLines[i].setFillStyle(0x7cc4ff);
+          // Current wave - bright blue highlight
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
+          this.progressCircles[i].setFillStyle(0x1a2a4a);
+          this.progressLabels[i].setText(`${waveNum}`);
+          this.progressLabels[i].setColor('#7cc4ff');
         } else {
-          this.progressLines[i].setFillStyle(0x2a3760);
+          // Future wave - dim
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+          this.progressCircles[i].setFillStyle(0x11172a);
+          this.progressLabels[i].setText(`${waveNum}`);
+          this.progressLabels[i].setColor('#556');
+        }
+        // Update connecting line colors
+        if (i < this.progressLines.length) {
+          if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
+            this.progressLines[i].setFillStyle(0x4ad96a);
+          } else if (waveNum === currentWave) {
+            this.progressLines[i].setFillStyle(0x7cc4ff);
+          } else {
+            this.progressLines[i].setFillStyle(0x2a3760);
+          }
         }
       }
     }
@@ -638,6 +724,9 @@ export class UIScene extends Phaser.Scene {
       this.waveBarBg.setVisible(false);
       this.waveBar.setVisible(false);
     } else {
+      this.waveLabel.setVisible(true);
+      this.waveBarBg.setVisible(true);
+      this.waveBar.setVisible(true);
       // Match the clamped wave bar width — bg width minus the inset border.
       const maxW = this.waveBarBg.width - this.p(4);
       const wavePct = s.waveSize > 0 ? Math.min(1, s.waveKills / s.waveSize) : 0;

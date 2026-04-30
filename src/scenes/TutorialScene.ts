@@ -210,7 +210,7 @@ export class TutorialScene extends Phaser.Scene {
   onWallPlaced = () => {
     if (this.step === 'game_place_walls') {
       this.wallsPlaced++;
-      if (this.wallsPlaced >= 3) this.advanceTo('game_exit_build', 1500);
+      if (this.wallsPlaced >= 3) this.advanceTo('game_exit_build');
       else this.showStep(); // update counter
     }
   };
@@ -365,13 +365,13 @@ export class TutorialScene extends Phaser.Scene {
         this.hudClickZone.on('pointerdown', () => {
           this.cleanupHudLabels();
           this.resumeGame();
-          this.advanceTo('game_stand_still');
+          this.advanceTo('game_stand_still', 2000);
         });
         break;
       }
 
       case 'game_stand_still':
-        this.showPrompt('Your ranger fires automatically!\nStanding still gives full fire rate.\nMoving cuts your fire rate in half.', this.p(150));
+        this.showPrompt('Your ranger fires automatically!\nStanding still shoots faster than when moving.', this.p(150));
         break;
 
       case 'game_kill':
@@ -413,7 +413,7 @@ export class TutorialScene extends Phaser.Scene {
       case 'game_watch_tower':
         this.tutorialKills = 0; // reset from game_kill phase
         this.watchTimer = 0;
-        this.showPrompt('Your tower shoots enemies automatically!\nWatch it defend.', this.p(150));
+        this.showPrompt('Your tower shoots enemies automatically!', this.p(150));
         break;
 
       case 'game_press_4': {
@@ -466,7 +466,7 @@ export class TutorialScene extends Phaser.Scene {
       }
 
       case 'game_loot_coins':
-        this.showPrompt('Enemies drop coins when defeated!\nWalk near coins to collect them.', this.p(150));
+        this.showPrompt('Enemies drop coins when defeated!\nYou will automatically gather them when nearby.', this.p(150));
         break;
 
       case 'game_click_tower': {
@@ -678,11 +678,12 @@ export class TutorialScene extends Phaser.Scene {
         break;
 
       case 'game_stand_still':
-        if (this.stepDelay === 0) this.stepDelay = this.time.now + 5000;
-        if (this.time.now > this.stepDelay) {
+        if (this.stepDelay === 0) this.stepDelay = this.time.now + 7000; // show prompt for 7s
+        if (this.stepDelay > 0 && this.time.now > this.stepDelay) {
           this.stepDelay = 0;
+          // Hide prompt, then wait 2s before spawning enemies
           this.spawnTutorialEnemies(gameScene, 6);
-          this.advanceTo('game_kill');
+          this.advanceTo('game_kill', 2000);
         }
         break;
 
