@@ -531,6 +531,24 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  /** Only emit a HUD update when the countdown message or color actually
+   *  changes. Per-frame countdown branches (build phase, stragglers, boss
+   *  spawn, victory loot) used to set the same string 60 times per second
+   *  and call pushHud each time — UIScene.updateHud is heavy enough that
+   *  redrawing the HP graphics + restyling all progress nodes 60Hz produced
+   *  a visible hitch on mobile. */
+  private syncCountdown(msg: string, color: string) {
+    if (this.countdownMsg === msg && this.countdownColor === color) return;
+    this.countdownMsg = msg;
+    this.countdownColor = color;
+    this.pushHud();
+  }
+
+  // Wave-break tick — fire one HUD update per second so the "WAVE N IN Ns"
+  // label refreshes, instead of running updateHud every frame for 5+ seconds.
+  private _lastWaveBreakSec = -1;
+  private _lastWaveBreakUntil = 0;
+
   setTimeScale(mult: number) {
     this.timeMult = mult;
     // Phaser's physics.world.timeScale is inverted: lower = faster.
@@ -3947,14 +3965,11 @@ export class GameScene extends Phaser.Scene {
     // initial build phase — show countdown, don't spawn anything yet
     if (time < this.waveStartAt) {
       if (this.waveStartAt === Infinity) {
-        this.countdownMsg = '';
-        this.pushHud();
+        this.syncCountdown('', '#7cc4ff');
         return;
       }
       const secs = Math.ceil((this.waveStartAt - time) / 1000);
-      this.countdownMsg = `BUILD PHASE — ${secs}s`;
-      this.countdownColor = '#7cc4ff';
-      this.pushHud();
+      this.syncCountdown(`BUILD PHASE — ${secs}s`, '#7cc4ff');
       return;
     }
 
@@ -3990,10 +4005,20 @@ export class GameScene extends Phaser.Scene {
       return;
     }
 
-    // Between-wave build break (wave bar shows countdown via hudState)
+    // Between-wave build break (wave bar shows countdown via hudState).
+    // The wave label re-renders from hudState's waveBreakUntil/vTime, so we
+    // only need to push when the displayed integer second changes.
     if (time < this.waveBreakUntil) {
-      if (this.countdownMsg) { this.countdownMsg = ''; }
-      this.pushHud();
+      this.syncCountdown('', '#7cc4ff');
+      if (this.waveBreakUntil !== this._lastWaveBreakUntil) {
+        this._lastWaveBreakUntil = this.waveBreakUntil;
+        this._lastWaveBreakSec = -1;
+      }
+      const wbSec = Math.ceil((this.waveBreakUntil - time) / 1000);
+      if (wbSec !== this._lastWaveBreakSec) {
+        this._lastWaveBreakSec = wbSec;
+        this.pushHud();
+      }
       return;
     }
 
@@ -4002,9 +4027,7 @@ export class GameScene extends Phaser.Scene {
       const live = this.liveEnemyCount();
       const left = Math.max(live, waveSize - this.waveKills);
       if (left > 0) {
-        this.countdownMsg = `KILL THE STRAGGLERS — ${left} LEFT`;
-        this.countdownColor = '#ff9a4a';
-        this.pushHud();
+        this.syncCountdown(`KILL THE STRAGGLERS — ${left} LEFT`, '#ff9a4a');
       } else {
         if (this.bossCountdownUntil === 0) {
           this.bossCountdownUntil = time + CFG.boss.prepTime;
@@ -4026,9 +4049,7 @@ export class GameScene extends Phaser.Scene {
                        : this.biome === 'castle' && this.castlePhase === 0 ? 'PHANTOM QUEEN'
                        : this.biome === 'castle' && this.castlePhase === 2 ? 'CASTLE DRAGON'
                        : 'ANCIENT RAM';
-        this.countdownMsg = `${bossName} SPAWNING IN ${secs}`;
-        this.countdownColor = '#ff5050';
-        this.pushHud();
+        this.syncCountdown(`${bossName} SPAWNING IN ${secs}`, '#ff5050');
       }
       return;
     }
@@ -4293,8 +4314,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
-      this.countdownMsg = `VICTORY! Collect your loot! ${remaining}s`;
-      this.pushHud();
+      this.syncCountdown(`VICTORY! Collect your loot! ${remaining}s`, '#7cf29a');
       if (this.vTime >= this.winDelayUntil) {
         this.win();
       } else if (this.coins.countActive() === 0 && this.winCollectedAt === 0) {
