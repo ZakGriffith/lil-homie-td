@@ -5,7 +5,6 @@ import { LevelSelectScene } from './scenes/LevelSelectScene';
 import { GameScene } from './scenes/GameScene';
 import { UIScene } from './scenes/UIScene';
 import { TutorialScene } from './scenes/TutorialScene';
-import { SFX } from './audio/sfx';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
