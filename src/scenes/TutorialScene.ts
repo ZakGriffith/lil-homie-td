@@ -117,8 +117,16 @@ export class TutorialScene extends Phaser.Scene {
       });
     };
     this.game.events.on('viewport-changed', onViewportChanged);
+    // Also reposition on ANY scale change — scene transitions (LevelSelect's
+    // 3:2 letterbox → GameScene's full viewport) call setGameSize without
+    // firing viewport-changed, and the skip button was being placed at the
+    // letterboxed canvas's right edge (which is the device's center on wide
+    // landscape phones, right under the build menu).
+    const onScaleResize = () => this.repositionSkipBtn();
+    this.scale.on('resize', onScaleResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
       this.game.events.off('viewport-changed', onViewportChanged);
+      this.scale.off('resize', onScaleResize);
     });
 
     // Listen for events
@@ -615,7 +623,28 @@ export class TutorialScene extends Phaser.Scene {
 
   showPrompt(text: string, y: number, anchorY: number = 0.5) {
     const W = this.scale.width;
-    this.promptText.setOrigin(0.5, anchorY).setText(text).setPosition(W / 2, y);
+    // Use the actual device orientation, not the canvas aspect — during the
+    // LevelSelect tutorial steps the canvas is 3:2-letterboxed (W>H always),
+    // so checking scale.width vs scale.height would lie. window dimensions
+    // reflect what the user is actually holding.
+    const isLandscapeMobile = this.isMobile && window.innerWidth > window.innerHeight;
+    // Only the in-game (game_*) steps right-anchor in landscape — the
+    // level-select steps stay centered in both orientations because they
+    // pair with centered map/panel highlights.
+    const inGameStep = this.step.startsWith('game_');
+
+    if (isLandscapeMobile && inGameStep) {
+      // Float on the right edge with a narrow wrap so the prompt doesn't
+      // cover gameplay in the wide landscape viewport. Right-anchored so the
+      // panel sits flush against the right padding.
+      this.promptText.setStyle({ wordWrap: { width: this.p(260) } });
+      this.promptText.setOrigin(1, anchorY).setText(text).setPosition(W - this.p(20), y);
+    } else {
+      // Default: centered with full-width wrap (existing behavior — desktop,
+      // portrait mobile, and all level-select steps).
+      this.promptText.setStyle({ wordWrap: { width: W - this.p(100) } });
+      this.promptText.setOrigin(0.5, anchorY).setText(text).setPosition(W / 2, y);
+    }
 
     // Draw text background panel
     const bounds = this.promptText.getBounds();

@@ -1290,7 +1290,13 @@ export class GameScene extends Phaser.Scene {
         }
         const canAffordWall = this.player.money >= CFG.wall.cost;
         if (!canAffordWall) buildErr = 'Not enough gold';
-        else if (tileBlocked) buildErr = 'Blocked';
+        // On mobile the pointer stays on the last-tapped tile (no real
+        // cursor between taps), so right after placing a wall the ghost
+        // sits on top of that just-placed wall and would persistently
+        // show "Blocked". Skip that one message on mobile — "Not enough
+        // gold" and "Blocks path" still apply since they reflect game
+        // state, not pointer position.
+        else if (tileBlocked && !this.game.registry.get('isMobile')) buildErr = 'Blocked';
         else if (!valid) buildErr = 'Blocks path';
         this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
       }
