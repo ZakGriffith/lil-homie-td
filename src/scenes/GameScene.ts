@@ -3338,6 +3338,8 @@ export class GameScene extends Phaser.Scene {
     this.player.hurt(dmg, this);
     this.pushHud();
     if (this.player.hp <= 0) this.lose();
+    // Tag as direct hit so explode doesn't double-damage the player
+    (fb as any)._directHit = true;
     // Explode with AoE
     this.dragonFireballExplode(fb);
   }
@@ -3357,8 +3359,11 @@ export class GameScene extends Phaser.Scene {
 
     // AoE damage to player if in range (and not already hit by direct contact)
     if (Phaser.Math.Distance.Between(x, y, this.player.x, this.player.y) < splash) {
-      // Only do splash damage if player wasn't the direct hit target
-      // (dragonFireballHitsPlayer already applied direct damage)
+      if (!(fb as any)._directHit) {
+        this.player.hurt(dmg, this);
+        this.pushHud();
+        if (this.player.hp <= 0) this.lose();
+      }
     }
 
     // Damage nearby towers
@@ -3408,6 +3413,8 @@ export class GameScene extends Phaser.Scene {
         this.player.hurt(dmg, this);
         this.pushHud();
         if (this.player.hp <= 0) this.lose();
+        // Tag as already damaged so dragonFireballExplode skips player damage
+        (fb as any)._directHit = true;
       }
       this.dragonFireballExplode(fb);
     }
