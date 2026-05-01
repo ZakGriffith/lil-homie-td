@@ -1065,12 +1065,17 @@ export class GameScene extends Phaser.Scene {
     let py = t.y - towerHalfH - H / 2 - standoff;
     let nubAtBottom = true;
 
-    // Mobile: if the panel would clip off the top of the screen (tower near
-    // the top), flip it below the tower with the nub pointing up.
+    // Mobile: if the panel would clip off the top of the screen OR sit
+    // underneath the HUD (which lives in the top ~80 design-pixels of the
+    // canvas), flip below the tower with the nub pointing up. The HUD is
+    // rendered in canvas pixels, so convert that vertical extent to world
+    // units via uiScale / camera zoom before comparing against worldView.
     if (isMobile) {
       const view = this.cameras.main.worldView;
-      const topMargin = 8 * ms;
-      if (py - H / 2 < view.y + topMargin) {
+      const sf = this.game.registry.get('sf') || 1;
+      const camZoom = this.cameras.main.zoom || 1;
+      const hudClearWorld = (90 * sf) / camZoom; // 80px HUD region + a little padding
+      if (py - H / 2 < view.y + hudClearWorld) {
         py = t.y + towerHalfH + H / 2 + standoff;
         nubAtBottom = false;
       }
@@ -1096,12 +1101,32 @@ export class GameScene extends Phaser.Scene {
     panelG.strokeRoundedRect(-W / 2, -H / 2, W, H, panelR);
     panel.add(panelG);
 
-    // Pointer nub — flips orientation when the panel sits below the tower.
-    const nub = nubAtBottom
-      ? this.add.triangle(0, H / 2 + 8 * ms, -6 * ms, -4 * ms, 6 * ms, -4 * ms, 0, 4 * ms, 0x11172a)
-      : this.add.triangle(0, -H / 2 - 8 * ms, -6 * ms, 4 * ms, 6 * ms, 4 * ms, 0, -4 * ms, 0x11172a);
-    nub.setStrokeStyle(1 * ms, accent);
-    panel.add(nub);
+    // Pointer nub — drawn with Graphics rather than the Triangle Shape so
+    // it (a) lands centered horizontally on the panel (Phaser's Triangle
+    // Shape uses Math.max(x1,x2,x3) for its width, which throws centering
+    // off when vertex coords straddle 0), and (b) has its base flush with
+    // the panel edge so the nub and panel touch with no visible gap.
+    const nubHalfW = 6 * ms;
+    const nubH = 8 * ms;
+    const baseY = nubAtBottom ? H / 2 : -H / 2;
+    const apexY = nubAtBottom ? baseY + nubH : baseY - nubH;
+    const nubG = this.add.graphics();
+    nubG.fillStyle(0x11172a, 1);
+    nubG.beginPath();
+    nubG.moveTo(-nubHalfW, baseY);
+    nubG.lineTo(nubHalfW, baseY);
+    nubG.lineTo(0, apexY);
+    nubG.closePath();
+    nubG.fillPath();
+    // Stroke only the two slanted sides — the base sits on top of the
+    // panel's outline, so a base stroke would just double-draw it.
+    nubG.lineStyle(1 * ms, accent, 1);
+    nubG.beginPath();
+    nubG.moveTo(-nubHalfW, baseY);
+    nubG.lineTo(0, apexY);
+    nubG.lineTo(nubHalfW, baseY);
+    nubG.strokePath();
+    panel.add(nubG);
 
     // Title
     const tr = this.sf;
