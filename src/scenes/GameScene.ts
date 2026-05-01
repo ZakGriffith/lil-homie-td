@@ -59,6 +59,7 @@ export class GameScene extends Phaser.Scene {
   nextRunnerPack = 0;
   playerStoppedAt = 0;
   ghost!: Phaser.GameObjects.Sprite;
+  deleteIcon!: Phaser.GameObjects.Graphics;
   gridOverlay!: Phaser.GameObjects.Graphics;
 
   spawnTimer = 0;
@@ -422,6 +423,17 @@ export class GameScene extends Phaser.Scene {
     // build ghost
     this.ghost = this.add.sprite(0, 0, 'wall').setAlpha(0.5).setDepth(800).setVisible(false).setOrigin(0.5).setScale(0.5);
 
+    // Red X overlay shown in wall build mode when the cursor is on an
+    // existing wall — hint that clicking will start the sell countdown.
+    this.deleteIcon = this.add.graphics().setDepth(801).setVisible(false);
+    const dr = CFG.tile * 0.32;
+    this.deleteIcon.lineStyle(4, 0x000000, 0.6);
+    this.deleteIcon.lineBetween(-dr, -dr, dr, dr);
+    this.deleteIcon.lineBetween(-dr, dr, dr, -dr);
+    this.deleteIcon.lineStyle(2.5, 0xff4040, 1);
+    this.deleteIcon.lineBetween(-dr, -dr, dr, dr);
+    this.deleteIcon.lineBetween(-dr, dr, dr, -dr);
+
     // grid overlay (redrawn each frame while building)
     this.gridOverlay = this.add.graphics().setDepth(799).setVisible(false);
 
@@ -598,6 +610,7 @@ export class GameScene extends Phaser.Scene {
     this.buildKind = k;
     if (k === 'tower' && towerKind) this.buildTowerKind = towerKind;
     this.ghost.setVisible(k !== 'none');
+    if (this.deleteIcon) this.deleteIcon.setVisible(false);
     if (this.gridOverlay) this.gridOverlay.setVisible(k !== 'none');
     this.game.events.emit('build-mode', k !== 'none', k, towerKind);
     if (k === 'none') this.game.events.emit('build-error', '');
@@ -684,8 +697,21 @@ export class GameScene extends Phaser.Scene {
       const hit = this.towers.find(t =>
         tx >= t.tileX && tx < t.tileX + t.size &&
         ty >= t.tileY && ty < t.tileY + t.size);
-      if (hit) this.selectTower(hit);
-      else this.deselectTower();
+      if (hit) {
+        this.selectTower(hit);
+        return;
+      }
+      // No tower under cursor — if it's a wall, start the sell countdown
+      // (click it again to cancel). Towers still need the upgrade panel
+      // for sell, so we don't auto-sell them on click.
+      if (!this.game.registry.get('tutorialActive')) {
+        const wHit = this.walls.find(w => w.tileX === tx && w.tileY === ty);
+        if (wHit) {
+          this.startSellTimer(wHit);
+          return;
+        }
+      }
+      this.deselectTower();
       return;
     }
 
@@ -722,6 +748,16 @@ export class GameScene extends Phaser.Scene {
     }
 
     // wall
+    // Click on an existing wall while in wall build mode = start the
+    // sell countdown instead of trying (and failing) to place. Skip
+    // during tutorial since we don't allow selling there.
+    if (!this.game.registry.get('tutorialActive')) {
+      const wHit = this.walls.find(w => w.tileX === tx && w.tileY === ty);
+      if (wHit) {
+        this.startSellTimer(wHit);
+        return;
+      }
+    }
     // Tutorial caps placements at 3 walls.
     if (this.game.registry.get('tutorialActive') && this.walls.length >= 3) return;
     if (gridGet(this.grid, tx, ty) !== 0) return;
@@ -768,8 +804,39 @@ export class GameScene extends Phaser.Scene {
       this.cancelSellTimer(target);
       return;
     }
+    SFX.play('click');
     const gfx = this.add.graphics().setDepth(200);
     this.sellTimers.set(target, { startTime: this.vTime, duration: 3000, gfx });
+    // Paint at 100% remaining immediately so the marker is visible even
+    // when the click happens during a paused build menu — updateSellTimers
+    // doesn't run while paused, so without this initial draw the pie
+    // stays invisible until the player exits build mode.
+    this.drawSellTimerGfx(target, gfx, 1);
+  }
+
+  private drawSellTimerGfx(target: Tower | Wall, gfx: Phaser.GameObjects.Graphics, remaining: number) {
+    const cx = target.x, cy = target.y;
+    const radius = target instanceof Tower ? CFG.tile * 0.9 : CFG.tile * 0.45;
+    const startAngle = -Math.PI / 2;
+    const endAngle = startAngle + remaining * Math.PI * 2;
+    gfx.clear();
+    // Red pie countdown
+    gfx.fillStyle(0xff2222, 0.3);
+    gfx.beginPath();
+    gfx.moveTo(cx, cy);
+    gfx.arc(cx, cy, radius, startAngle, endAngle, false);
+    gfx.closePath();
+    gfx.fillPath();
+    gfx.lineStyle(2, 0xff4444, 0.6);
+    gfx.beginPath();
+    gfx.arc(cx, cy, radius, startAngle, endAngle, false);
+    gfx.strokePath();
+    // Persistent dark-red X — keeps the "marked for destruction" read
+    // even when the pie shrinks down toward the wedge.
+    const xr = radius * 0.5;
+    gfx.lineStyle(3, 0x8a0000, 0.95);
+    gfx.lineBetween(cx - xr, cy - xr, cx + xr, cy + xr);
+    gfx.lineBetween(cx - xr, cy + xr, cx + xr, cy - xr);
   }
 
   cancelSellTimer(target: Tower | Wall) {
@@ -793,25 +860,7 @@ export class GameScene extends Phaser.Scene {
         continue;
       }
 
-      // Draw red pie countdown over the target
-      const remaining = 1 - progress;
-      const cx = target.x, cy = target.y;
-      const radius = target instanceof Tower ? CFG.tile * 0.9 : CFG.tile * 0.45;
-      const startAngle = -Math.PI / 2; // 12 o'clock
-      const endAngle = startAngle + remaining * Math.PI * 2;
-
-      timer.gfx.clear();
-      timer.gfx.fillStyle(0xff2222, 0.3);
-      timer.gfx.beginPath();
-      timer.gfx.moveTo(cx, cy);
-      timer.gfx.arc(cx, cy, radius, startAngle, endAngle, false);
-      timer.gfx.closePath();
-      timer.gfx.fillPath();
-      // Thin red border
-      timer.gfx.lineStyle(2, 0xff4444, 0.6);
-      timer.gfx.beginPath();
-      timer.gfx.arc(cx, cy, radius, startAngle, endAngle, false);
-      timer.gfx.strokePath();
+      this.drawSellTimerGfx(target, timer.gfx, 1 - progress);
     }
   }
 
@@ -848,6 +897,7 @@ export class GameScene extends Phaser.Scene {
   }
 
   executeSell(target: Tower | Wall) {
+    SFX.play('structDestroy');
     if (target instanceof Tower) {
       const t = target;
       if (this.selectedTower === t) this.deselectTower();
@@ -860,7 +910,9 @@ export class GameScene extends Phaser.Scene {
       t.destroyTower();
     } else {
       const w = target;
-      this.player.money += Math.floor(CFG.wall.cost * 0.5);
+      // Walls refund $2 (cost is $3) — slight loss to discourage churn but
+      // not so harsh that re-routing your defenses feels punishing.
+      this.player.money += 2;
       const idx = this.walls.indexOf(w);
       if (idx >= 0) this.walls.splice(idx, 1);
       gridSet(this.grid, w.tileX, w.tileY, 0);
@@ -1056,7 +1108,10 @@ export class GameScene extends Phaser.Scene {
   doSellSelected() {
     const t = this.selectedTower;
     if (!t) return;
-    this.executeSell(t);
+    // Start the same red-pie countdown walls use, then close the panel
+    // immediately so the world resumes — towers no longer sell instantly.
+    this.startSellTimer(t);
+    this.deselectTower();
   }
 
   floatText(x: number, y: number, msg: string, color: string) {
@@ -1286,38 +1341,59 @@ export class GameScene extends Phaser.Scene {
         this.ghost.setTint(canPlace && canAffordTower ? 0x88ff88 : 0xff8888);
       } else {
         this.ghost.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2);
-        // Invalidate cache when player moves to a new tile
-        const ptKey = `${Math.floor(this.player.x / CFG.tile)},${Math.floor(this.player.y / CFG.tile)}`;
-        if (ptKey !== this._lastWallCheckPlayerTile) {
-          this._lastWallCheckPlayerTile = ptKey;
-          this._wallCheckCache = { key: '', valid: false };
-        }
-        let valid = gridGet(this.grid, tx, ty) === 0;
-        let tileBlocked = !valid;
-        if (valid) {
-          // Cache path check per tile to avoid running BFS every frame
-          const cacheKey = `${tx},${ty}`;
-          if (this._wallCheckCache.key === cacheKey) {
-            valid = this._wallCheckCache.valid;
+        // Hovering an existing wall? Show a red X — clicking will start
+        // the sell countdown to tear it down. Skip the BFS pathing check
+        // entirely (way cheaper, and there's nothing to validate).
+        const wallHere = !this.game.registry.get('tutorialActive')
+          && this.walls.find(w => w.tileX === tx && w.tileY === ty);
+        if (wallHere) {
+          this.ghost.setVisible(false);
+          // If the wall already has a pending sell timer the marker is
+          // drawn over the wall itself — skip the hover hint to avoid a
+          // doubled-up X.
+          if (this.sellTimers.has(wallHere)) {
+            this.deleteIcon.setVisible(false);
           } else {
-            const pt = this.worldToTile(this.player.x, this.player.y);
-            // Check how many directions are reachable WITHOUT the wall
-            const beforeReach = this.countReachableDirections(pt.x, pt.y);
-            // Now test WITH the wall
-            gridSet(this.grid, tx, ty, 1);
-            const afterReach = this.countReachableDirections(pt.x, pt.y);
-            gridSet(this.grid, tx, ty, 0);
-            // Allow if placing the wall doesn't reduce reachable directions,
-            // or at least 2 directions still work
-            valid = afterReach >= Math.min(beforeReach, 2);
-            this._wallCheckCache = { key: cacheKey, valid };
+            this.deleteIcon.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2)
+              .setVisible(true);
           }
+        } else {
+          this.ghost.setVisible(true);
+          this.deleteIcon.setVisible(false);
+
+          // Invalidate cache when player moves to a new tile
+          const ptKey = `${Math.floor(this.player.x / CFG.tile)},${Math.floor(this.player.y / CFG.tile)}`;
+          if (ptKey !== this._lastWallCheckPlayerTile) {
+            this._lastWallCheckPlayerTile = ptKey;
+            this._wallCheckCache = { key: '', valid: false };
+          }
+          let valid = gridGet(this.grid, tx, ty) === 0;
+          let tileBlocked = !valid;
+          if (valid) {
+            // Cache path check per tile to avoid running BFS every frame
+            const cacheKey = `${tx},${ty}`;
+            if (this._wallCheckCache.key === cacheKey) {
+              valid = this._wallCheckCache.valid;
+            } else {
+              const pt = this.worldToTile(this.player.x, this.player.y);
+              // Check how many directions are reachable WITHOUT the wall
+              const beforeReach = this.countReachableDirections(pt.x, pt.y);
+              // Now test WITH the wall
+              gridSet(this.grid, tx, ty, 1);
+              const afterReach = this.countReachableDirections(pt.x, pt.y);
+              gridSet(this.grid, tx, ty, 0);
+              // Allow if placing the wall doesn't reduce reachable directions,
+              // or at least 2 directions still work
+              valid = afterReach >= Math.min(beforeReach, 2);
+              this._wallCheckCache = { key: cacheKey, valid };
+            }
+          }
+          const canAffordWall = this.player.money >= CFG.wall.cost;
+          if (!canAffordWall) buildErr = 'Not enough gold';
+          else if (tileBlocked) buildErr = 'Blocked';
+          else if (!valid) buildErr = 'Blocks path';
+          this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
         }
-        const canAffordWall = this.player.money >= CFG.wall.cost;
-        if (!canAffordWall) buildErr = 'Not enough gold';
-        else if (tileBlocked) buildErr = 'Blocked';
-        else if (!valid) buildErr = 'Blocks path';
-        this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
       }
       this.game.events.emit('build-error', buildErr);
       } // end !overJoystick
@@ -1802,6 +1878,11 @@ export class GameScene extends Phaser.Scene {
   updateTowers(time: number) {
     for (const tower of this.towers) {
       tower.drawHpBar();
+      // Pending sale — tower stops firing during the sell countdown so the
+      // player can't milk damage from a tower they've already cashed out.
+      // Walls keep blocking enemies until the timer completes (handled by
+      // the grid still containing them until executeSell).
+      if (this.sellTimers.has(tower)) continue;
       const st = tower.stats();
 
       if (st.splashRadius > 0) {
@@ -3184,6 +3265,7 @@ export class GameScene extends Phaser.Scene {
     const burst = this.add.sprite(t.x, t.y, 'fx_death_0').setDepth(15).setScale(0.5);
     burst.play('fx-death');
     burst.once('animationcomplete', () => burst.destroy());
+    SFX.play('structDestroy');
     t.destroyTower();
   }
   destroyWall(w: Wall) {
@@ -3194,6 +3276,7 @@ export class GameScene extends Phaser.Scene {
     gridSet(this.grid, tx, ty, 0);
     this.syncWallTile(tx, ty, false);
     this.gridVersion++; this._wallCheckCache = { key: '', valid: false }; this.rebuildGapBlockers();
+    SFX.play('structDestroy');
     w.destroy();
     this.updateWallNeighbors(tx, ty);
   }

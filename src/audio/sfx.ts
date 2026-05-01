@@ -24,6 +24,7 @@ const SFX_KEYS = [
   'gameOver',     // game lost
   'click',        // UI button click
   'doorOpen',     // castle door / play button
+  'structDestroy',// wall / tower torn down (sold or destroyed by boss)
 ] as const;
 
 export type SfxKey = typeof SFX_KEYS[number];
@@ -202,6 +203,7 @@ class SfxManager {
     this.loadUpgrade();
     this.loadPlayerHurt();
     this.loadVictory();
+    this.loadStructDestroy();
   }
 
   /** @deprecated kept for any old call sites — equivalent to loadAssets(). */
@@ -343,6 +345,37 @@ class SfxManager {
       else if (ch[i] < -1) ch[i] = -1;
     }
     this.buffers.victory = buf;
+  }
+
+  /** Wall / tower crumble — short noise burst over a descending low sine
+   *  for a "thunk + rubble" feel. Used both when a sell countdown completes
+   *  and when a boss tears a structure down to 0 HP. */
+  private loadStructDestroy() {
+    const sr = 44100;
+    const len = Math.floor(sr * 0.32); // 320ms
+    const buf = this.ctx!.createBuffer(1, len, sr);
+    const ch = buf.getChannelData(0);
+    const vol = 0.55;
+    for (let i = 0; i < len; i++) {
+      const t = i / sr;
+      const progress = i / len;
+      // Sharp ~5ms attack, exponential decay across the sound's life.
+      const attack = 1 - Math.exp(-i / (sr * 0.005));
+      const decay = Math.exp(-progress * 4.5);
+      // Descending rumble (110 -> 45 Hz)
+      const rumbleFreq = 110 - 65 * progress;
+      const rumble = Math.sin(2 * Math.PI * rumbleFreq * t);
+      // Noise burst (rubble) — heavier early, fades faster than rumble.
+      const noiseEnv = Math.exp(-progress * 8);
+      const noise = (Math.random() * 2 - 1) * noiseEnv;
+      ch[i] = (rumble * 0.55 + noise * 0.5) * attack * decay * vol;
+    }
+    // Defensive clamp — noise+rumble overlap can briefly exceed [-1, 1].
+    for (let i = 0; i < len; i++) {
+      if (ch[i] > 1) ch[i] = 1;
+      else if (ch[i] < -1) ch[i] = -1;
+    }
+    this.buffers.structDestroy = buf;
   }
 
   private loadSfxr(key: SfxKey, b58: string) {
