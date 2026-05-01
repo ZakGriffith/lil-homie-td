@@ -1354,6 +1354,8 @@ export class GameScene extends Phaser.Scene {
   private _lastGridOverlayLeft = NaN;
   private _lastGridOverlayTop = NaN;
   private _lastGridOverlayZoom = NaN;
+  private _lastGridOverlayCols = NaN;
+  private _lastGridOverlayRows = NaN;
   /** Last build-error string emitted — skip the per-frame event re-emit
    *  when the message didn't change so UIScene doesn't churn its toast. */
   private _lastBuildErr = '';
@@ -1361,24 +1363,30 @@ export class GameScene extends Phaser.Scene {
   redrawGridOverlay() {
     const cam = this.cameras.main;
     const tile = CFG.tile;
-    // cam.width / cam.height are canvas pixels; divide by zoom to get
-    // visible world size. Without this, on full-window canvases the
-    // overlay draws far more lines than needed and the per-frame Graphics
-    // rebuild becomes noticeable in build mode.
-    const visW = cam.width / cam.zoom;
-    const visH = cam.height / cam.zoom;
-    const left = Math.floor(cam.scrollX / tile) - 1;
-    const top = Math.floor(cam.scrollY / tile) - 1;
+    // cam.worldView is Phaser's authoritative visible-world rectangle —
+    // it accounts for zoom and origin correctly. cam.scrollX/scrollY are
+    // pixel-space scroll offsets, NOT the visible-world left/top, so using
+    // them here would (and did) draw the grid offset and at the wrong size
+    // when zoom != 1.
+    const view = cam.worldView;
+    const left = Math.floor(view.x / tile) - 1;
+    const top = Math.floor(view.y / tile) - 1;
+    const cols = Math.ceil(view.width / tile) + 2;
+    const rows = Math.ceil(view.height / tile) + 2;
     if (left === this._lastGridOverlayLeft &&
         top === this._lastGridOverlayTop &&
-        cam.zoom === this._lastGridOverlayZoom) {
+        cam.zoom === this._lastGridOverlayZoom &&
+        cols === this._lastGridOverlayCols &&
+        rows === this._lastGridOverlayRows) {
       return;
     }
     this._lastGridOverlayLeft = left;
     this._lastGridOverlayTop = top;
     this._lastGridOverlayZoom = cam.zoom;
-    const right = left + Math.ceil(visW / tile) + 2;
-    const bottom = top + Math.ceil(visH / tile) + 2;
+    this._lastGridOverlayCols = cols;
+    this._lastGridOverlayRows = rows;
+    const right = left + cols;
+    const bottom = top + rows;
     const g = this.gridOverlay;
     g.clear();
     g.lineStyle(1, 0xffffff, 0.18);
