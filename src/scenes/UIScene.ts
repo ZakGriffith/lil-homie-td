@@ -977,10 +977,18 @@ export class UIScene extends Phaser.Scene {
    *  fade), defaulting to 6000ms (5500 visible + 500 fade). */
   private showIntroToast(message: string, accent: number, y: number, totalDurationMs = 6000) {
     const W = this.scale.width;
+    const H = this.scale.height;
     const text = this.add.text(W / 2, y, message, {
       fontFamily: 'monospace', fontSize: this.fs(14), fontStyle: 'bold',
       color: '#ffffff', align: 'center', stroke: '#0b0f1a', strokeThickness: this.p(3),
     }).setOrigin(0.5).setDepth(951);
+
+    // Mobile landscape: float toasts on the right edge so they don't cover
+    // the centered gameplay area. Matches the TutorialScene in-game prompt
+    // anchoring so all in-game tutorial guidance reads in the same place.
+    if (this.isMobile && W > H) {
+      text.setOrigin(1, 0.5).setPosition(W - this.p(20), H / 2);
+    }
 
     const tb = text.getBounds();
     const padX = this.p(20), padY = this.p(14);
@@ -1056,7 +1064,9 @@ export class UIScene extends Phaser.Scene {
       this.speedLockOverlay = null;
     }
     this.showIntroToast(
-      'SPEED UP UNLOCKED!\n\nTap the speed slot or press SPACE\nto cycle through game speeds.',
+      this.isMobile
+        ? 'SPEED UP UNLOCKED!\n\nTap the speed slot to cycle through game speeds.'
+        : 'SPEED UP UNLOCKED!\n\nClick the speed slot or press SPACE\nto cycle through game speeds.',
       0xc4a850, // gold/yellow accent matching the speed label
       this.p(150), // matches the in-game tutorial prompt y so it clears the wave bar
       5000
