@@ -317,12 +317,22 @@ export class GameScene extends Phaser.Scene {
     this.wallLayer.setDepth(-1);
 
     // Expand the canvas back to the full device viewport (LevelSelectScene
-    // shrunk it to a 3:2 fit). On desktop this is a no-op since the viewport
-    // size equals 3:2 * sf already; on mobile this kills the letterbox.
+    // shrunk it to a 3:2 fit). On desktop this widens past 3:2; on mobile
+    // it kills the letterbox.
     {
       const vp = computeViewport();
+      // Tell UIScene to skip its one-time side effects (intro toasts) on
+      // its first create — that initial pass runs against the old
+      // LevelSelect gameSize and is about to be restarted at the right
+      // size on the next tick.
+      this.game.registry.set('uiBootingForResize', true);
       this.scale.setGameSize(vp.renderW, vp.renderH);
       this.scale.refresh();
+      this.time.delayedCall(0, () => {
+        this.game.registry.set('uiBootingForResize', false);
+        const ui = this.scene.get('UI');
+        if (ui?.scene.isActive()) ui.scene.restart();
+      });
     }
 
     // player — starts at origin, camera follows
@@ -1169,18 +1179,15 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Recompute the effective spawn radius from the current viewport. Desktop
-   *  always resolves to CFG.spawnDist; mobile grows it to cover the camera's
-   *  corner distance plus a 2-tile margin so enemies still spawn off-screen. */
+  /** Recompute the effective spawn radius from the current viewport. Always
+   *  uses the camera's corner distance (in tiles) plus a 2-tile margin so
+   *  enemies stay off-screen on every angle, regardless of platform or
+   *  window aspect. CFG.spawnDist is the floor — the formula only grows it. */
   recomputeSpawnDist() {
     const vp = computeViewport();
-    if (vp.isMobile) {
-      const { w: viewW, h: viewH } = viewportWorldSize(vp);
-      const cornerTiles = Math.ceil(Math.hypot(viewW / 2, viewH / 2) / CFG.tile);
-      this.spawnDist = Math.max(CFG.spawnDist, cornerTiles + 2);
-    } else {
-      this.spawnDist = CFG.spawnDist;
-    }
+    const { w: viewW, h: viewH } = viewportWorldSize(vp);
+    const cornerTiles = Math.ceil(Math.hypot(viewW / 2, viewH / 2) / CFG.tile);
+    this.spawnDist = Math.max(CFG.spawnDist, cornerTiles + 2);
   }
 
   /** Count how many of the 4 cardinal spawn directions can reach (px, py). */

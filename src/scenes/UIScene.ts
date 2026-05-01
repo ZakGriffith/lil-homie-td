@@ -339,10 +339,18 @@ export class UIScene extends Phaser.Scene {
       this.buildHintText.setVisible(true);
     }
 
+    // GameScene runs setGameSize during its create() and immediately
+    // schedules a UIScene restart so the HUD lays out at the final size.
+    // On that throwaway first pass we skip one-time side effects (intro
+    // toasts) — they'd fire against the wrong layout, set their
+    // localStorage flags, and then get cancelled by the restart, eating
+    // the player's only chance to see them.
+    const bootingForResize = !!this.game.registry.get('uiBootingForResize');
+
     // First time the player drops into the forest level (level 2), pop a
     // 6-second tooltip introducing the now-unlocked cannon tower. Flag is
     // stored in localStorage so it only fires once across sessions.
-    if (this.levelId === 2 && localStorage.getItem('td_seen_forest_intro') !== 'true') {
+    if (!bootingForResize && this.levelId === 2 && localStorage.getItem('td_seen_forest_intro') !== 'true') {
       this.showForestIntroToast();
       localStorage.setItem('td_seen_forest_intro', 'true');
     }
@@ -351,7 +359,7 @@ export class UIScene extends Phaser.Scene {
     // warn them about ranged enemies — toads here, mosquitos and others
     // later — and explain that some projectiles arc over walls/towers
     // while others get blocked.
-    if (this.levelId === 3 && localStorage.getItem('td_seen_infected_intro') !== 'true') {
+    if (!bootingForResize && this.levelId === 3 && localStorage.getItem('td_seen_infected_intro') !== 'true') {
       this.showInfectedIntroToast();
       localStorage.setItem('td_seen_infected_intro', 'true');
     }
@@ -359,7 +367,7 @@ export class UIScene extends Phaser.Scene {
     // First time the player drops into the castle level (level 5), warn
     // them about the unique 2-boss / 4-wave structure so they pace
     // resources accordingly (mid-boss after wave 2, final after wave 4).
-    if (this.levelId === 5 && localStorage.getItem('td_seen_castle_intro') !== 'true') {
+    if (!bootingForResize && this.levelId === 5 && localStorage.getItem('td_seen_castle_intro') !== 'true') {
       this.showCastleIntroToast();
       localStorage.setItem('td_seen_castle_intro', 'true');
     }
@@ -1003,7 +1011,7 @@ export class UIScene extends Phaser.Scene {
     this.showIntroToast(
       'CANNON TOWER UNLOCKED!\n\nGreat for AoE damage against\nclusters of enemies.',
       0x4a8acc, // blue info accent
-      this.p(110)
+      this.p(150) // sit below the wave/phase bar so it doesn't cover it
     );
   }
 

@@ -44,16 +44,19 @@ export function computeViewport(): ViewportInfo {
   const isPortrait = h > w;
 
   if (!isMobile) {
-    // Desktop — preserve legacy behavior exactly. sf is the single factor used
-    // for canvas rendering, camera zoom, and UI sizing. Canvas is sized to
-    // CFG.width × CFG.height × sf and letterboxed by Phaser's FIT mode when
-    // the window aspect doesn't match 3:2.
+    // Desktop — canvas fills the full browser window (no 3:2 letterbox in
+    // GameScene). LevelSelectScene re-fits its own gameSize to 3:2
+    // internally so the hand-painted level-select map stays in place.
+    // sf is still derived from CFG.* for camera zoom + UI sizing so HUD
+    // dimensions and the visible world height feel the same as before;
+    // the only difference is wider monitors get more horizontal world
+    // (and a correspondingly larger spawn radius — see recomputeSpawnDist).
     const sf = Math.max(1, Math.min(w * dpr / CFG.width, h * dpr / CFG.height));
     return {
       isMobile: false,
       isPortrait,
-      renderW: Math.round(CFG.width * sf),
-      renderH: Math.round(CFG.height * sf),
+      renderW: Math.round(w * dpr),
+      renderH: Math.round(h * dpr),
       cameraZoom: sf,
       uiScale: sf,
     };
