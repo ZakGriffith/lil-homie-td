@@ -1051,38 +1051,63 @@ export class GameScene extends Phaser.Scene {
     const panel = this.towerPanel;
     panel.removeAll(true);
 
-    const W = 184, H = 76;
+    // Mobile gets a 1.5× larger panel so the buttons are tap-friendly. Every
+    // literal pixel size below is multiplied by `ms` so the layout stays
+    // proportional at the larger size (text included via fontSize: `${n*ms}px`).
+    const isMobile = !!this.game.registry.get('isMobile');
+    const ms = isMobile ? 1.5 : 1;
+
+    const W = 184 * ms, H = 76 * ms;
+    const towerHalfH = CFG.tile * t.size / 2;
+    const standoff = 10 * ms;
+
+    // Default: panel above the tower with the nub pointing down at it.
+    let py = t.y - towerHalfH - H / 2 - standoff;
+    let nubAtBottom = true;
+
+    // Mobile: if the panel would clip off the top of the screen (tower near
+    // the top), flip it below the tower with the nub pointing up.
+    if (isMobile) {
+      const view = this.cameras.main.worldView;
+      const topMargin = 8 * ms;
+      if (py - H / 2 < view.y + topMargin) {
+        py = t.y + towerHalfH + H / 2 + standoff;
+        nubAtBottom = false;
+      }
+    }
+
     const px = t.x;
-    const py = t.y - CFG.tile * t.size / 2 - H / 2 - 10;
     panel.setPosition(px, py);
     panel.setVisible(true);
     this.towerPanelBounds = { x: px - W / 2, y: py - H / 2, w: W, h: H };
 
     // Themed accent — same blue accent the HUD uses for info/wave bars.
     const accent = 0x4a8acc;
-    const panelR = 8;
+    const panelR = 8 * ms;
 
     // Rounded panel — matches Victory/Defeat language: dark navy fill,
     // subtle inner stroke, themed outer stroke.
     const panelG = this.add.graphics();
     panelG.fillStyle(0x11172a, 0.97);
     panelG.fillRoundedRect(-W / 2, -H / 2, W, H, panelR);
-    panelG.lineStyle(1, 0x2a3760, 0.7);
-    panelG.strokeRoundedRect(-W / 2 + 3, -H / 2 + 3, W - 6, H - 6, panelR - 2);
-    panelG.lineStyle(2, accent, 0.85);
+    panelG.lineStyle(1 * ms, 0x2a3760, 0.7);
+    panelG.strokeRoundedRect(-W / 2 + 3 * ms, -H / 2 + 3 * ms, W - 6 * ms, H - 6 * ms, panelR - 2 * ms);
+    panelG.lineStyle(2 * ms, accent, 0.85);
     panelG.strokeRoundedRect(-W / 2, -H / 2, W, H, panelR);
     panel.add(panelG);
 
-    // Pointer nub
-    const nub = this.add.triangle(0, H / 2 + 8, -6, -4, 6, -4, 0, 4, 0x11172a)
-      .setStrokeStyle(1, accent);
+    // Pointer nub — flips orientation when the panel sits below the tower.
+    const nub = nubAtBottom
+      ? this.add.triangle(0, H / 2 + 8 * ms, -6 * ms, -4 * ms, 6 * ms, -4 * ms, 0, 4 * ms, 0x11172a)
+      : this.add.triangle(0, -H / 2 - 8 * ms, -6 * ms, 4 * ms, 6 * ms, 4 * ms, 0, -4 * ms, 0x11172a);
+    nub.setStrokeStyle(1 * ms, accent);
     panel.add(nub);
 
     // Title
     const tr = this.sf;
-    const title = this.add.text(-W / 2 + 10, -H / 2 + 7, `${t.kind.toUpperCase()}  LVL ${t.level + 1}`, {
-      fontFamily: 'monospace', fontSize: '12px', fontStyle: 'bold', color: '#7cc4ff',
-      stroke: '#0b0f1a', strokeThickness: 2
+    const title = this.add.text(-W / 2 + 10 * ms, -H / 2 + 7 * ms, `${t.kind.toUpperCase()}  LVL ${t.level + 1}`, {
+      fontFamily: 'monospace', fontSize: `${12 * ms}px`, fontStyle: 'bold', color: '#7cc4ff',
+      stroke: '#0b0f1a', strokeThickness: 2 * ms
     }).setResolution(tr);
     panel.add(title);
 
@@ -1091,14 +1116,14 @@ export class GameScene extends Phaser.Scene {
     // Stats
     const st = t.stats();
     const splashLine = st.splashRadius > 0 ? `  AOE ${st.splashRadius}` : '';
-    const stats = this.add.text(-W / 2 + 10, -H / 2 + 24,
+    const stats = this.add.text(-W / 2 + 10 * ms, -H / 2 + 24 * ms,
       `DMG ${st.damage}  RNG ${st.range}${splashLine}\nFIRE ${(1000 / st.fireRate).toFixed(1)}/s  HP ${t.hp}/${t.maxHp}`,
-      { fontFamily: 'monospace', fontSize: '10px', color: '#ccd' }).setResolution(tr);
+      { fontFamily: 'monospace', fontSize: `${10 * ms}px`, color: '#ccd' }).setResolution(tr);
     panel.add(stats);
 
     // ---- Buttons — rounded, themed strokes (green=affordable, red=can't / sell)
-    const btnW = 80, btnH = 22, btnR = 5;
-    const btnY = H / 2 - btnH / 2 - 6;
+    const btnW = 80 * ms, btnH = 22 * ms, btnR = 5 * ms;
+    const btnY = H / 2 - btnH / 2 - 6 * ms;
 
     // Upgrade
     const canUp = t.canUpgrade();
@@ -1107,20 +1132,20 @@ export class GameScene extends Phaser.Scene {
     const upLabel = canUp ? `UPGRADE $${upCost}` : 'MAX LEVEL';
     const upStroke = !canUp ? 0x556677 : affordable ? 0x4ad96a : 0xd94a4a;
     const upTextColor = !canUp ? '#888' : affordable ? '#7cf29a' : '#ff9a9a';
-    const upX = -W / 2 + 8, upCX = upX + btnW / 2;
+    const upX = -W / 2 + 8 * ms, upCX = upX + btnW / 2;
     const upG = this.add.graphics();
     let upHover = false;
     const drawUp = () => {
       upG.clear();
       upG.fillStyle(upHover && canUp ? 0x1a2238 : 0x0b0f1a, 0.95);
       upG.fillRoundedRect(upX, btnY - btnH / 2, btnW, btnH, btnR);
-      upG.lineStyle(1.5, upStroke, upHover && canUp ? 1 : 0.85);
+      upG.lineStyle(1.5 * ms, upStroke, upHover && canUp ? 1 : 0.85);
       upG.strokeRoundedRect(upX, btnY - btnH / 2, btnW, btnH, btnR);
     };
     drawUp();
     const upTxt = this.add.text(upCX, btnY, upLabel, {
-      fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: upTextColor,
-      stroke: '#0b0f1a', strokeThickness: 2
+      fontFamily: 'monospace', fontSize: `${10 * ms}px`, fontStyle: 'bold', color: upTextColor,
+      stroke: '#0b0f1a', strokeThickness: 2 * ms
     }).setOrigin(0.5).setResolution(tr);
     panel.add([upG, upTxt]);
     if (canUp) {
@@ -1135,20 +1160,20 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Sell
-    const sellX = W / 2 - 8 - btnW, sellCX = sellX + btnW / 2;
+    const sellX = W / 2 - 8 * ms - btnW, sellCX = sellX + btnW / 2;
     const sellG = this.add.graphics();
     let sellHover = false;
     const drawSell = () => {
       sellG.clear();
       sellG.fillStyle(sellHover ? 0x1a2238 : 0x0b0f1a, 0.95);
       sellG.fillRoundedRect(sellX, btnY - btnH / 2, btnW, btnH, btnR);
-      sellG.lineStyle(1.5, 0xd94a4a, sellHover ? 1 : 0.85);
+      sellG.lineStyle(1.5 * ms, 0xd94a4a, sellHover ? 1 : 0.85);
       sellG.strokeRoundedRect(sellX, btnY - btnH / 2, btnW, btnH, btnR);
     };
     drawSell();
     const sellTxt = this.add.text(sellCX, btnY, `SELL $${sellVal}`, {
-      fontFamily: 'monospace', fontSize: '10px', fontStyle: 'bold', color: '#ffd6c0',
-      stroke: '#0b0f1a', strokeThickness: 2
+      fontFamily: 'monospace', fontSize: `${10 * ms}px`, fontStyle: 'bold', color: '#ffd6c0',
+      stroke: '#0b0f1a', strokeThickness: 2 * ms
     }).setOrigin(0.5).setResolution(tr);
     const sellHit = this.add.rectangle(sellCX, btnY, btnW, btnH, 0x000000, 0).setInteractive({ useHandCursor: true });
     sellHit.on('pointerdown', (_p: any, _lx: any, _ly: any, ev: any) => {
