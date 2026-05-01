@@ -4475,12 +4475,21 @@ export class GameScene extends Phaser.Scene {
     const spawnR = this.spawnDist * CFG.tile;
     const waveSize = this.levelWaveSize;
     const side = Phaser.Math.Between(0, 3);
-    const px = this.player.x, py = this.player.y;
-    let cx = 0, cy = 0;
-    if (side === 0) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py - spawnR; }
-    if (side === 1) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py + spawnR; }
-    if (side === 2) { cx = px - spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
-    if (side === 3) { cx = px + spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
+    // Re-anchor each pack member to the *current* player position at the
+    // moment of spawn — locking the spawn point at trigger time meant late
+    // pack members could spawn 1000+ px from a moving player and land in
+    // the FAR_AI_CULL_SQ dead zone (frozen until the player walks back).
+    // Side direction is captured once so the pack still rushes from the
+    // same edge, just adapted to wherever the player is right now.
+    const computeSpawnPos = () => {
+      const px = this.player.x, py = this.player.y;
+      let cx = 0, cy = 0;
+      if (side === 0) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py - spawnR; }
+      if (side === 1) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py + spawnR; }
+      if (side === 2) { cx = px - spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
+      if (side === 3) { cx = px + spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
+      return { cx, cy };
+    };
     const isForest = this.biome === 'forest';
     const isInfected = this.biome === 'infected';
     const isRiver = this.biome === 'river';
@@ -4505,14 +4514,14 @@ export class GameScene extends Phaser.Scene {
     for (let i = 0; i < toSpawn; i++) {
       this.waveSpawned++;
       if (i === 0) {
-        // First mob spawns immediately
+        const { cx, cy } = computeSpawnPos();
         const e = new Enemy(this, cx, cy, packKind);
         this.applyEnemyDifficulty(e);
         this.enemies.add(e);
       } else {
-        // Subsequent mobs spawn with increasing delay, slightly offset along the spawn edge
         this.time.delayedCall(delay * i, () => {
           if (this.gameOver) return;
+          const { cx, cy } = computeSpawnPos();
           const e = new Enemy(this, cx + Phaser.Math.Between(-8, 8), cy + Phaser.Math.Between(-8, 8), packKind);
           this.applyEnemyDifficulty(e);
           this.enemies.add(e);
