@@ -135,8 +135,9 @@ export class GameScene extends Phaser.Scene {
   squiggleTimer = 0;
   treeSeed = 0;
   sf = 1; // native resolution scale factor
-  /** Effective spawn/chunk radius in tiles. Desktop: CFG.spawnDist (unchanged).
-   *  Mobile: grown when the viewport shows more world than the desktop default covers. */
+  /** Effective spawn/chunk radius in tiles. Always grown to cover the
+   *  current camera's visible-corner distance plus a margin so enemies
+   *  spawn comfortably off-screen even with camera-follow lerp lag. */
   spawnDist = CFG.spawnDist;
   /** Per-tile cache of "would placing a wall here strangle pathing?" Cleared
    *  whenever the grid changes (wall/tower placed/destroyed/sold) or the
@@ -1184,15 +1185,16 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-  /** Recompute the effective spawn radius from the current viewport. Always
-   *  uses the camera's corner distance (in tiles) plus a 2-tile margin so
-   *  enemies stay off-screen on every angle, regardless of platform or
-   *  window aspect. CFG.spawnDist is the floor — the formula only grows it. */
+  /** Recompute the effective spawn radius from the current viewport. Uses
+   *  the camera's corner distance (in tiles) plus a 4-tile margin so
+   *  enemies still spawn off-screen even when the camera lerp is trailing
+   *  the player, regardless of platform or window aspect. CFG.spawnDist
+   *  is the floor — the formula only grows it. */
   recomputeSpawnDist() {
     const vp = computeViewport();
     const { w: viewW, h: viewH } = viewportWorldSize(vp);
     const cornerTiles = Math.ceil(Math.hypot(viewW / 2, viewH / 2) / CFG.tile);
-    this.spawnDist = Math.max(CFG.spawnDist, cornerTiles + 2);
+    this.spawnDist = Math.max(CFG.spawnDist, cornerTiles + 4);
   }
 
   /** Count how many of the 4 cardinal spawn directions can reach (px, py). */
@@ -3496,7 +3498,7 @@ export class GameScene extends Phaser.Scene {
 
   spawnCastleBoss(kind: 'queen' | 'dragon') {
     this.bossSpawned = true;
-    const spawnR = CFG.spawnDist * CFG.tile;
+    const spawnR = this.spawnDist * CFG.tile;
     const px = this.player.x, py = this.player.y;
     const corners = [
       { x: px - spawnR, y: py - spawnR },
