@@ -4481,14 +4481,16 @@ export class GameScene extends Phaser.Scene {
     // the FAR_AI_CULL_SQ dead zone (frozen until the player walks back).
     // Side direction is captured once so the pack still rushes from the
     // same edge, just adapted to wherever the player is right now.
+    // Polar spawn: distance is exactly spawnR from the player, angle is a
+    // 90° arc on the chosen side. The old square-edge formula put corner
+    // spawns at √2·spawnR, which on wider monitors landed past
+    // FAR_AI_CULL_SQ (1100px) and froze the entire pack on contact.
+    // -π/2 = north, 0 = east, π/2 = south, π = west.
+    const sideAngle = side === 0 ? -Math.PI / 2 : side === 1 ? Math.PI / 2 : side === 2 ? Math.PI : 0;
     const computeSpawnPos = () => {
       const px = this.player.x, py = this.player.y;
-      let cx = 0, cy = 0;
-      if (side === 0) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py - spawnR; }
-      if (side === 1) { cx = px + Phaser.Math.Between(-spawnR, spawnR); cy = py + spawnR; }
-      if (side === 2) { cx = px - spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
-      if (side === 3) { cx = px + spawnR; cy = py + Phaser.Math.Between(-spawnR, spawnR); }
-      return { cx, cy };
+      const a = sideAngle + (Math.random() - 0.5) * (Math.PI / 2); // ±45° around side direction
+      return { cx: px + Math.cos(a) * spawnR, cy: py + Math.sin(a) * spawnR };
     };
     const isForest = this.biome === 'forest';
     const isInfected = this.biome === 'infected';
