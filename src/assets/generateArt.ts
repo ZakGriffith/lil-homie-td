@@ -3673,6 +3673,103 @@ export const TREE_PATTERNS: { tiles: { dx: number; dy: number }[]; w: number; h:
   { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 2, dy: 1 }, { dx: 0, dy: 2 }, { dx: 1, dy: 2 }, { dx: 2, dy: 2 }], w: 3, h: 3 },
 ];
 
+// Castle floor spike cluster patterns. Same convex-shape rule the trees
+// use so enemies don't path-stick on internal pockets. Each tile within
+// a pattern is rendered with a randomly chosen variant texture so even
+// long rows don't look stamped.
+export const SPIKE_PATTERNS: { tiles: { dx: number; dy: number }[]; w: number; h: number }[] = [
+  // Singles (still want some lone spikes mixed in)
+  { tiles: [{ dx: 0, dy: 0 }], w: 1, h: 1 },
+  // Pairs
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }], w: 2, h: 1 },
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 0, dy: 1 }], w: 1, h: 2 },
+  // Rows of 3
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }], w: 3, h: 1 },
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 0, dy: 1 }, { dx: 0, dy: 2 }], w: 1, h: 3 },
+  // 2x2 square
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }], w: 2, h: 2 },
+  // 3x2 wide strip
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 2, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 2, dy: 1 }], w: 3, h: 2 },
+  // 2x3 tall strip
+  { tiles: [{ dx: 0, dy: 0 }, { dx: 1, dy: 0 }, { dx: 0, dy: 1 }, { dx: 1, dy: 1 }, { dx: 0, dy: 2 }, { dx: 1, dy: 2 }], w: 2, h: 3 },
+];
+
+// Number of visual jitter variants registered as castle_spikes_0..N-1.
+// Independent from SPIKE_PATTERNS so the cluster shape and the per-tile
+// art aren't tangled.
+export const SPIKE_VARIANT_COUNT = 3;
+
+/** SMB-style staggered spike patch — 3 small back spikes + 2 larger
+ *  front spikes for depth. variantIdx jitters x positions so nearby
+ *  spike tiles don't all look identical. */
+function drawCastleSpikesCanvas(variantIdx: number): HTMLCanvasElement {
+  const T = 32;
+  const canvas = document.createElement('canvas');
+  canvas.width = T; canvas.height = T;
+  const ctx = canvas.getContext('2d')!;
+  ctx.imageSmoothingEnabled = false;
+
+  // Steel-blue palette (matches castle-spikes-options.html previews).
+  const PAL = {
+    outline: '#1d2027',
+    dark:    '#2f3640',
+    mid:     '#5a606c',
+    light:   '#8e95a3',
+    shine:   '#c8cdd6',
+  };
+
+  // Soft ground shadow under the cluster
+  (function shadow(cx: number, cy: number, rx: number, ry: number) {
+    ctx.save();
+    ctx.globalAlpha = 0.45;
+    ctx.fillStyle = '#0e0e16';
+    for (let yy = -ry; yy <= ry; yy++) for (let xx = -rx; xx <= rx; xx++) {
+      if ((xx * xx) / (rx * rx) + (yy * yy) / (ry * ry) <= 1) ctx.fillRect(cx + xx, cy + yy, 1, 1);
+    }
+    ctx.restore();
+  })(16, 28, 12, 2);
+
+  // Triangle spike: lit-left / shaded-right with a dark outline + tip shine.
+  function drawSpike(cx: number, baseY: number, halfBaseW: number, height: number) {
+    for (let i = 0; i <= height; i++) {
+      const y = baseY - i;
+      const t = i / height;
+      const w = Math.max(0, halfBaseW * (1 - t));
+      const xL = Math.round(cx - w);
+      const xR = Math.round(cx + w);
+      ctx.fillStyle = PAL.mid;
+      if (xR > xL) ctx.fillRect(xL, y, xR - xL, 1);
+      ctx.fillStyle = PAL.dark;
+      ctx.fillRect(cx, y, xR - cx + 1, 1);
+      ctx.fillStyle = PAL.light;
+      ctx.fillRect(xL, y, 1, 1);
+      if (xR > xL) {
+        ctx.fillStyle = PAL.outline;
+        ctx.fillRect(xR, y, 1, 1);
+      }
+    }
+    const tipY = baseY - height;
+    ctx.fillStyle = PAL.shine;
+    ctx.fillRect(cx - 1, tipY, 1, 1);
+    ctx.fillRect(cx - 1, tipY + 1, 1, 1);
+    ctx.fillStyle = PAL.outline;
+    ctx.fillRect(Math.round(cx - halfBaseW), baseY + 1, halfBaseW * 2 + 1, 1);
+  }
+
+  // Per-variant x jitter so consecutive spike tiles don't look stamped.
+  const j = [-2, 0, 2][variantIdx % 3];
+
+  // Back row (smaller, drawn first so the front overlaps them)
+  drawSpike( 9 + j, 22, 3, 10);
+  drawSpike(16 + j, 22, 3, 12);
+  drawSpike(23 + j, 22, 3, 10);
+  // Front row (larger)
+  drawSpike(12 + j, 27, 4, 13);
+  drawSpike(20 + j, 27, 4, 13);
+
+  return canvas;
+}
+
 // Draw a WC2-style conifer tree cluster — triangular tiered pine trees packed tightly
 function drawTreeClusterCanvas(patternIdx: number): HTMLCanvasElement {
   const pattern = TREE_PATTERNS[patternIdx];
@@ -6443,6 +6540,10 @@ export function generateAllArt(scene: Phaser.Scene) {
 
   // Infected plant cluster sprites (one per pattern)
   for (let i = 0; i < TREE_PATTERNS.length; i++) add(scene, `infected_plant_${i}`, drawInfectedPlantCanvas(i));
+
+  // Castle floor spikes — register N jitter variants. The placement code
+  // picks per-tile across patterns so multi-tile clusters don't look stamped.
+  for (let i = 0; i < SPIKE_VARIANT_COUNT; i++) add(scene, `castle_spikes_${i}`, drawCastleSpikesCanvas(i));
 
   // Firefly particle (tiny yellow-green glow, 4x4 logical)
   {

@@ -356,6 +356,14 @@ export class UIScene extends Phaser.Scene {
       localStorage.setItem('td_seen_infected_intro', 'true');
     }
 
+    // First time the player drops into the castle level (level 5), warn
+    // them about the unique 2-boss / 4-wave structure so they pace
+    // resources accordingly (mid-boss after wave 2, final after wave 4).
+    if (this.levelId === 5 && localStorage.getItem('td_seen_castle_intro') !== 'true') {
+      this.showCastleIntroToast();
+      localStorage.setItem('td_seen_castle_intro', 'true');
+    }
+
 
     // ---- Mobile virtual joystick (lower-left) ----
     if (this.isMobile) {
@@ -1006,6 +1014,17 @@ export class UIScene extends Phaser.Scene {
     this.showIntroToast(
       'RANGED ENEMIES INCOMING!\n\nSome projectiles can\'t shoot through\nwalls or towers — others arc right over them.\nPosition your defenses carefully.',
       0x9a5ac0, // purple/infected accent
+      this.p(110)
+    );
+  }
+
+  /** First time the player enters the castle level — heads-up that this
+   *  level breaks the usual "waves then a boss" pattern: two bosses and
+   *  only four waves total (mid-boss after wave 2, final after wave 4). */
+  private showCastleIntroToast() {
+    this.showIntroToast(
+      'WATCH OUT!\n\nThere will be more waves and\ntwo bosses on this level!',
+      0xc4a850, // gold accent — castle / royalty vibe
       this.p(110)
     );
   }

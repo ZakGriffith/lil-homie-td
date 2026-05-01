@@ -9,7 +9,7 @@ import { Coin } from '../entities/Coin';
 import { Boss } from '../entities/Boss';
 import { createSparseGrid, findPath, canReachFromSpawnDirections, gridGet, gridSet, SparseGrid } from '../systems/Pathfinding';
 import { SFX } from '../audio/sfx';
-import { createGroundChunk, TREE_PATTERNS, generateAllArt, registerAnimations, getRiverTileGrid, riverCenterPx, RIVER_HALF_W, riverHorizontalCenterY } from '../assets/generateArt';
+import { createGroundChunk, TREE_PATTERNS, SPIKE_PATTERNS, SPIKE_VARIANT_COUNT, generateAllArt, registerAnimations, getRiverTileGrid, riverCenterPx, RIVER_HALF_W, riverHorizontalCenterY } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
 import { computeViewport, viewportWorldSize } from '../viewport';
 
@@ -122,6 +122,14 @@ export class GameScene extends Phaser.Scene {
   birdPoops: { sprite: Phaser.GameObjects.Image; expireAt: number; dmgCd: number }[] = [];
   treeSprites: Phaser.GameObjects.GameObject[] = [];
   treeChunksGenerated = new Set<string>();
+  // Castle-only floor-spike obstacles. Same chunk-level deterministic
+  // generator as trees, but spikes block enemy pathing while letting the
+  // player walk through (with a slow + DOT applied in updatePlayer).
+  spikeSprites: Phaser.GameObjects.GameObject[] = [];
+  spikeChunksGenerated = new Set<string>();
+  /** Real-time timestamp the player can next take spike damage. Throttled
+   *  so a brief stumble onto a spike doesn't melt the HP bar. */
+  private nextSpikeDmgAt = 0;
   riverChunksGenerated = new Set<string>();
   riverSquiggles: { sprite: Phaser.GameObjects.Image; age: number; life: number; dx: number; dy: number }[] = [];
   squiggleTimer = 0;
@@ -188,6 +196,9 @@ export class GameScene extends Phaser.Scene {
     this.birdPoops = [];
     this.treeSprites = [];
     this.treeChunksGenerated = new Set();
+    this.spikeSprites = [];
+    this.spikeChunksGenerated = new Set();
+    this.nextSpikeDmgAt = 0;
     this.riverChunksGenerated = new Set();
     this.riverSquiggles = [];
     this.squiggleTimer = 0;
@@ -362,6 +373,13 @@ export class GameScene extends Phaser.Scene {
       this.generatedChunks.forEach(key => {
         const [cx, cy] = key.split(',').map(Number);
         this.placeTreesInChunk(cx, cy);
+      });
+    }
+    // Castle gets floor spikes — same deterministic chunk generator.
+    if (this.biome === 'castle') {
+      this.generatedChunks.forEach(key => {
+        const [cx, cy] = key.split(',').map(Number);
+        this.placeSpikesInChunk(cx, cy);
       });
     }
 
@@ -1265,6 +1283,7 @@ export class GameScene extends Phaser.Scene {
       this.chunkImages.set(`${ccx},${ccy}`, chunkImg);
       // Generate trees for this chunk if forest biome
       if (this.biome === 'forest' || this.biome === 'infected') this.placeTreesInChunk(ccx, ccy);
+      if (this.biome === 'castle') this.placeSpikesInChunk(ccx, ccy);
       // Generate river terrain blockers
       if (this.biome === 'river') this.placeRiverInChunk(ccx, ccy);
       processed++;
@@ -1743,6 +1762,78 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+  /** Castle floor spikes — same deterministic chunk generator as trees,
+   *  but spikes block enemy pathing only (grid value 6) without joining
+   *  wallGroup, so the player can walk through and take damage. */
+  placeSpikesInChunk(cx: number, cy: number) {
+    const chunkKey = `${cx},${cy}`;
+    if (this.spikeChunksGenerated.has(chunkKey)) return;
+    this.spikeChunksGenerated.add(chunkKey);
+
+    const t = CFG.tile;
+    const cs = CFG.chunkSize;
+    const spikesPerChunk = 4; // a touch denser than tree clusters
+    const maxAttempts = spikesPerChunk * 6;
+
+    // Independent seed from trees so swapping biomes doesn't reuse layouts.
+    let seed = ((this.treeSeed * 2654435761 + cx * 73856093 + cy * 19349669 + 31337) >>> 0) || 1;
+    const rng = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+
+    const ptx = Math.floor(this.player.x / t);
+    const pty = Math.floor(this.player.y / t);
+    const nearSpawn = Math.abs(cx * cs) < this.spawnDist + cs && Math.abs(cy * cs) < this.spawnDist + cs;
+
+    const chunkTileX = cx * cs;
+    const chunkTileY = cy * cs;
+
+    let placed = 0;
+    let attempts = 0;
+    while (placed < spikesPerChunk && attempts < maxAttempts) {
+      attempts++;
+      const pattern = SPIKE_PATTERNS[Math.floor(rng() * SPIKE_PATTERNS.length)];
+      const ox = chunkTileX + Math.floor(rng() * (cs - pattern.w));
+      const oy = chunkTileY + Math.floor(rng() * (cs - pattern.h));
+
+      // Don't place too close to player spawn
+      if (Math.abs(ox) < 3 && Math.abs(oy) < 3) continue;
+
+      // All target tiles must be empty AND not adjacent to player spawn
+      let blocked = false;
+      for (const tile of pattern.tiles) {
+        const gx = ox + tile.dx, gy = oy + tile.dy;
+        if (gridGet(this.grid, gx, gy) !== 0) { blocked = true; break; }
+        if (Math.abs(gx - ptx) <= 1 && Math.abs(gy - pty) <= 1) { blocked = true; break; }
+      }
+      if (blocked) continue;
+
+      // Tentatively mark as obstacles (grid value 6 = spike)
+      for (const tile of pattern.tiles) {
+        gridSet(this.grid, ox + tile.dx, oy + tile.dy, 6);
+      }
+
+      // Don't strangle pathing near spawn — same check trees use.
+      if (nearSpawn && !canReachFromSpawnDirections(this.grid, ptx, pty, this.spawnDist, 3)) {
+        for (const tile of pattern.tiles) {
+          gridSet(this.grid, ox + tile.dx, oy + tile.dy, 0);
+        }
+        continue;
+      }
+
+      // Per-tile spike sprite (no wallGroup → player walks through). Each
+      // tile within a cluster picks its own jitter variant so a 3-tile
+      // strip doesn't look stamped.
+      for (const tile of pattern.tiles) {
+        const gx = ox + tile.dx, gy = oy + tile.dy;
+        const wx = gx * t + t / 2;
+        const wy = gy * t + t / 2;
+        const variant = Math.floor(rng() * SPIKE_VARIANT_COUNT);
+        const spr = this.add.image(wx, wy, `castle_spikes_${variant}`).setDepth(100 + wy * 0.1);
+        this.spikeSprites.push(spr);
+      }
+      placed++;
+    }
+  }
+
   // ---------- PLAYER ----------
   updatePlayer(time: number, _delta: number) {
     const k = this.keys;
@@ -1766,11 +1857,30 @@ export class GameScene extends Phaser.Scene {
       vy += jy / jmag;
     }
 
+    // Castle floor spikes — when the player's tile is a spike (grid value
+    // 6), halve their move speed and tick contact damage every 500ms.
+    const playerTx = Math.floor(this.player.x / CFG.tile);
+    const playerTy = Math.floor(this.player.y / CFG.tile);
+    const onSpike = gridGet(this.grid, playerTx, playerTy) === 6;
+    if (onSpike) {
+      if (time >= this.nextSpikeDmgAt) {
+        this.nextSpikeDmgAt = time + 500;
+        this.player.hurt(5, this);
+        this.pushHud();
+        if (this.player.hp <= 0) this.lose();
+      }
+    } else {
+      // Reset cooldown the moment they step off — re-entering should bite
+      // immediately, not wait for a stale timer.
+      this.nextSpikeDmgAt = 0;
+    }
+    const speedMult = onSpike ? 0.5 : 1;
+
     const moving = vx !== 0 || vy !== 0;
     if (moving) {
       const len = Math.hypot(vx, vy);
       vx /= len; vy /= len;
-      this.player.setVelocity(vx * CFG.player.speed, vy * CFG.player.speed);
+      this.player.setVelocity(vx * CFG.player.speed * speedMult, vy * CFG.player.speed * speedMult);
       if (vx !== 0) this.player.facingRight = vx > 0;
       this.player.setFlipX(!this.player.facingRight);
       if (this.player.anims.currentAnim?.key !== 'player-move') this.player.play('player-move');
