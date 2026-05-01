@@ -3,6 +3,7 @@ import { CFG } from '../config';
 import { Difficulty, saveMedal, LEVELS, Biome } from '../levels';
 import { SFX } from '../audio/sfx';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
+import { computeViewport } from '../viewport';
 
 export class UIScene extends Phaser.Scene {
   hpBarGfx!: Phaser.GameObjects.Graphics;
@@ -84,6 +85,18 @@ export class UIScene extends Phaser.Scene {
   create() {
     this.sf = this.game.registry.get('sf') || 1;
     this.isMobile = !!this.game.registry.get('isMobile');
+    // Defensive sync: GameScene.create resizes the canvas from the LS-
+    // letterboxed 3:2 to the full device viewport, but UIScene is launched
+    // in the same frame and we've seen scale.width/height occasionally read
+    // the pre-resize values — leaving the hotbar (positioned via H) and
+    // joystick (also via H) stuck near the top of the visible area on mobile
+    // until a rotation forces a rebuild. Force-sync to the device viewport
+    // here so initial layout matches the post-resize state.
+    const vp = computeViewport();
+    if (this.scale.width !== vp.renderW || this.scale.height !== vp.renderH) {
+      this.scale.setGameSize(vp.renderW, vp.renderH);
+      this.scale.refresh();
+    }
     const W = this.scale.width;
     const H = this.scale.height;
     const T = this.p(20); // top padding
