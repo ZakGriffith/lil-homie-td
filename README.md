@@ -1,9 +1,10 @@
 # Ranger Danger
 
-A top-down 2D tower defense / survival game built with **Phaser 3 + TypeScript + Vite**. Pixel art is procedurally generated in code — external sprites used for tower bases and the level select map.
+![Ranger Danger](public/og-image.png)
+
+A top-down 2D tower defense / action hybrid built with **Phaser 3 + TypeScript + Vite**. Most pixel art is procedurally generated in code; the level select map and a few tower bases are external sprites.
 
 **Play it live:** https://rangerdanger.xyz
-
 **Follow development:** [@ZakAgain](https://twitter.com/ZakAgain)
 
 ## Run it
@@ -19,182 +20,53 @@ Then open the printed localhost URL and hit **PLAY**.
 
 - **WASD / Arrow keys** — move
 - **Stand still** — auto-shoots nearest enemy in range (half speed while moving)
-- **1** — select Arrow Tower
-- **2** — select Cannon Tower
-- **3** — select Wall
+- **1** — Arrow Tower
+- **2** — Cannon Tower (locked on the meadow, unlocks from the forest on)
+- **3** — Mage Tower (locked, coming soon)
+- **4** — Wall
+- **5 / SPACE** — cycle game speed
 - **Click** — place on grid (ghost tints green/red for valid/invalid)
-- **Hold X + Click** — sell tower/wall (50% refund)
-- **ESC** — cancel build / deselect tower
-
-## Levels & Biomes
-
-Progress through levels on a Kingdom Rush-style map screen. Each level has 4 difficulty tiers (Easy, Medium, Hard, 1 HP) with medals. Levels unlock sequentially — complete the previous level to unlock the next.
-
-### The Meadow (Grasslands)
-Green fields with scattered flowers and rocks. Fight basic red goblins, heavy brutes, and fast runner packs. Boss: **The Brood Mother**.
-
-### Forest
-Dense pine forest with tree cluster obstacles that block movement and building. Fight wolves, bears, and spiders. Firefly particles float through the air. Boss: **The Forest Guardian** (Ent).
-
-### Infected Riverside
-A corrupted landscape of dark purples and toxic greens. Infected plant obstacles block the terrain. Purple and green spore particles drift across the map. Fight infected variants of basic, heavy, and runner enemies. Boss: **The Blighted One** — leaves permanent pink gas clouds along its charge path that damage the player on contact.
-
-### River
-Intersecting vertical and horizontal rivers with animated water. Fight flying enemies: crows, bats, dragonfly packs, and ranged mosquitoes with venom darts. Boss: **The Fog Phantom**.
+- **Click an existing wall** — start the 3-second sell countdown
+- **Click a tower → SELL** — same countdown for towers (game resumes immediately)
+- **ESC / B / SPACE** — cancel build mode
 
 ## Gameplay
 
 - Survive waves of enemies across multiple biomes.
 - Build arrow towers, cannon towers (with splash damage), and walls to funnel and kill enemies.
-- Towers auto-target the nearest enemy in range; enemies target the nearest player, tower, or wall.
+- Towers auto-target the nearest enemy in range; enemies path toward the player.
 - Between waves, a build break timer lets you reposition defenses.
-- After clearing all waves, a boss spawns — defeat it to earn a medal and unlock the next level.
-- Wave progress bar drains as enemies are killed, reaching zero when the wave ends.
+- After clearing the wave bar, a boss spawns — defeat it to earn a medal and unlock the next level.
+- Selling a wall or tower starts a 3s red-pie countdown so you can't yank a structure out from under enemies mid-attack. Bosses can blow through both walls and towers — keep an eye on HP bars.
 
 ## Towers
 
-- **Arrow Tower** (60g) — fast single-target damage, 3 upgrade tiers
-- **Cannon Tower** (60g) — slower, splash damage AoE, 3 upgrade tiers
-- **Wall** (5g) — cheap blocker to funnel enemies
+- **Arrow Tower** — 60g, fast single-target, 3 upgrade tiers
+- **Cannon Tower** — 60g, slower with splash AoE, 3 upgrade tiers
+- **Wall** — 3g, cheap blocker for funneling (refunds 2g on sell)
 
-## Architecture
+## Levels & Biomes
 
-```
-src/
-├── main.ts                  # Phaser bootstrap + start screen + wake lock
-├── config.ts                # All tunables (HP, costs, speeds, spawn ramp, boss)
-├── levels.ts                # Level definitions, biomes, medal/unlock system
-├── audio/
-│   └── sfx.ts               # SFX + BGM manager (Web Audio API + jsfxr fallbacks)
-├── assets/
-│   ├── generateArt.ts       # Procedural pixel art + biome ground tiles
-│   └── sprites/             # External PNG sprites (tower bases, map, checkmark)
-├── scenes/
-│   ├── BootScene.ts         # Loads external sprites, starts level select
-│   ├── LevelSelectScene.ts  # Map screen with level nodes, difficulty panel
-│   ├── GameScene.ts         # World, AI, build system, spawning, boss, biome logic
-│   └── UIScene.ts           # HUD: hotbar, wave bar, boss bar, gold badge, progress
-├── entities/
-│   ├── Player.ts
-│   ├── Enemy.ts             # basic, heavy, runner, wolf, bear, spider, infected, flying
-│   ├── Boss.ts              # Brood Mother / Forest Guardian / Blighted One / Fog Phantom
-│   ├── Tower.ts             # 2x2 static turret with upgrade tiers
-│   ├── Wall.ts
-│   ├── Projectile.ts
-│   └── Coin.ts
-└── systems/
-    └── Pathfinding.ts       # BFS over sparse tile grid with wall-fallback
-```
+Progress through levels on a Kingdom Rush-style map. Each level has 4 difficulty tiers (Easy / Medium / Hard / 1 HP) with medals. Levels unlock sequentially.
 
----
+- **The Meadow** — green fields, basic goblins / heavies / runner packs. Boss: **The Ancient Ram**.
+- **Forest** — pine forest with tree obstacles. Wolves, spiders, bears + cannon tower unlock. Boss: **The Wendigo**.
+- **Infected Lands** — corrupted purple/green terrain with infected variants and **toads** (first ranged enemy — arc globs over walls). Boss: **The Blighted One**.
+- **Rivers** — animated river map with flying enemies (crows, bats, dragonflies) and **mosquitoes** that fire darts blocked by walls/towers. Boss: **The Fog Phantom**.
+- **The Castle** — flagstone fortress with skeletons, warlocks, golems, shadow imps, and castle bats. **Two bosses**: the **Phantom Queen** mid-boss (teleports, fires orb bursts, slow structure-damaging aura) and the **Castle Dragon** finale (spawns skeletons, lobs splash fireballs that hit structures 5× harder than the player).
 
-# Roadmap
+## Up Next
 
-## Bugs
+Roadmap items, in no particular order:
 
-- [ ] **No way to exit build mode without ESC** — pressing 1/2/3 enters build mode but the only way out is ESC, which isn't obvious. Need a visible cancel button or click-to-deselect, and a hint in the UI.
-- [ ] **No feedback when placement is blocked** — placing a tower or wall on an invalid tile silently fails. Show an error message (e.g. "Can't build here", "Not enough gold", "Would block enemy paths").
-- [ ] **Wall placement false positives near dense trees** — walls sometimes show red on valid tiles when forests already block some spawn directions. Partially fixed with caching + relaxed reachability check, but edge cases may remain.
-
----
-
-## UX / Polish
-
-- [ ] **Build mode cancel UX** — add a right-click or re-press hotkey to cancel build mode. Show "ESC to cancel" hint near the ghost cursor.
-- [ ] **Flying enemy tutorial tooltip** — first time a river flying enemy spawns, show a brief message that they can't be blocked by walls/towers.
-- [ ] **Flying enemy visual indicator** — small shadow underneath and/or slight hover bob to distinguish from ground enemies.
-- [ ] **Mosquito dart hit feedback** — brief green flash on the player when hit by a venom dart.
-- [ ] **Untracked file cleanup** — preview HTML files and loose PNGs in repo root should be gitignored or removed.
-
----
-
-## New Content
-
-### Biomes & Levels
-- [ ] **Desert biome** (Levels 5-6) — new enemy types, terrain, and boss
-- [ ] **Tundra biome** (Levels 7-8) — new enemy types, terrain, and boss
-- [ ] **Volcanic biome** (Levels 9-10) — new enemy types, terrain, and boss
-- [ ] **Terrain variety per biome** — varied walkable ground tiles (cosmetic only)
-  - [x] Grasslands — green gradient, flowers/rocks/tufts
-  - [ ] Forest — mossy ground, leaf litter, muddy patches
-  - [ ] Desert — sand dunes, cracked earth, rock outcroppings
-  - [ ] Tundra — snow, ice patches, frozen puddles
-  - [ ] Volcanic — charred rock, lava cracks (glowing), ash
-
-### Towers
-- [ ] **Mage/Wizard Tower** — new tower type (UI slot exists with lock overlay)
-- [ ] **4th tower type** — TBD, unlocked through later progression
-
-### Bridges
-- [ ] **River bridges** — re-add for player traversal across rivers (enemies don't need them since they fly)
-
----
-
-## Major Features
-
-### Progression & Economy
-- [ ] **Unlock Progression System** — towers and content unlock through XP earned by beating levels; leftover money converts to XP
-- [ ] **Medal Shop (Global Upgrades)** — spend medals on permanent upgrades (player stats, tower stats, economy, defense). Accessible from level select map.
-- [ ] **Character Abilities** — spend XP to permanently upgrade player stats (attack speed, range, damage, move speed, HP, magnet range, armor, HP regen). Could merge with Medal Shop or be a separate XP-based system.
-
-### Tower Specialization (Branching Upgrades)
-- [ ] At Level 2 upgrade, present a choice between two specializations (permanent, no respec)
-- [ ] **Arrow: Marksman** — long range, piercing, slower | **Arrow: Rapid Fire** — short range, fast, spread
-- [ ] **Cannon: Mortar** — huge splash, fire zone DOT | **Cannon: Shrapnel** — tight splash, secondary fragments
-- [ ] UI: choice panel with name, icon, description, stat comparison
-
-### Combat Depth
-- [ ] **Damage Types & Enemy Resistances** — Arrow/Magic/Cannon damage types; enemies have % resistance or weakness to each. Encourages diverse tower builds.
-
-### Heroes
-- [ ] **Hero Selection Screen** — replace name input with hero select. Multiple characters with unique sprites and small passive bonuses (e.g. Archer, Knight, Scout, Mage, Engineer, Berserker). Unlockable through medals/XP.
-
-### Competitive
-- [ ] **Leaderboard** — score = f(time, remaining money). localStorage per level per difficulty. Show on victory/defeat screen.
-- [ ] **Achievements System** — unlockable achievements with popup notifications, dedicated screen, progress tracking. Examples: Pacifist, Untouchable, Speedrunner, Full Clear, Boss Rush.
-
-### Infrastructure
-- [ ] **Cloud Progress Save** — lightweight backend (UUID-based, no auth) so progress survives cache clears. Options: Cloudflare Workers+KV, Vercel+Upstash, Supabase, Firebase.
-- [ ] **Mobile Support** — virtual joystick, larger tap targets, compact HUD, responsive scaling.
-
-### Multiplayer
-- [ ] **Multiplayer** — when this starts, remove the 1x/2x/4x speed toggle.
-
----
-
-## Art & Audio
-
-- [ ] **Player & Enemy Sprite Redo** — complete visual overhaul of all character sprites (idle, move, shoot, hit, die) with consistent art style and directional animations.
-- [ ] **Background music per biome** — currently one track for all levels; each biome should have its own BGM.
-- [ ] **Replace remaining jsfxr fallbacks** — swap synth sounds with real audio files as they become available.
-
----
-
-## Tutorial
-
-- [ ] **Tutorial Level** — guided walkthrough that pauses and highlights:
-  1. Auto-shooting (stand still for full speed)
-  2. Building an arrow tower
-  3. Upgrading a tower
-  4. Placing walls to funnel enemies
-
----
-
-## Completed
-
-- [x] Tower graphics redo (isometric perspective, WC2 autotiling walls)
-- [x] Level select screen (Kingdom Rush-style map, 4 difficulties, medals)
-- [x] Grasslands biome — basic/heavy/runner enemies, Brood Mother boss
-- [x] Forest biome — wolf/spider/bear enemies, Forest Guardian boss
-- [x] Infected biome — infected enemies, Blighted One boss
-- [x] River biome — flying enemies (crow/bat/dragonfly/mosquito), Fog Phantom boss
-- [x] Landing page with OG unfurl image
-- [x] Background music (looping during gameplay)
-- [x] Sound effects (arrow, cannon, coin, upgrade, click, hit, boom, etc.)
-- [x] Native resolution UI scaling
-- [x] Hotbar redesign with labels, costs, and mage tower lock overlay
-- [x] Wall placement optimization (BFS caching, O(1) queue)
-- [x] Mosquito darts stop on wall/tower hit
-- [x] River mob cluster spawning
-- [x] Camera shake tuning
-- [x] Per-sound volume control
+- **Pixel art overhaul** — spend more time on AI pixel sprite page generators to lift the overall art quality.
+- **Persistent storage** — move progress off `localStorage` so clearing the cache doesn't wipe medals / unlocks.
+- **Co-Op Mode** — more enemies, shared gold, more excitement.
+- **Menu / Settings screen** — volume, controls, accessibility, save management.
+- **Build out remaining biomes** with new enemy styles and attacks; more variety needed in enemies overall.
+- **Boss variety and attacks** — more attack patterns and unique mechanics per biome.
+- **Character upgrades** — spend coins to upgrade movement speed, attack speed, attack power.
+- **Player experience levels** — unlock upgrades as you play more. Gauge how the player did on a specific level and award XP for that plus convert any remaining coins to XP.
+- **Multiple characters** — different heroes besides Ranger, each with stat upgrades. Examples: −10% tower price for Engineer, +10% attack speed for Ranger, etc.
+- **Leaderboard** — score-based ranking per level per difficulty.
+- **QoL updates** — ongoing UX polish.
