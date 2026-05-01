@@ -1501,8 +1501,13 @@ export class GameScene extends Phaser.Scene {
         this.ghost.setPosition(tx * CFG.tile + CFG.tile / 2, ty * CFG.tile + CFG.tile / 2);
         // Hovering an existing wall? Show a red X — clicking will start
         // the sell countdown to tear it down. Skip the BFS pathing check
-        // entirely (way cheaper, and there's nothing to validate).
+        // entirely (way cheaper, and there's nothing to validate). Mobile
+        // has no real hover (the pointer stays parked on the last touch),
+        // so suppress the red X there — it would spuriously appear over
+        // the just-placed wall every time the player taps to build. Tap-
+        // to-sell still works through the regular pointer-down handler.
         const wallHere = !this.game.registry.get('tutorialActive')
+          && !this.game.registry.get('isMobile')
           && this.walls.find(w => w.tileX === tx && w.tileY === ty);
         if (wallHere) {
           this.ghost.setVisible(false);
@@ -1546,9 +1551,16 @@ export class GameScene extends Phaser.Scene {
             }
           }
           const canAffordWall = this.player.money >= CFG.wall.cost;
+          // Suppress the "Blocked" / "Blocks path" toasts on mobile when
+          // building walls — the pointer parks on the last touch position,
+          // so these would spuriously fire over the just-placed tile every
+          // frame. The red ghost tint already conveys "can't place here".
+          // The "Not enough gold" toast still shows since it isn't tied to
+          // cursor location.
+          const suppressPlacementToast = !!this.game.registry.get('isMobile');
           if (!canAffordWall) buildErr = 'Not enough gold';
-          else if (tileBlocked) buildErr = 'Blocked';
-          else if (!valid) buildErr = 'Blocks path';
+          else if (tileBlocked && !suppressPlacementToast) buildErr = 'Blocked';
+          else if (!valid && !suppressPlacementToast) buildErr = 'Blocks path';
           this.ghost.setTint(valid && canAffordWall ? 0x88ff88 : 0xff8888);
         }
       }
