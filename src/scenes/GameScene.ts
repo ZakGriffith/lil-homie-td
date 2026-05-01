@@ -617,6 +617,25 @@ export class GameScene extends Phaser.Scene {
     });
   }
 
+  // Per-frame countdown branches were calling pushHud 60×/sec even when the
+  // displayed text/color had not changed. UIScene.updateHud is heavy
+  // (HP redraw, progress-circle restyles, wave-bar fill), so the redundant
+  // emits caused mobile chop. syncCountdown only emits on a real change.
+  private syncCountdown(msg: string, color?: string) {
+    const nextColor = color ?? this.countdownColor;
+    if (this.countdownMsg === msg && this.countdownColor === nextColor) return;
+    this.countdownMsg = msg;
+    this.countdownColor = nextColor;
+    this.pushHud();
+  }
+
+  // The wave-break "WAVE N IN Ns" label is rendered in UIScene from
+  // s.waveBreakUntil and s.vTime, so we have to push HUD updates while the
+  // break is ticking. Track the last-emitted integer second so we push
+  // ~5–6 times per break instead of ~300 (5s × 60fps).
+  private _lastWaveBreakUntil = 0;
+  private _lastWaveBreakSecond = -1;
+
   setTimeScale(mult: number) {
     this.timeMult = mult;
     // Phaser's physics.world.timeScale is inverted: lower = faster.
@@ -4198,14 +4217,11 @@ export class GameScene extends Phaser.Scene {
     // initial build phase — show countdown, don't spawn anything yet
     if (time < this.waveStartAt) {
       if (this.waveStartAt === Infinity) {
-        this.countdownMsg = '';
-        this.pushHud();
+        this.syncCountdown('');
         return;
       }
       const secs = Math.ceil((this.waveStartAt - time) / 1000);
-      this.countdownMsg = `BUILD PHASE — ${secs}s`;
-      this.countdownColor = '#7cc4ff';
-      this.pushHud();
+      this.syncCountdown(`BUILD PHASE — ${secs}s`, '#7cc4ff');
       return;
     }
 
@@ -4237,14 +4253,23 @@ export class GameScene extends Phaser.Scene {
 
     // Boss already out — nothing to show/spawn here
     if (this.bossSpawned) {
-      if (this.countdownMsg) { this.countdownMsg = ''; this.pushHud(); }
+      this.syncCountdown('');
       return;
     }
 
-    // Between-wave build break (wave bar shows countdown via hudState)
+    // Between-wave build break (wave bar shows countdown via hudState).
+    // UIScene reads waveBreakUntil/vTime to render "WAVE N IN Ns", so we
+    // must push when the displayed second flips — but no more often.
     if (time < this.waveBreakUntil) {
-      if (this.countdownMsg) { this.countdownMsg = ''; }
-      this.pushHud();
+      const secs = Math.ceil((this.waveBreakUntil - time) / 1000);
+      let needsPush = false;
+      if (this.countdownMsg) { this.countdownMsg = ''; needsPush = true; }
+      if (this._lastWaveBreakUntil !== this.waveBreakUntil || this._lastWaveBreakSecond !== secs) {
+        this._lastWaveBreakUntil = this.waveBreakUntil;
+        this._lastWaveBreakSecond = secs;
+        needsPush = true;
+      }
+      if (needsPush) this.pushHud();
       return;
     }
 
@@ -4253,9 +4278,7 @@ export class GameScene extends Phaser.Scene {
       const live = this.liveEnemyCount();
       const left = Math.max(live, waveSize - this.waveKills);
       if (left > 0) {
-        this.countdownMsg = `KILL THE STRAGGLERS — ${left} LEFT`;
-        this.countdownColor = '#ff9a4a';
-        this.pushHud();
+        this.syncCountdown(`KILL THE STRAGGLERS — ${left} LEFT`, '#ff9a4a');
       } else {
         if (this.bossCountdownUntil === 0) {
           this.bossCountdownUntil = time + CFG.boss.prepTime;
@@ -4277,9 +4300,7 @@ export class GameScene extends Phaser.Scene {
                        : this.biome === 'castle' && this.castlePhase === 0 ? 'PHANTOM QUEEN'
                        : this.biome === 'castle' && this.castlePhase === 2 ? 'CASTLE DRAGON'
                        : 'ANCIENT RAM';
-        this.countdownMsg = `${bossName} SPAWNING IN ${secs}`;
-        this.countdownColor = '#ff5050';
-        this.pushHud();
+        this.syncCountdown(`${bossName} SPAWNING IN ${secs}`, '#ff5050');
       }
       return;
     }
@@ -4294,7 +4315,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Active wave — clear countdown text, wave bar shows progress
-    if (this.countdownMsg) { this.countdownMsg = ''; this.pushHud(); }
+    this.syncCountdown('');
 
     // Ramp difficulty, spawn until this wave's quota is met.
     this.spawnTimer += delta;
@@ -4547,8 +4568,7 @@ export class GameScene extends Phaser.Scene {
         }
       }
       const remaining = Math.max(0, Math.ceil((this.winDelayUntil - this.vTime) / 1000));
-      this.countdownMsg = `VICTORY! Collect your loot! ${remaining}s`;
-      this.pushHud();
+      this.syncCountdown(`VICTORY! Collect your loot! ${remaining}s`, '#7cf29a');
       if (this.vTime >= this.winDelayUntil) {
         this.win();
       } else if (this.coins.countActive() === 0 && this.winCollectedAt === 0) {

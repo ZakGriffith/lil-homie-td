@@ -1,10 +1,11 @@
 import { CFG } from './config';
 
-// Target world-width visible on mobile by orientation. Mobile portrait shows a
-// tight (tall) view; mobile landscape shows a wider slice. Desktop is governed
-// by the legacy sf formula so its look is unchanged.
-const MOBILE_PORTRAIT_WORLD_W = 540;
-const MOBILE_LANDSCAPE_WORLD_W = 720;
+// Target world-width visible across the SHORT device dimension on mobile. Both
+// portrait and landscape use the same magnification factor (shorterDim / 540)
+// so rotating the device doesn't change how big the player/enemies appear —
+// landscape just reveals more world horizontally because the canvas is wider.
+// Desktop is governed by the legacy sf formula so its look is unchanged.
+const MOBILE_WORLD_W_PER_SHORT_DIM = 540;
 
 // Mobile UI design space. The UI is laid out assuming the canvas is this many
 // base units. uiScale = renderDimension / designDimension, so a slot defined at
@@ -63,11 +64,13 @@ export function computeViewport(): ViewportInfo {
   }
 
   // Mobile — canvas fills the device viewport (no letterbox). Camera zoom is
-  // picked to show an intended world width, not pinned to 960×640.
+  // pinned to the shorter device dimension so portrait and landscape have the
+  // same magnification; rotating the device just reveals more world along the
+  // long axis instead of zooming the world contents.
   const renderW = Math.round(w * dpr);
   const renderH = Math.round(h * dpr);
-  const targetWorldW = isPortrait ? MOBILE_PORTRAIT_WORLD_W : MOBILE_LANDSCAPE_WORLD_W;
-  const cameraZoom = renderW / targetWorldW;
+  const shortDim = Math.min(renderW, renderH);
+  const cameraZoom = shortDim / MOBILE_WORLD_W_PER_SHORT_DIM;
   // UI scale: on mobile the UI is re-authored to a smaller design space so the
   // resulting uiScale is generous enough for tap-sized hit targets while still
   // guaranteeing `designW * uiScale ≤ canvas_width` (no overflow).
