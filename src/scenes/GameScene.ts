@@ -214,6 +214,12 @@ export class GameScene extends Phaser.Scene {
     this.castlePhase = 0;
     this.midBoss = null;
     this.midBossDefeated = false;
+    // Phaser reuses the scene instance across restarts (level transitions),
+    // so class-field initializers don't re-run. The coin-pop pool can hold
+    // refs to sprites that were destroyed during the previous level's
+    // shutdown — drop them so playCoinFxPop doesn't try to .play() on a
+    // dead sprite.
+    this._coinFxPool = [];
     this.nextQueenTeleport = 0;
     this.nextQueenOrb = 0;
     this.nextQueenAura = 0;
@@ -644,6 +650,10 @@ export class GameScene extends Phaser.Scene {
 
   private playCoinFxPop(x: number, y: number) {
     let pop = this._coinFxPool.pop();
+    // A pooled sprite can be stale if it was destroyed (anims is gone) —
+    // happens if the pool ever leaks across scene restarts. Drop it and
+    // create a fresh sprite instead of crashing on .play().
+    if (pop && !pop.anims) pop = undefined;
     if (pop) {
       pop.setPosition(x, y);
       pop.setActive(true).setVisible(true);
