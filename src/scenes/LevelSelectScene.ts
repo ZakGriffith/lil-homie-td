@@ -10,6 +10,22 @@ import {
 } from '../levels';
 import { isTutorialNeeded } from './TutorialScene';
 
+/** Testing toggle — when on, every level whose `implemented` flag is true
+ *  is treated as unlocked, regardless of medals. Persisted in localStorage
+ *  so it survives reloads. Not exposed in the production build path; the
+ *  checkbox is just a small label on the map. */
+const TEST_UNLOCK_KEY = 'td_test_unlock_all';
+
+function loadTestUnlock(): boolean {
+  try { return localStorage.getItem(TEST_UNLOCK_KEY) === 'true'; }
+  catch { return false; }
+}
+
+function saveTestUnlock(v: boolean): void {
+  try { localStorage.setItem(TEST_UNLOCK_KEY, v ? 'true' : 'false'); }
+  catch { /* private mode — toggle still works in-session */ }
+}
+
 export class LevelSelectScene extends Phaser.Scene {
   medalStore!: MedalStore;
   medalCount = 0;
@@ -20,6 +36,17 @@ export class LevelSelectScene extends Phaser.Scene {
   tooltip: Phaser.GameObjects.Container | null = null;
   tooltipTimer?: Phaser.Time.TimerEvent;
   diffButtons: { bg: Phaser.GameObjects.Graphics; text: Phaser.GameObjects.Text; diff: Difficulty }[] = [];
+  testUnlockAll = false;
+
+  /** Unlocked-for-the-UI: wraps the medal-based isLevelUnlocked check
+   *  with the testing override that opens every implemented level. */
+  private unlockedFor(levelId: number): boolean {
+    if (this.testUnlockAll) {
+      const def = LEVELS.find(l => l.id === levelId);
+      if (def?.implemented) return true;
+    }
+    return isLevelUnlocked(this.medalStore, levelId);
+  }
 
   /** Scale factor: all base-resolution (960×640) coordinates get multiplied by this */
   private sf = 1;
@@ -94,6 +121,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     this.medalStore = loadMedals();
     this.medalCount = totalMedals(this.medalStore);
+    this.testUnlockAll = loadTestUnlock();
     this.selectedLevel = null;
     this.selectedDiff = null;
     this.panel = null;
@@ -136,6 +164,8 @@ export class LevelSelectScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: this.p(2)
     }).setOrigin(0.5).setDepth(2);
 
+    this.drawTestUnlockToggle();
+
     // Launch tutorial for first-time players
     if (isTutorialNeeded()) {
       getRegistry(this.game).set('tutorialActive', true);
@@ -154,7 +184,7 @@ export class LevelSelectScene extends Phaser.Scene {
         const target = levelMap.get(targetId);
         if (!target) continue;
 
-        const unlocked = isLevelUnlocked(this.medalStore, target.id);
+        const unlocked = this.unlockedFor(target.id);
 
         const x0 = this.p(level.x), y0 = this.p(level.y);
         const x1 = this.p(target.x), y1 = this.p(target.y);
@@ -290,10 +320,55 @@ export class LevelSelectScene extends Phaser.Scene {
   }
 
   // ---- LEVEL NODES ----
+  /** Bottom-left "unlock all (test)" checkbox. Toggles the test flag in
+   *  localStorage and restarts the scene so node states + path lines
+   *  re-render against the new unlock predicate. */
+  drawTestUnlockToggle() {
+    const x = this.p(12);
+    const y = this.scale.height - this.p(20);
+    const boxSize = this.p(14);
+    const box = this.add.graphics().setDepth(2);
+    const drawBox = () => {
+      box.clear();
+      box.fillStyle(0x11172a, 0.85);
+      box.fillRoundedRect(x, y - boxSize / 2, boxSize, boxSize, this.p(2));
+      box.lineStyle(this.p(1), 0x6a8acc, 0.85);
+      box.strokeRoundedRect(x, y - boxSize / 2, boxSize, boxSize, this.p(2));
+      if (this.testUnlockAll) {
+        // Filled checkmark — short ✓
+        box.lineStyle(this.p(2), 0x4ad96a, 1);
+        box.beginPath();
+        box.moveTo(x + this.p(3), y);
+        box.lineTo(x + this.p(6), y + this.p(3));
+        box.lineTo(x + this.p(11), y - this.p(3));
+        box.strokePath();
+      }
+    };
+    drawBox();
+    const label = this.add.text(x + boxSize + this.p(6), y, 'Unlock all (test)', {
+      fontFamily: 'monospace', fontSize: this.fs(11),
+      color: this.testUnlockAll ? '#4ad96a' : '#7a8aaa',
+      stroke: '#000', strokeThickness: this.p(2),
+    }).setOrigin(0, 0.5).setDepth(2);
+    const hit = this.add.rectangle(
+      x, y - boxSize / 2,
+      boxSize + label.width + this.p(10), boxSize,
+      0x000000, 0
+    ).setOrigin(0).setInteractive({ useHandCursor: true });
+    hit.on('pointerdown', () => {
+      this.testUnlockAll = !this.testUnlockAll;
+      saveTestUnlock(this.testUnlockAll);
+      SFX.play('click');
+      // Restart so path lines + node states re-render against the new
+      // unlock predicate. Cheap — LevelSelect has no game state to lose.
+      this.scene.restart();
+    });
+  }
+
   drawNodes() {
     const isMobile = !!getRegistry(this.game).get('isMobile');
     for (const level of LEVELS) {
-      const unlocked = isLevelUnlocked(this.medalStore, level.id);
+      const unlocked = this.unlockedFor(level.id);
       const medals = this.medalStore[String(level.id)];
 
       const R = this.p(26); // main circle radius
