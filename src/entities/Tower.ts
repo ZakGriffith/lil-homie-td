@@ -109,6 +109,10 @@ export class Tower extends Phaser.Physics.Arcade.Sprite {
   }
 
   applyTierVisual() {
+    // hurt() schedules a 60ms delayedCall that lands here. If a follow-up hit
+    // kills the tower in that window the timer still fires on a destroyed
+    // GameObject (Phaser nulls `scene` on destroy) — bail out.
+    if (!this.scene) return;
     const tint = Tower.TIER_TINT[this.kind][this.level] ?? 0xffffff;
     this.setTint(tint);
     // Cannon top is already dark pixel art — don't wash it with tint.
