@@ -12,10 +12,6 @@ import type { GameScene } from '../scenes/GameScene';
  * recycles wave state instead of dropping into the victory screen.
  */
 export class EndSystem {
-  winDelayUntil = 0;
-  winCollectedAt = 0;
-  dying = false;
-
   constructor(private scene: GameScene) {}
 
   checkEndConditions() {
@@ -23,17 +19,16 @@ export class EndSystem {
     // Infinite double-boss events keep the secondary in midBoss. The
     // cycle is over only when BOTH are dying/inactive — guard for that
     // before falling through to the (single-boss) win path.
-    if (scene.difficulty === 'infinite' && scene.bossSpawned) {
-      const primaryDone = !scene.boss || scene.boss.dying || !scene.boss.active;
-      const secondaryDone = !scene.midBoss || scene.midBoss === scene.boss || scene.midBoss.dying || !scene.midBoss.active;
+    if (scene.difficulty === 'infinite' && scene.bossState.bossSpawned) {
+      const primaryDone = !scene.bossState.boss || scene.bossState.boss.dying || !scene.bossState.boss.active;
+      const secondaryDone = !scene.bossState.midBoss || scene.bossState.midBoss === scene.bossState.boss || scene.bossState.midBoss.dying || !scene.bossState.midBoss.active;
       if (!primaryDone || !secondaryDone) return;
     }
-    if (scene.bossSpawned && (!scene.boss || scene.boss.dying || !scene.boss.active)) {
+    if (scene.bossState.bossSpawned && (!scene.bossState.boss || scene.bossState.boss.dying || !scene.bossState.boss.active)) {
       if (scene.difficulty === 'infinite') {
-        if (scene.infiniteResetUntil === 0) {
+        if (scene.bossState.infiniteResetUntil === 0) {
           getEvents(scene.game.events).emit('boss-died');
-          scene.infiniteBossesCleared++;
-          scene.infiniteResetUntil = scene.vTime + 8000;
+          scene.bossState.startInfiniteReset(scene.vTime, 8000);
           scene.countdownColor = '#7cf29a';
           const survivors = (scene.enemies.getChildren() as Enemy[])
             .filter((e) => e && e.active && !e.dying);
@@ -44,21 +39,21 @@ export class EndSystem {
             });
           }
         }
-        const remaining = Math.max(0, Math.ceil((scene.infiniteResetUntil - scene.vTime) / 1000));
-        scene.hud.syncCountdown(`Boss ${scene.infiniteBossesCleared} cleared! Next cycle in ${remaining}s`, '#7cf29a');
-        if (scene.vTime >= scene.infiniteResetUntil) {
+        const remaining = Math.max(0, Math.ceil((scene.bossState.infiniteResetUntil - scene.vTime) / 1000));
+        scene.hud.syncCountdown(`Boss ${scene.bossState.infiniteBossesCleared} cleared! Next cycle in ${remaining}s`, '#7cf29a');
+        if (scene.vTime >= scene.bossState.infiniteResetUntil) {
           this.startNextInfiniteCycle();
-        } else if (scene.coins.countActive() === 0 && this.winCollectedAt === 0) {
-          this.winCollectedAt = scene.vTime;
-        } else if (this.winCollectedAt > 0 && scene.vTime >= this.winCollectedAt + 2000) {
+        } else if (scene.coins.countActive() === 0 && this.scene.endState.winCollectedAt === 0) {
+          this.scene.endState.winCollectedAt = scene.vTime;
+        } else if (this.scene.endState.winCollectedAt > 0 && scene.vTime >= this.scene.endState.winCollectedAt + 2000) {
           this.startNextInfiniteCycle();
         }
         return;
       }
       // Castle mid-boss (queen) death: don't win — trigger next phase
-      if (scene.biome === 'castle' && scene.castlePhase < 3) {
-        if (!scene.midBossDefeated && scene.castlePhase === 1) {
-          scene.midBossDefeated = true;
+      if (scene.biome === 'castle' && scene.bossState.castlePhase < 3) {
+        if (!scene.bossState.midBossDefeated && scene.bossState.castlePhase === 1) {
+          scene.bossState.recordMidBossDefeated();
           getEvents(scene.game.events).emit('boss-died');
           for (const e of scene.enemies.getChildren() as Enemy[]) {
             if (!e.dying && e.active) e.hurt(9999);
@@ -66,9 +61,9 @@ export class EndSystem {
         }
         return;
       }
-      if (this.winDelayUntil === 0) {
+      if (this.scene.endState.winDelayUntil === 0) {
         getEvents(scene.game.events).emit('boss-died');
-        this.winDelayUntil = scene.vTime + 12000;
+        this.scene.endState.winDelayUntil = scene.vTime + 12000;
         scene.countdownColor = '#7cf29a';
         const survivors = (scene.enemies.getChildren() as Enemy[])
           .filter((e) => e && e.active && !e.dying);
@@ -79,13 +74,13 @@ export class EndSystem {
           });
         }
       }
-      const remaining = Math.max(0, Math.ceil((this.winDelayUntil - scene.vTime) / 1000));
+      const remaining = Math.max(0, Math.ceil((this.scene.endState.winDelayUntil - scene.vTime) / 1000));
       scene.hud.syncCountdown(`VICTORY! Collect your loot! ${remaining}s`, '#7cf29a');
-      if (scene.vTime >= this.winDelayUntil) {
+      if (scene.vTime >= this.scene.endState.winDelayUntil) {
         this.win();
-      } else if (scene.coins.countActive() === 0 && this.winCollectedAt === 0) {
-        this.winCollectedAt = scene.vTime;
-      } else if (this.winCollectedAt > 0 && scene.vTime >= this.winCollectedAt + 2000) {
+      } else if (scene.coins.countActive() === 0 && this.scene.endState.winCollectedAt === 0) {
+        this.scene.endState.winCollectedAt = scene.vTime;
+      } else if (this.scene.endState.winCollectedAt > 0 && scene.vTime >= this.scene.endState.winCollectedAt + 2000) {
         this.win();
       }
     }
@@ -94,23 +89,15 @@ export class EndSystem {
   /** Reset wave state for the next infinite-mode cycle. */
   startNextInfiniteCycle() {
     const scene = this.scene;
-    scene.bossSpawned = false;
-    scene.boss = null;
-    scene.midBoss = null;
-    scene.wave++;
-    scene.waveSpawned = 0;
-    scene.waveKills = 0;
-    scene.bossCountdownUntil = 0;
-    scene.infiniteResetUntil = 0;
-    this.winCollectedAt = 0;
-    scene.waveBreakUntil = scene.vTime + CFG.spawn.waveBreak;
+    scene.bossState.finishInfiniteReset();
+    scene.waveState.enterNextInfiniteCycle(scene.vTime, CFG.spawn.waveBreak);
+    this.scene.endState.winCollectedAt = 0;
     scene.hud.pushHud();
   }
 
   lose() {
     const scene = this.scene;
-    if (scene.gameOver || this.dying) return;
-    this.dying = true;
+    if (!scene.endState.enterDying()) return;
 
     scene.player.setVelocity(0, 0);
     (scene.player.body as Phaser.Physics.Arcade.Body).enable = false;
@@ -182,7 +169,7 @@ export class EndSystem {
 
     setTimeout(() => {
       if (!scene.scene.isActive()) return;
-      scene.gameOver = true;
+      scene.endState.enterGameOver();
       scene.physics.pause();
       SFX.play('gameOver');
       const payload = {
@@ -196,8 +183,7 @@ export class EndSystem {
 
   win() {
     const scene = this.scene;
-    if (scene.gameOver) return;
-    scene.gameOver = true;
+    if (!scene.endState.enterGameOver()) return;
     scene.physics.pause();
     SFX.fadeOutBgm(1500);
     SFX.play('victory');

@@ -22,6 +22,10 @@ import { CombatSystem } from '../systems/CombatSystem';
 import { EnemyBossSystem } from '../systems/EnemyBossSystem';
 import { SpawnSystem } from '../systems/SpawnSystem';
 import { EndSystem } from '../systems/EndSystem';
+import { WaveState } from '../state/WaveState';
+import { BuildState, BuildKind } from '../state/BuildState';
+import { BossState } from '../state/BossState';
+import { EndState } from '../state/EndState';
 import { SFX } from '../audio/sfx';
 import { generateAllArt, registerAnimations } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
@@ -36,7 +40,9 @@ import cannonBaseImg from '../assets/sprites/cannon_base.png';
 import cannonBase1Img from '../assets/sprites/cannon_base_1.png';
 import cannonBase2Img from '../assets/sprites/cannon_base_2.png';
 
-export type BuildKind = 'none' | 'tower' | 'wall';
+// BuildKind moved to src/state/BuildState.ts. Re-exported here so existing
+// `import { BuildKind } from '../scenes/GameScene'` callers don't break.
+export type { BuildKind } from '../state/BuildState';
 
 
 export class GameScene extends Phaser.Scene {
@@ -61,9 +67,10 @@ export class GameScene extends Phaser.Scene {
   loadingDone = false;
 
   keys!: any;
-  buildKind: BuildKind = 'none';
-  buildTowerKind: TowerKind = 'arrow';
-  buildPaused = false;
+  /** Build-mode state machine — kind ('none'|'tower'|'wall'), last-selected
+   *  towerKind, and the shared paused flag. Mutate via setKind() and
+   *  paused = true/false (the BuildSystem coordinates pause/resume). */
+  buildState = new BuildState();
   // Bound listeners stored so shutdown() can remove the exact handlers it
   // registered. Calling game.events.off(name) without a fn ref nukes ALL
   // listeners for that event — including ones the next GameScene's create()
@@ -81,12 +88,12 @@ export class GameScene extends Phaser.Scene {
   spawnInterval = CFG.spawn.initialInterval;
   rampTimer = 0;
   heavyChance = CFG.spawn.heavyChanceStart;
-  waveStartAt = 0;
-  wave = 0;               // 0-indexed current wave
-  waveSpawned = 0;        // enemies spawned in the current wave
-  waveKills = 0;          // kills counted for the current wave
+  /** Wave-progression state machine — replaces the six legacy interlocking
+   *  flags (waveStartAt, wave, waveSpawned, waveKills, waveBreakUntil,
+   *  bossCountdownUntil). Read fields directly; mutate via the named
+   *  transition methods. Constructed once and reset() per level. */
+  waveState = new WaveState();
   pathsThisFrame = 0;     // BFS pathfinding budget per frame
-  waveBreakUntil = 0;     // timestamp when the inter-wave build break ends
   countdownMsg = '';
   countdownColor = '#7cc4ff';
 
@@ -104,14 +111,10 @@ export class GameScene extends Phaser.Scene {
   wallLayer!: Phaser.Tilemaps.TilemapLayer;
   sellTimers = new Map<Tower | Wall, { startTime: number; duration: number; gfx: Phaser.GameObjects.Graphics }>();
 
-  boss: Boss | null = null;
-  bossSpawned = false;
-  bossCountdownUntil = 0;       // set once the last wave is cleared, boss spawns at this time
-
-  // Castle multi-boss state
-  castlePhase = 0;              // 0 = waves 1-2, 1 = queen boss, 2 = waves 3-4, 3 = dragon boss
-  midBoss: Boss | null = null;
-  midBossDefeated = false;
+  /** Boss-fight state machine — primary/secondary boss refs, the
+   *  bossSpawned latch, the castlePhase enum, and infinite-mode counters.
+   *  Mutate via the named transitions on BossState. */
+  bossState = new BossState();
   warlockBolts!: Phaser.Physics.Arcade.Group;
   queenOrbs!: Phaser.Physics.Arcade.Group;
   dragonFireballs!: Phaser.Physics.Arcade.Group;
@@ -121,14 +124,15 @@ export class GameScene extends Phaser.Scene {
   nextDragonFireball = 0;
 
   killsTarget = CFG.winKills;
-  gameOver = false;
+  /** End-of-level state — gameOver, dying, winDelayUntil, winCollectedAt.
+   *  EndSystem reads/writes this; GameScene's update() short-circuits on
+   *  endState.gameOver and endState.dying. */
+  endState = new EndState();
   levelId = 1;
   difficulty: Difficulty = 'easy';
-  // Infinite-mode state — never resets within a run, increments forever.
-  // Used by checkEndConditions to loop the wave/boss cycle instead of
-  // entering the win flow.
-  infiniteBossesCleared = 0;
-  infiniteResetUntil = 0;
+  // (Infinite-mode counters live on bossState now: infiniteBossesCleared,
+  // infiniteResetUntil. They never reset within a run; the cycle reset
+  // restarts wave state but leaves the cumulative count alone.)
   biome: Biome = 'grasslands';
   enemyHpMult = 1;
   enemySpeedMult = 1;
@@ -186,27 +190,21 @@ export class GameScene extends Phaser.Scene {
     this.lastChunkCx = -9999;
     this.lastChunkCy = -9999;
     this.loadingDone = false;
-    this.buildKind = 'none';
-    this.buildTowerKind = 'arrow';
-    this.buildPaused = false;
+    this.buildState.reset();
     this.nextRunnerPack = 0;
     this.playerStoppedAt = 0;
     this.spawnTimer = 0;
     this.spawnInterval = CFG.spawn.initialInterval;
     this.rampTimer = 0;
     this.heavyChance = CFG.spawn.heavyChanceStart;
-    this.waveStartAt = 0;
-    this.wave = 0;
-    this.waveSpawned = 0;
-    this.waveKills = 0;
-    this.waveBreakUntil = 0;
+    this.waveState.reset();
     this.timeMult = 1.25;
     this.vTime = 0;
     this.selectedTower = null;
     this.sellTimers = new Map();
-    this.boss = null;
-    this.bossSpawned = false;
-    this.bossCountdownUntil = 0;
+    this.bossState.boss = null;
+    this.bossState.bossSpawned = false;
+    // (waveState.reset() above also cleared bossCountdownUntil.)
     // Clear any persisted boss state from the previous run/level.
     getRegistry(this.game).set('bossActive', false);
     getRegistry(this.game).set('bossHp', 0);
@@ -214,7 +212,7 @@ export class GameScene extends Phaser.Scene {
     getRegistry(this.game).set('bossBiome', undefined);
     getRegistry(this.game).set('gameEndState', undefined);
     this.killsTarget = CFG.winKills;
-    this.gameOver = false;
+    this.endState.reset();
     this.boulders = [];
     this.webs = [];
     this.gasClouds = [];
@@ -230,11 +228,11 @@ export class GameScene extends Phaser.Scene {
     this.treeSeed = Math.floor(Math.random() * 2147483647) || 1;
     // (EndSystem owns dying/winDelayUntil/winCollectedAt — fresh instance
     // each create() means no carry-over across level transitions.)
-    this.castlePhase = 0;
-    this.midBoss = null;
-    this.midBossDefeated = false;
-    this.infiniteBossesCleared = 0;
-    this.infiniteResetUntil = 0;
+    this.bossState.castlePhase = 0;
+    this.bossState.midBoss = null;
+    this.bossState.midBossDefeated = false;
+    this.bossState.infiniteBossesCleared = 0;
+    this.bossState.infiniteResetUntil = 0;
     // (CoinSystem owns its own fx-pop pool now — fresh instance per
     // create() means no stale-sprite carryover across level transitions.)
     this.nextQueenTeleport = 0;
@@ -486,7 +484,7 @@ export class GameScene extends Phaser.Scene {
     // the wall hotkey is '4' (not adjacent to ESC). No-ops outside of
     // build mode so it won't fight other bindings.
     this.input.keyboard!.on('keydown-B', () => {
-      if (this.buildKind !== 'none') this.build.setBuild('none');
+      if (this.buildState.kind !== 'none') this.build.setBuild('none');
     });
     this.input.on('pointerdown', (p: Phaser.Input.Pointer) => this.build.handleClick(p));
     this.input.mouse!.disableContextMenu();
@@ -540,7 +538,7 @@ export class GameScene extends Phaser.Scene {
         // wall slot is the only way to exit build mode during this step.
         // Only permit it when wall mode is currently on (i.e. the toggle
         // turns it OFF) so the player can't re-enter wall mode after exit.
-        else if (ts === 'game_exit_build' && k === 'wall' && this.buildKind === 'wall') { /* allowed — toggles off */ }
+        else if (ts === 'game_exit_build' && k === 'wall' && this.buildState.kind === 'wall') { /* allowed — toggles off */ }
         else return; // block everything else during tutorial
       }
       this.build.toggleBuild(k, tk);
@@ -558,7 +556,7 @@ export class GameScene extends Phaser.Scene {
     getEvents(this.scene.get('UI').events).emit('hud', this.hudState());
 
     // pre-wave build phase
-    this.waveStartAt = CFG.spawn.startDelay;
+    this.waveState.startInitialBuildPhase(CFG.spawn.startDelay);
     this.countdownMsg = '';
     this.countdownColor = '#7cc4ff';
 
@@ -624,17 +622,17 @@ export class GameScene extends Phaser.Scene {
       money: this.player?.money ?? 0,
       kills: this.player?.kills ?? 0,
       target: this.killsTarget,
-      build: this.buildKind === 'tower' ? this.buildTowerKind : this.buildKind,
-      bossSpawned: this.bossSpawned,
-      wave: this.wave + 1,
-      waveKills: this.waveKills,
+      build: this.buildState.kind === 'tower' ? this.buildState.towerKind : this.buildState.kind,
+      bossSpawned: this.bossState.bossSpawned,
+      wave: this.waveState.wave + 1,
+      waveKills: this.waveState.waveKills,
       waveSize: this.levelWaveSize,
-      waveBreakUntil: this.waveBreakUntil,
+      waveBreakUntil: this.waveState.waveBreakUntil,
       vTime: this.vTime,
       countdownMsg: this.countdownMsg,
       countdownColor: this.countdownColor,
-      castlePhase: this.castlePhase,
-      midBossDefeated: this.midBossDefeated,
+      castlePhase: this.bossState.castlePhase,
+      midBossDefeated: this.bossState.midBossDefeated,
     };
   }
 
@@ -667,7 +665,7 @@ export class GameScene extends Phaser.Scene {
 
 
   update(_realTime: number, delta: number) {
-    if (this.gameOver) return;
+    if (this.endState.gameOver) return;
 
     // Warm-up: let a few render frames pass (physics paused, loading overlay visible)
     // so the browser JIT-compiles and GPU uploads textures before gameplay starts.
@@ -698,10 +696,10 @@ export class GameScene extends Phaser.Scene {
     if (this.biome === 'river') this.chunkSystem.updateRiverSquiggles(delta);
 
     // Redraw grid overlay around the camera if building
-    if (this.buildKind !== 'none') this.build.redrawGridOverlay();
+    if (this.buildState.kind !== 'none') this.build.redrawGridOverlay();
 
     // When build-paused, only update ghost/grid — skip all game simulation
-    if (this.buildPaused) return;
+    if (this.buildState.paused) return;
 
     // Virtual time advances at timeMult speed; all downstream systems use it.
     const vd = delta * this.timeMult;
@@ -709,7 +707,7 @@ export class GameScene extends Phaser.Scene {
     const time = this.vTime;
 
     // While dying, keep the world alive for the death animation but skip player input
-    if (this.end.dying) return;
+    if (this.endState.dying) return;
 
     this.pathsThisFrame = 0;
     this.updatePlayer(time, vd);

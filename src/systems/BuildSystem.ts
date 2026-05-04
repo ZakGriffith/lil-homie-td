@@ -33,11 +33,11 @@ export class BuildSystem {
   toggleBuild(k: BuildKind, towerKind?: TowerKind) {
     const scene = this.scene;
     // If same build mode is already active, cancel it (toggle off)
-    if (k === 'wall' && scene.buildKind === 'wall') {
+    if (k === 'wall' && scene.buildState.kind === 'wall') {
       this.setBuild('none');
       return;
     }
-    if (k === 'tower' && scene.buildKind === 'tower' && towerKind === scene.buildTowerKind) {
+    if (k === 'tower' && scene.buildState.kind === 'tower' && towerKind === scene.buildState.towerKind) {
       this.setBuild('none');
       return;
     }
@@ -46,8 +46,7 @@ export class BuildSystem {
 
   setBuild(k: BuildKind, towerKind?: TowerKind) {
     const scene = this.scene;
-    scene.buildKind = k;
-    if (k === 'tower' && towerKind) scene.buildTowerKind = towerKind;
+    scene.buildState.setKind(k, towerKind);
     scene.ghost.setVisible(k !== 'none');
     if (scene.deleteIcon) scene.deleteIcon.setVisible(false);
     if (scene.gridOverlay) scene.gridOverlay.setVisible(k !== 'none');
@@ -57,8 +56,8 @@ export class BuildSystem {
       this.lastBuildErr = '';
     }
     if (k === 'tower') {
-      scene.ghost.setTexture(scene.buildTowerKind === 'cannon' ? 'c_base' : 't_base');
-      const baseTint = Tower.TIER_TINT[scene.buildTowerKind][0];
+      scene.ghost.setTexture(scene.buildState.towerKind === 'cannon' ? 'c_base' : 't_base');
+      const baseTint = Tower.TIER_TINT[scene.buildState.towerKind][0];
       scene.ghost.setTint(baseTint);
     }
     if (k === 'wall') {
@@ -68,13 +67,13 @@ export class BuildSystem {
     if (k !== 'none') scene.towerSelect.deselectTower();
 
     // Pause/unpause game world for build mode
-    if (k !== 'none' && !scene.buildPaused) {
-      scene.buildPaused = true;
+    if (k !== 'none' && !scene.buildState.paused) {
+      scene.buildState.paused = true;
       scene.physics.pause();
       scene.tweens.pauseAll();
       scene.anims.pauseAll();
-    } else if (k === 'none' && scene.buildPaused) {
-      scene.buildPaused = false;
+    } else if (k === 'none' && scene.buildState.paused) {
+      scene.buildState.paused = false;
       scene.physics.resume();
       scene.tweens.resumeAll();
       scene.anims.resumeAll();
@@ -105,10 +104,10 @@ export class BuildSystem {
 
   handleClick(p: Phaser.Input.Pointer) {
     const scene = this.scene;
-    if (scene.gameOver) return;
+    if (scene.endState.gameOver) return;
 
     // Right-click cancels build mode
-    if (p.rightButtonDown() && scene.buildKind !== 'none') {
+    if (p.rightButtonDown() && scene.buildState.kind !== 'none') {
       this.setBuild('none');
       return;
     }
@@ -139,7 +138,7 @@ export class BuildSystem {
     }
 
     // click an existing tower with no active build = select it
-    if (scene.buildKind === 'none') {
+    if (scene.buildState.kind === 'none') {
       const hit = scene.towers.find(t =>
         tx >= t.tileX && tx < t.tileX + t.size &&
         ty >= t.tileY && ty < t.tileY + t.size);
@@ -164,7 +163,7 @@ export class BuildSystem {
     // entering build mode cancels selection
     scene.towerSelect.deselectTower();
 
-    if (scene.buildKind === 'tower') {
+    if (scene.buildState.kind === 'tower') {
       // Tutorial caps placements at 1 tower; ignore further click-to-place
       // even if the player somehow stays in tower build mode.
       if (getRegistry(scene.game).get('tutorialActive') && scene.towers.length >= 1) return;
@@ -178,10 +177,10 @@ export class BuildSystem {
         ? Math.round(wy / CFG.tile) - s / 2
         : Math.floor(wy / CFG.tile) - Math.floor(s / 2);
       if (!this.canPlaceTower(ox, oy)) return;
-      const kindCost = CFG.tower.kinds[scene.buildTowerKind].cost;
+      const kindCost = CFG.tower.kinds[scene.buildState.towerKind].cost;
       if (scene.player.money < kindCost) return;
       scene.player.money -= kindCost;
-      const t = new Tower(scene, ox, oy, scene.buildTowerKind);
+      const t = new Tower(scene, ox, oy, scene.buildState.towerKind);
       scene.towers.push(t);
       scene.towerGroup.add(t);
       scene.depthSort.applyTowerDepth(t); // static — set once, skipped in updateDepthSort
@@ -236,7 +235,7 @@ export class BuildSystem {
    */
   updateGhost() {
     const scene = this.scene;
-    if (scene.buildKind === 'none') return;
+    if (scene.buildState.kind === 'none') return;
     const p = scene.input.activePointer;
     // Don't snap the ghost onto the joystick when the player's thumb is on
     // the stick — keep it at its last position until they tap elsewhere.
@@ -248,7 +247,7 @@ export class BuildSystem {
     const tx = Math.floor(p.worldX / CFG.tile);
     const ty = Math.floor(p.worldY / CFG.tile);
     let buildErr = '';
-    if (scene.buildKind === 'tower') {
+    if (scene.buildState.kind === 'tower') {
       const s = CFG.tower.tiles;
       const ox = s % 2 === 0
         ? Math.round(p.worldX / CFG.tile) - s / 2
@@ -257,7 +256,7 @@ export class BuildSystem {
         ? Math.round(p.worldY / CFG.tile) - s / 2
         : Math.floor(p.worldY / CFG.tile) - Math.floor(s / 2);
       scene.ghost.setPosition((ox + s / 2) * CFG.tile, (oy + s / 2) * CFG.tile);
-      const towerCost = CFG.tower.kinds[scene.buildTowerKind].cost;
+      const towerCost = CFG.tower.kinds[scene.buildState.towerKind].cost;
       const canAffordTower = scene.player.money >= towerCost;
       const canPlace = this.canPlaceTower(ox, oy);
       if (!canAffordTower) buildErr = 'Not enough gold';

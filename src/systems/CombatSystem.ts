@@ -129,9 +129,9 @@ export class CombatSystem {
     });
     // Also consider the boss(es). Infinite mode's double-boss events
     // stash the secondary in midBoss, so cannons can lead-target either.
-    const bossesToCheck: (Boss | null)[] = [scene.boss];
-    if (scene.difficulty === 'infinite' && scene.midBoss && scene.midBoss !== scene.boss) {
-      bossesToCheck.push(scene.midBoss);
+    const bossesToCheck: (Boss | null)[] = [scene.bossState.boss];
+    if (scene.difficulty === 'infinite' && scene.bossState.midBoss && scene.bossState.midBoss !== scene.bossState.boss) {
+      bossesToCheck.push(scene.bossState.midBoss);
     }
     for (const bb of bossesToCheck) {
       if (!bb || !bb.active || bb.dying) continue;
@@ -177,14 +177,14 @@ export class CombatSystem {
       if (d < bestD) { bestD = d; best = e; }
       return true;
     });
-    if (scene.boss && scene.boss.active && !scene.boss.dying) {
-      const d = (scene.boss.x - x) ** 2 + (scene.boss.y - y) ** 2;
-      if (d < bestD) { bestD = d; best = scene.boss; }
+    if (scene.bossState.boss && scene.bossState.boss.active && !scene.bossState.boss.dying) {
+      const d = (scene.bossState.boss.x - x) ** 2 + (scene.bossState.boss.y - y) ** 2;
+      if (d < bestD) { bestD = d; best = scene.bossState.boss; }
     }
-    if (scene.difficulty === 'infinite' && scene.midBoss && scene.midBoss !== scene.boss
-        && scene.midBoss.active && !scene.midBoss.dying) {
-      const d = (scene.midBoss.x - x) ** 2 + (scene.midBoss.y - y) ** 2;
-      if (d < bestD) { bestD = d; best = scene.midBoss; }
+    if (scene.difficulty === 'infinite' && scene.bossState.midBoss && scene.bossState.midBoss !== scene.bossState.boss
+        && scene.bossState.midBoss.active && !scene.bossState.midBoss.dying) {
+      const d = (scene.bossState.midBoss.x - x) ** 2 + (scene.bossState.midBoss.y - y) ** 2;
+      if (d < bestD) { bestD = d; best = scene.bossState.midBoss; }
     }
     return best;
   }
@@ -211,9 +211,9 @@ export class CombatSystem {
       if (pathDist < bestPathDist) { bestPathDist = pathDist; best = e; }
       return true;
     });
-    const bossesToCheck: (Boss | null)[] = [scene.boss];
-    if (scene.difficulty === 'infinite' && scene.midBoss && scene.midBoss !== scene.boss) {
-      bossesToCheck.push(scene.midBoss);
+    const bossesToCheck: (Boss | null)[] = [scene.bossState.boss];
+    if (scene.difficulty === 'infinite' && scene.bossState.midBoss && scene.bossState.midBoss !== scene.bossState.boss) {
+      bossesToCheck.push(scene.bossState.midBoss);
     }
     for (const bb of bossesToCheck) {
       if (!bb || !bb.active || bb.dying) continue;
@@ -305,7 +305,7 @@ export class CombatSystem {
     // mode double-boss events flicker the bar between two HP values as
     // hits land on each. Each boss still gets its own in-world bar via
     // Boss.drawHpBar().
-    if (b === scene.boss) {
+    if (b === scene.bossState.boss) {
       getEvents(scene.game.events).emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
       getRegistry(scene.game).set('bossHp', b.hp);
     }
@@ -313,7 +313,7 @@ export class CombatSystem {
       // bossActive only flips off when the primary dies — for infinite
       // doubles we still want the HUD to show the secondary's HP via
       // its in-world bar; the primary bar hides at this moment.
-      if (b === scene.boss) getRegistry(scene.game).set('bossActive', false);
+      if (b === scene.bossState.boss) getRegistry(scene.game).set('bossActive', false);
       this.dropBossLoot(b);
     }
   }
@@ -361,7 +361,7 @@ export class CombatSystem {
       burst.once('animationcomplete', () => burst.destroy());
 
       scene.player.kills++;
-      scene.waveKills++;
+      scene.waveState.recordKill();
       scene.hud.pushHud();
       if (getRegistry(scene.game).get('tutorialActive')) getEvents(scene.game.events).emit('tutorial-kill');
     }
@@ -489,15 +489,15 @@ export class CombatSystem {
     for (const en of hitList) this.applyDamageToEnemy(en, dmg);
 
     // Also chip the boss if in range
-    if (scene.boss && scene.boss.active && !scene.boss.dying) {
-      const dx = scene.boss.x - x, dy = scene.boss.y - y;
+    if (scene.bossState.boss && scene.bossState.boss.active && !scene.bossState.boss.dying) {
+      const dx = scene.bossState.boss.x - x, dy = scene.bossState.boss.y - y;
       if (dx * dx + dy * dy <= r2) {
-        scene.boss.hurt(Math.floor(dmg * 0.6));
-        getEvents(scene.game.events).emit('boss-hp', { hp: scene.boss.hp, maxHp: scene.boss.maxHp });
-        getRegistry(scene.game).set('bossHp', scene.boss.hp);
-        if (scene.boss.dying) {
+        scene.bossState.boss.hurt(Math.floor(dmg * 0.6));
+        getEvents(scene.game.events).emit('boss-hp', { hp: scene.bossState.boss.hp, maxHp: scene.bossState.boss.maxHp });
+        getRegistry(scene.game).set('bossHp', scene.bossState.boss.hp);
+        if (scene.bossState.boss.dying) {
           getRegistry(scene.game).set('bossActive', false);
-          this.dropBossLoot(scene.boss);
+          this.dropBossLoot(scene.bossState.boss);
         }
       }
     }

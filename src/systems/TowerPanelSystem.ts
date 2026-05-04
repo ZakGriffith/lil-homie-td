@@ -21,8 +21,8 @@ export class TowerPanelSystem {
     this.buildPanel(t);
     getEvents(scene.game.events).emit('tutorial-tower-selected');
     // Freeze game while tower panel is open
-    if (!scene.buildPaused) {
-      scene.buildPaused = true;
+    if (!scene.buildState.paused) {
+      scene.buildState.paused = true;
       scene.physics.pause();
       scene.tweens.pauseAll();
       scene.anims.pauseAll();
@@ -37,8 +37,8 @@ export class TowerPanelSystem {
     scene.towerPanel.setVisible(false);
     getEvents(scene.game.events).emit('tutorial-tower-deselected');
     // Unfreeze if no build mode active either
-    if (scene.buildPaused && scene.buildKind === 'none') {
-      scene.buildPaused = false;
+    if (scene.buildState.paused && scene.buildState.kind === 'none') {
+      scene.buildState.paused = false;
       scene.physics.resume();
       scene.tweens.resumeAll();
       scene.anims.resumeAll();

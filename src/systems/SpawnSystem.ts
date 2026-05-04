@@ -104,8 +104,8 @@ export class SpawnSystem {
 
   spawnBoss() {
     const scene = this.scene;
-    if (scene.bossSpawned) return;
-    scene.bossSpawned = true;
+    if (scene.bossState.bossSpawned) return;
+    scene.bossState.bossSpawned = true;
     const spawnR = scene.spawnDist * CFG.tile;
     const px = scene.player.x, py = scene.player.y;
     const corners = [
@@ -115,28 +115,28 @@ export class SpawnSystem {
       { x: px + spawnR, y: py + spawnR }
     ];
     const pick = corners[Math.floor(Math.random() * corners.length)];
-    scene.boss = new Boss(scene, pick.x, pick.y, scene.biome);
+    scene.bossState.boss = new Boss(scene, pick.x, pick.y, scene.biome);
     if (scene.biome === 'grasslands') {
-      scene.boss.hp = 800; scene.boss.maxHp = 800;
-      scene.boss.dmg = 15; scene.boss.speed = 24;
+      scene.bossState.boss.hp = 800; scene.bossState.boss.maxHp = 800;
+      scene.bossState.boss.dmg = 15; scene.bossState.boss.speed = 24;
     }
     scene.hud.pushHud();
-    scene.physics.add.overlap(scene.projectiles, scene.boss, (a: any, b: any) => {
+    scene.physics.add.overlap(scene.projectiles, scene.bossState.boss, (a: any, b: any) => {
       const pr = (a instanceof Projectile ? a : b) as Projectile;
       const bs = (a instanceof Boss ? a : b) as Boss;
       scene.combat.projectileHitsBoss(pr, bs);
     });
     const onStructureHit = () => {
-      if (scene.boss && scene.boss.state === 'charging') {
-        scene.boss.stateEnd = 0;
+      if (scene.bossState.boss && scene.bossState.boss.state === 'charging') {
+        scene.bossState.boss.stateEnd = 0;
       }
     };
-    scene.physics.add.collider(scene.boss, scene.wallGroup, onStructureHit, () => scene.biome !== 'river');
-    scene.physics.add.collider(scene.boss, scene.towerGroup, onStructureHit, () => scene.biome !== 'river');
-    getEvents(scene.game.events).emit('boss-spawn', { hp: scene.boss.hp, maxHp: scene.boss.maxHp, biome: scene.biome });
+    scene.physics.add.collider(scene.bossState.boss, scene.wallGroup, onStructureHit, () => scene.biome !== 'river');
+    scene.physics.add.collider(scene.bossState.boss, scene.towerGroup, onStructureHit, () => scene.biome !== 'river');
+    getEvents(scene.game.events).emit('boss-spawn', { hp: scene.bossState.boss.hp, maxHp: scene.bossState.boss.maxHp, biome: scene.biome });
     getRegistry(scene.game).set('bossActive', true);
-    getRegistry(scene.game).set('bossHp', scene.boss.hp);
-    getRegistry(scene.game).set('bossMaxHp', scene.boss.maxHp);
+    getRegistry(scene.game).set('bossHp', scene.bossState.boss.hp);
+    getRegistry(scene.game).set('bossMaxHp', scene.bossState.boss.maxHp);
     getRegistry(scene.game).set('bossBiome', scene.biome);
     SFX.play('bossSpawn');
     const bossTitle = scene.biome === 'forest' ? 'THE WENDIGO'
@@ -155,7 +155,7 @@ export class SpawnSystem {
 
   spawnCastleBoss(kind: 'queen' | 'dragon') {
     const scene = this.scene;
-    scene.bossSpawned = true;
+    scene.bossState.bossSpawned = true;
     const spawnR = scene.spawnDist * CFG.tile;
     const px = scene.player.x, py = scene.player.y;
     const corners = [
@@ -170,19 +170,19 @@ export class SpawnSystem {
     if (kind === 'queen') {
       b.hp = CFG.castle.queenHp; b.maxHp = CFG.castle.queenHp;
       b.dmg = CFG.castle.queenDmg; b.speed = CFG.castle.queenSpeed;
-      scene.midBoss = b;
-      scene.castlePhase = 1;
+      scene.bossState.midBoss = b;
+      scene.bossState.castlePhase = 1;
       scene.nextQueenOrb = scene.vTime + CFG.castle.queenOrbFireRate;
       scene.nextQueenTeleport = scene.vTime + CFG.castle.queenTeleportCooldown;
       scene.nextQueenAura = scene.vTime + CFG.castle.queenAuraCooldown;
     } else {
       b.hp = CFG.castle.dragonHp; b.maxHp = CFG.castle.dragonHp;
       b.dmg = CFG.castle.dragonDmg; b.speed = CFG.castle.dragonSpeed;
-      scene.castlePhase = 3;
+      scene.bossState.castlePhase = 3;
       scene.nextDragonFireball = scene.vTime + CFG.castle.dragonFireballRate;
     }
 
-    scene.boss = b;
+    scene.bossState.boss = b;
     scene.hud.pushHud();
     scene.physics.add.overlap(scene.projectiles, b, (a: any, bb: any) => {
       const pr = (a instanceof Projectile ? a : bb) as Projectile;
@@ -190,8 +190,8 @@ export class SpawnSystem {
       scene.combat.projectileHitsBoss(pr, bs);
     });
     const onStructureHit = () => {
-      if (scene.boss && scene.boss.state === 'charging') {
-        scene.boss.stateEnd = 0;
+      if (scene.bossState.boss && scene.bossState.boss.state === 'charging') {
+        scene.bossState.boss.stateEnd = 0;
       }
     };
     scene.physics.add.collider(b, scene.wallGroup, onStructureHit);
@@ -246,9 +246,9 @@ export class SpawnSystem {
     b.hp = Math.round(b.hp * hpMult);
     b.maxHp = b.hp;
 
-    if (slotIdx === 0) scene.boss = b;
-    else scene.midBoss = b;
-    scene.bossSpawned = true;
+    if (slotIdx === 0) scene.bossState.boss = b;
+    else scene.bossState.midBoss = b;
+    scene.bossState.bossSpawned = true;
 
     scene.physics.add.overlap(scene.projectiles, b, (a: any, bb: any) => {
       const pr = (a instanceof Projectile ? a : bb) as Projectile;
@@ -274,12 +274,12 @@ export class SpawnSystem {
   updateSpawning(time: number, delta: number) {
     const scene = this.scene;
     // initial build phase — show countdown, don't spawn anything yet
-    if (time < scene.waveStartAt) {
-      if (scene.waveStartAt === Infinity) {
+    if (time < scene.waveState.waveStartAt) {
+      if (scene.waveState.waveStartAt === Infinity) {
         scene.hud.syncCountdown('');
         return;
       }
-      const secs = Math.ceil((scene.waveStartAt - time) / 1000);
+      const secs = Math.ceil((scene.waveState.waveStartAt - time) / 1000);
       scene.hud.syncCountdown(`BUILD PHASE — ${secs}s`, '#7cc4ff');
       return;
     }
@@ -289,37 +289,31 @@ export class SpawnSystem {
     const totalWaves = isInfinite ? 4 : (scene.biome === 'castle' ? 4 : CFG.spawn.waveCount);
     const lastWaveIdx = totalWaves - 1;
     const isBossWave = isInfinite
-      ? scene.wave % 4 === 3
+      ? scene.waveState.wave % 4 === 3
       : scene.biome === 'castle'
-        ? (scene.castlePhase === 0 && scene.wave === 1) || (scene.castlePhase === 2 && scene.wave === 3)
-        : scene.wave >= lastWaveIdx;
+        ? (scene.bossState.castlePhase === 0 && scene.waveState.wave === 1) || (scene.bossState.castlePhase === 2 && scene.waveState.wave === 3)
+        : scene.waveState.wave >= lastWaveIdx;
 
     // Castle mid-boss phase: waiting for queen to die before resuming waves
-    if (!isInfinite && scene.biome === 'castle' && scene.castlePhase === 1) {
-      if (scene.midBossDefeated) {
-        scene.castlePhase = 2;
-        scene.wave = 2;
-        scene.waveSpawned = 0;
-        scene.waveKills = 0;
-        scene.bossSpawned = false;
-        scene.boss = null;
-        scene.bossCountdownUntil = 0;
-        scene.waveBreakUntil = time + CFG.spawn.waveBreak;
+    if (!isInfinite && scene.biome === 'castle' && scene.bossState.castlePhase === 1) {
+      if (scene.bossState.midBossDefeated) {
+        scene.bossState.enterPostQueenWaves();
+        scene.waveState.enterCastlePhase2(time, CFG.spawn.waveBreak);
       }
       return;
     }
 
-    if (scene.bossSpawned) {
+    if (scene.bossState.bossSpawned) {
       scene.hud.syncCountdown('');
       return;
     }
 
-    if (time < scene.waveBreakUntil) {
-      const secs = Math.ceil((scene.waveBreakUntil - time) / 1000);
+    if (time < scene.waveState.waveBreakUntil) {
+      const secs = Math.ceil((scene.waveState.waveBreakUntil - time) / 1000);
       let needsPush = false;
       if (scene.countdownMsg) { scene.countdownMsg = ''; needsPush = true; }
-      if (scene.hud.lastWaveBreakUntil !== scene.waveBreakUntil || scene.hud.lastWaveBreakSecond !== secs) {
-        scene.hud.lastWaveBreakUntil = scene.waveBreakUntil;
+      if (scene.hud.lastWaveBreakUntil !== scene.waveState.waveBreakUntil || scene.hud.lastWaveBreakSecond !== secs) {
+        scene.hud.lastWaveBreakUntil = scene.waveState.waveBreakUntil;
         scene.hud.lastWaveBreakSecond = secs;
         needsPush = true;
       }
@@ -327,18 +321,18 @@ export class SpawnSystem {
       return;
     }
 
-    if (isBossWave && scene.waveSpawned >= waveSize) {
+    if (isBossWave && scene.waveState.waveSpawned >= waveSize) {
       const live = this.liveEnemyCount();
-      const left = Math.max(live, waveSize - scene.waveKills);
+      const left = Math.max(live, waveSize - scene.waveState.waveKills);
       if (left > 0) {
         scene.hud.syncCountdown(`KILL THE STRAGGLERS — ${left} LEFT`, '#ff9a4a');
       } else {
-        if (scene.bossCountdownUntil === 0) {
-          scene.bossCountdownUntil = time + CFG.boss.prepTime;
+        if (scene.waveState.bossCountdownUntil === 0) {
+          scene.waveState.startBossPrep(time, CFG.boss.prepTime);
         }
-        if (time >= scene.bossCountdownUntil) {
+        if (time >= scene.waveState.bossCountdownUntil) {
           if (isInfinite) {
-            const pick = pickInfiniteBosses(scene.infiniteBossesCleared);
+            const pick = pickInfiniteBosses(scene.bossState.infiniteBossesCleared);
             this.infiniteFirstCorner = undefined;
             for (let i = 0; i < pick.bosses.length; i++) {
               this.spawnInfiniteBoss(pick.bosses[i], pick.hpMult, i);
@@ -353,26 +347,26 @@ export class SpawnSystem {
             scene.cameras.main.shake(300, 0.005);
             scene.hud.pushHud();
             scene.time.delayedCall(3000, () => { scene.countdownMsg = ''; scene.hud.pushHud(); });
-          } else if (scene.biome === 'castle' && scene.castlePhase === 0) {
+          } else if (scene.biome === 'castle' && scene.bossState.castlePhase === 0) {
             this.spawnCastleBoss('queen');
-          } else if (scene.biome === 'castle' && scene.castlePhase === 2) {
+          } else if (scene.biome === 'castle' && scene.bossState.castlePhase === 2) {
             this.spawnCastleBoss('dragon');
           } else {
             this.spawnBoss();
           }
           return;
         }
-        const secs = Math.ceil((scene.bossCountdownUntil - time) / 1000);
+        const secs = Math.ceil((scene.waveState.bossCountdownUntil - time) / 1000);
         let bossName: string;
         if (isInfinite) {
-          const pick = pickInfiniteBosses(scene.infiniteBossesCleared);
+          const pick = pickInfiniteBosses(scene.bossState.infiniteBossesCleared);
           bossName = pick.bosses.map(infiniteBossTitle).join(' & ');
         } else {
           bossName = scene.biome === 'forest' ? 'WENDIGO'
                        : scene.biome === 'infected' ? 'BLIGHTED ONE'
                        : scene.biome === 'river' ? 'FOG PHANTOM'
-                       : scene.biome === 'castle' && scene.castlePhase === 0 ? 'PHANTOM QUEEN'
-                       : scene.biome === 'castle' && scene.castlePhase === 2 ? 'CASTLE DRAGON'
+                       : scene.biome === 'castle' && scene.bossState.castlePhase === 0 ? 'PHANTOM QUEEN'
+                       : scene.biome === 'castle' && scene.bossState.castlePhase === 2 ? 'CASTLE DRAGON'
                        : 'ANCIENT RAM';
         }
         scene.hud.syncCountdown(`${bossName} SPAWNING IN ${secs}`, '#ff5050');
@@ -381,11 +375,8 @@ export class SpawnSystem {
     }
 
     // Non-boss wave finished → start build break, advance wave counter.
-    if (!isBossWave && scene.waveSpawned >= waveSize && scene.waveKills >= waveSize) {
-      scene.wave++;
-      scene.waveSpawned = 0;
-      scene.waveKills = 0;
-      scene.waveBreakUntil = time + CFG.spawn.waveBreak;
+    if (!isBossWave && scene.waveState.waveSpawned >= waveSize && scene.waveState.waveKills >= waveSize) {
+      scene.waveState.enterWaveBreak(time, CFG.spawn.waveBreak);
       return;
     }
 
@@ -400,14 +391,14 @@ export class SpawnSystem {
       scene.spawnInterval = Math.max(scene.levelMinInterval, scene.spawnInterval * scene.levelRampFactor);
       scene.heavyChance = Math.min(CFG.spawn.heavyChanceMax, scene.heavyChance + CFG.spawn.heavyChanceStep);
     }
-    if (scene.spawnTimer > scene.spawnInterval && scene.waveSpawned < waveSize) {
+    if (scene.spawnTimer > scene.spawnInterval && scene.waveState.waveSpawned < waveSize) {
       scene.spawnTimer = 0;
       this.spawnEnemy();
-      scene.waveSpawned++;
+      scene.waveState.recordSpawn();
     }
 
     // Runner/wolf pack bursts, independent of the normal spawn cadence.
-    if (scene.wave >= CFG.spawn.runnerPackStartWave && scene.waveSpawned < waveSize) {
+    if (scene.waveState.wave >= CFG.spawn.runnerPackStartWave && scene.waveState.waveSpawned < waveSize) {
       const cdMin = scene.biome === 'forest' ? CFG.forest.wolfPackCooldownMin
                   : scene.biome === 'infected' ? CFG.infected.runnerPackCooldownMin
                   : scene.biome === 'river' ? CFG.river.dragonflyPackCooldownMin
@@ -462,9 +453,9 @@ export class SpawnSystem {
       packKind = isForest ? 'wolf' : isInfected ? 'infected_runner' : isRiver ? 'dragonfly' : 'rat';
     }
     const delay = 150;
-    const toSpawn = Math.min(n, waveSize - scene.waveSpawned);
+    const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
     for (let i = 0; i < toSpawn; i++) {
-      scene.waveSpawned++;
+      scene.waveState.recordSpawn();
       if (i === 0) {
         const { cx, cy } = computeSpawnPos();
         const e = new Enemy(scene, cx, cy, packKind);
@@ -472,7 +463,7 @@ export class SpawnSystem {
         scene.enemies.add(e);
       } else {
         scene.time.delayedCall(delay * i, () => {
-          if (scene.gameOver) return;
+          if (scene.endState.gameOver) return;
           const { cx, cy } = computeSpawnPos();
           const e = new Enemy(scene, cx + Phaser.Math.Between(-8, 8), cy + Phaser.Math.Between(-8, 8), packKind);
           this.applyEnemyDifficulty(e);
@@ -527,14 +518,14 @@ export class SpawnSystem {
       const n = Math.min(Phaser.Math.Between(CFG.forest.spiderClusterMin, CFG.forest.spiderClusterMax), scene.levelClusterMax);
       const spread = CFG.forest.spiderClusterSpread;
       const waveSize = scene.levelWaveSize;
-      const toSpawn = Math.min(n, waveSize - scene.waveSpawned);
+      const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
         const sy = y + Phaser.Math.Between(-spread, spread);
         const se = new Enemy(scene, sx, sy, 'spider');
         this.applyEnemyDifficulty(se);
         scene.enemies.add(se);
-        if (i > 0) scene.waveSpawned++;
+        if (i > 0) scene.waveState.recordSpawn();
       }
       return;
     }
@@ -543,14 +534,14 @@ export class SpawnSystem {
       const n = Math.min(Phaser.Math.Between(CFG.infected.clusterMin, CFG.infected.clusterMax), scene.levelClusterMax);
       const spread = CFG.infected.clusterSpread;
       const waveSize = scene.levelWaveSize;
-      const toSpawn = Math.min(n, waveSize - scene.waveSpawned);
+      const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
         const sy = y + Phaser.Math.Between(-spread, spread);
         const se = new Enemy(scene, sx, sy, kind);
         this.applyEnemyDifficulty(se);
         scene.enemies.add(se);
-        if (i > 0) scene.waveSpawned++;
+        if (i > 0) scene.waveState.recordSpawn();
       }
       return;
     }
@@ -559,14 +550,14 @@ export class SpawnSystem {
       const n = Math.min(Phaser.Math.Between(CFG.castle.clusterMin, CFG.castle.clusterMax), scene.levelClusterMax);
       const spread = CFG.castle.clusterSpread;
       const waveSize = scene.levelWaveSize;
-      const toSpawn = Math.min(n, waveSize - scene.waveSpawned);
+      const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
         const sy = y + Phaser.Math.Between(-spread, spread);
         const se = new Enemy(scene, sx, sy, kind);
         this.applyEnemyDifficulty(se);
         scene.enemies.add(se);
-        if (i > 0) scene.waveSpawned++;
+        if (i > 0) scene.waveState.recordSpawn();
       }
       return;
     }
@@ -575,14 +566,14 @@ export class SpawnSystem {
       const n = Math.min(Phaser.Math.Between(CFG.river.clusterMin, CFG.river.clusterMax), scene.levelClusterMax);
       const spread = CFG.river.clusterSpread;
       const waveSize = scene.levelWaveSize;
-      const toSpawn = Math.min(n, waveSize - scene.waveSpawned);
+      const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
       for (let i = 0; i < toSpawn; i++) {
         const sx = x + Phaser.Math.Between(-spread, spread);
         const sy = y + Phaser.Math.Between(-spread, spread);
         const se = new Enemy(scene, sx, sy, kind);
         this.applyEnemyDifficulty(se);
         scene.enemies.add(se);
-        if (i > 0) scene.waveSpawned++;
+        if (i > 0) scene.waveState.recordSpawn();
       }
       return;
     }

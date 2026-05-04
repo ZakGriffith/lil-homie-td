@@ -1,7 +1,7 @@
 import type Phaser from 'phaser';
 import type { ViewportInfo } from '../viewport';
 import type { Biome } from '../levels';
-import type { BuildKind } from '../scenes/GameScene';
+import type { BuildKind } from '../state/BuildState';
 import type { TowerKind } from '../entities/Tower';
 import type { GameEndState } from './registry';
 

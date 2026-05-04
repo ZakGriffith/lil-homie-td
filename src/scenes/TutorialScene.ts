@@ -175,7 +175,7 @@ export class TutorialScene extends Phaser.Scene {
       // Suppress normal spawning
       const gameScene = this.scene.get('Game') as any;
       if (gameScene) {
-        gameScene.waveStartAt = Infinity;
+        gameScene.waveState.suspendInitialBuildPhase();
       }
       this.advanceTo('game_move');
     }
@@ -839,7 +839,7 @@ export class TutorialScene extends Phaser.Scene {
     // since the tutorial already walked the player through placement.
     const gameScene = this.scene.get('Game') as any;
     if (gameScene?.loadingDone) {
-      gameScene.waveStartAt = gameScene.vTime;
+      gameScene.waveState.resumeInitialBuildPhase(gameScene.vTime);
     }
 
     // Clean up listeners
