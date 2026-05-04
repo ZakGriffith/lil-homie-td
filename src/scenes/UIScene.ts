@@ -5,6 +5,7 @@ import { CFG } from '../config';
 import { Difficulty, saveMedal, LEVELS, Biome } from '../levels';
 import { SFX } from '../audio/sfx';
 import { VirtualJoystick } from '../ui/VirtualJoystick';
+import { loadInfiniteBest, saveInfiniteBest, RunStatsSnapshot } from '../state/RunStats';
 
 export class UIScene extends Phaser.Scene {
   hpBarGfx!: Phaser.GameObjects.Graphics;
@@ -1120,6 +1121,10 @@ export class UIScene extends Phaser.Scene {
   showEnd(s: any) {
     if (this.endPanel) return;
     if (s.win) saveMedal(this.levelId, this.difficulty);
+    if (s.runStats && this.difficulty === 'infinite') {
+      this.showInfiniteEnd(s);
+      return;
+    }
     const W = this.scale.width, H = this.scale.height;
 
     // Themed colors — green for VICTORY, red for DEFEAT. Hex strings used
@@ -1185,6 +1190,135 @@ export class UIScene extends Phaser.Scene {
     btnHit.on('pointerout', () => drawBtn(false));
 
     this.endPanel = this.add.container(0, 0, [bg, panel, title, sub, btnG, btnText, btnHit]).setDepth(1000);
+  }
+
+  /** Infinite-mode death screen — shows the full RunStats breakdown plus
+   *  ★ markers next to any field that beat the persisted best. */
+  private showInfiniteEnd(s: any) {
+    const W = this.scale.width, H = this.scale.height;
+    const stats: RunStatsSnapshot = {
+      wavesCleared: s.runStats.wavesCleared,
+      bossesKilled: s.runStats.bossesKilled,
+      bossesByKind: { ...s.runStats.bossesByKind },
+      enemiesKilled: s.runStats.enemiesKilled,
+      coinsCollected: s.runStats.coinsCollected,
+      coinsSpent: s.runStats.coinsSpent,
+      towersBuilt: s.runStats.towersBuilt,
+      towersUpgradedToMax: s.runStats.towersUpgradedToMax,
+      highestTowerLevel: s.runStats.highestTowerLevel,
+      wallsBuilt: s.runStats.wallsBuilt,
+      wallsDestroyed: s.runStats.wallsDestroyed,
+      damageDealt: s.runStats.damageDealt,
+      damageTaken: s.runStats.damageTaken,
+      timeSurvived: s.runStats.timeSurvived,
+    };
+    const newRecords = saveInfiniteBest(this.levelId, stats);
+
+    const accent = 0xc040c0; // infinite-mode purple
+    const titleHex = '#e090e0';
+
+    const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.78).setOrigin(0);
+
+    const boxW = this.p(440), boxH = this.p(420);
+    const boxX = W / 2 - boxW / 2, boxY = H / 2 - boxH / 2;
+    const boxR = this.p(10);
+    const panel = this.add.graphics();
+    panel.fillStyle(0x11172a, 0.97);
+    panel.fillRoundedRect(boxX, boxY, boxW, boxH, boxR);
+    panel.lineStyle(this.p(1), 0x2a3760, 0.7);
+    panel.strokeRoundedRect(boxX + this.p(3), boxY + this.p(3), boxW - this.p(6), boxH - this.p(6), boxR - this.p(2));
+    panel.lineStyle(this.p(2), accent, 0.9);
+    panel.strokeRoundedRect(boxX, boxY, boxW, boxH, boxR);
+
+    const title = this.add.text(W / 2, boxY + this.p(28), 'RUN ENDED', {
+      fontFamily: 'monospace', fontSize: this.fs(26), fontStyle: 'bold',
+      color: titleHex, stroke: '#0b0f1a', strokeThickness: this.p(4),
+    }).setOrigin(0.5);
+
+    // Stats rows. Two columns: label (left), value (right). ★ if record.
+    const row = (label: string, value: string, isRecord: boolean, idx: number) => {
+      const y = boxY + this.p(70) + idx * this.p(18);
+      const star = isRecord ? '★ ' : '   ';
+      const labelText = this.add.text(boxX + this.p(28), y, label, {
+        fontFamily: 'monospace', fontSize: this.fs(12), color: '#a0b0d0',
+      }).setOrigin(0, 0.5);
+      const valueText = this.add.text(boxX + boxW - this.p(28), y, `${star}${value}`, {
+        fontFamily: 'monospace', fontSize: this.fs(12), fontStyle: isRecord ? 'bold' : 'normal',
+        color: isRecord ? '#ffd84a' : '#ccd',
+      }).setOrigin(1, 0.5);
+      return [labelText, valueText];
+    };
+
+    const formatTime = (ms: number) => {
+      const total = Math.floor(ms / 1000);
+      const m = Math.floor(total / 60);
+      const sec = total % 60;
+      return `${m}m ${sec.toString().padStart(2, '0')}s`;
+    };
+
+    const rows: { label: string; value: string; key: keyof RunStatsSnapshot | null }[] = [
+      { label: 'Waves cleared',     value: `${stats.wavesCleared}`,           key: 'wavesCleared' },
+      { label: 'Bosses defeated',   value: `${stats.bossesKilled}`,           key: 'bossesKilled' },
+      { label: 'Time survived',     value: formatTime(stats.timeSurvived),    key: 'timeSurvived' },
+      { label: 'Enemies defeated',  value: `${stats.enemiesKilled}`,          key: 'enemiesKilled' },
+      { label: 'Damage dealt',      value: `${stats.damageDealt}`,            key: 'damageDealt' },
+      { label: 'Damage taken',      value: `${stats.damageTaken}`,            key: 'damageTaken' },
+      { label: 'Coins collected',   value: `${stats.coinsCollected}`,         key: 'coinsCollected' },
+      { label: 'Coins spent',       value: `${stats.coinsSpent}`,             key: 'coinsSpent' },
+      { label: 'Towers built',      value: `${stats.towersBuilt}`,            key: 'towersBuilt' },
+      { label: 'Max-tier towers',   value: `${stats.towersUpgradedToMax}`,    key: 'towersUpgradedToMax' },
+      { label: 'Highest tower lvl', value: `${stats.highestTowerLevel + 1}`,  key: 'highestTowerLevel' },
+      { label: 'Walls built',       value: `${stats.wallsBuilt}`,             key: 'wallsBuilt' },
+      { label: 'Walls destroyed',   value: `${stats.wallsDestroyed}`,         key: 'wallsDestroyed' },
+    ];
+
+    const items: Phaser.GameObjects.GameObject[] = [bg, panel, title];
+    rows.forEach((r, i) => {
+      const isRecord = r.key !== null && newRecords.has(r.key);
+      const [a, b] = row(r.label, r.value, isRecord, i);
+      items.push(a, b);
+    });
+
+    // Footer hint about new records
+    const recordCount = Array.from(newRecords).length;
+    if (recordCount > 0) {
+      const hint = this.add.text(W / 2, boxY + boxH - this.p(75), `★  ${recordCount} new personal best${recordCount === 1 ? '' : 's'}`, {
+        fontFamily: 'monospace', fontSize: this.fs(12), color: '#ffd84a',
+        fontStyle: 'bold',
+      }).setOrigin(0.5);
+      items.push(hint);
+    }
+
+    // RETURN button
+    const btnW = this.p(180), btnH = this.p(40);
+    const btnCX = W / 2, btnCY = boxY + boxH - this.p(35);
+    const btnX = btnCX - btnW / 2, btnY = btnCY - btnH / 2;
+    const btnR = this.p(7);
+    const btnG = this.add.graphics();
+    const drawBtn = (hover: boolean) => {
+      btnG.clear();
+      btnG.fillStyle(hover ? 0x1a2238 : 0x0b0f1a, 0.95);
+      btnG.fillRoundedRect(btnX, btnY, btnW, btnH, btnR);
+      btnG.lineStyle(this.p(1.5), accent, hover ? 1 : 0.85);
+      btnG.strokeRoundedRect(btnX, btnY, btnW, btnH, btnR);
+    };
+    drawBtn(false);
+    const btnText = this.add.text(btnCX, btnCY, 'RETURN TO MAP', {
+      fontFamily: 'monospace', fontSize: this.fs(13), fontStyle: 'bold',
+      color: titleHex, stroke: '#0b0f1a', strokeThickness: this.p(2),
+    }).setOrigin(0.5);
+    const btnHit = this.add.rectangle(btnCX, btnCY, btnW, btnH, 0x000000, 0).setInteractive({ useHandCursor: true });
+    btnHit.on('pointerdown', () => {
+      SFX.play('click');
+      this.scene.stop('Game');
+      this.scene.stop('UI');
+      this.scene.start('LevelSelect');
+    });
+    btnHit.on('pointerover', () => drawBtn(true));
+    btnHit.on('pointerout', () => drawBtn(false));
+    items.push(btnG, btnText, btnHit);
+
+    this.endPanel = this.add.container(0, 0, items).setDepth(1000);
   }
 
   shutdown() {

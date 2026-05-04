@@ -33,6 +33,10 @@ export class Player extends Phaser.Physics.Arcade.Sprite {
     const now = (scene as any).vTime ?? scene.time.now;
     if (this.invuln > now) return;
     this.hp -= amount;
+    // Stats — track damage actually taken (post-invuln). Touch via any
+    // to avoid pulling GameScene types into this file.
+    const stats = (scene as any).runStats;
+    if (stats) stats.damageTaken += amount;
     this.invuln = now + 500;
     SFX.play('playerHurt');
     this.play('player-hit', true);

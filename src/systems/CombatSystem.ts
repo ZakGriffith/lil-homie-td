@@ -296,7 +296,9 @@ export class CombatSystem {
     if (!pr.active || !b.active || b.dying) return;
     // Cannonballs ignore direct hits — they explode on reaching their ground target
     if (pr.groundTarget) return;
+    const dmgApplied = Math.min(pr.damage, Math.max(0, b.hp));
     b.hurt(pr.damage);
+    scene.runStats.damageDealt += dmgApplied;
     const spark = scene.add.sprite(pr.x, pr.y, 'fx_hit_0').setDepth(15).setScale(0.5);
     spark.play('fx-hit');
     spark.once('animationcomplete', () => spark.destroy());
@@ -315,6 +317,16 @@ export class CombatSystem {
       // its in-world bar; the primary bar hides at this moment.
       if (b === scene.bossState.boss) getRegistry(scene.game).set('bossActive', false);
       this.dropBossLoot(b);
+      // Stats — bucket the kill by boss kind so the death panel can
+      // show "Rams: 3, Dragons: 1" etc.
+      scene.runStats.bossesKilled++;
+      const bucket = b.bossKind === 'queen' ? 'queen'
+        : b.bossKind === 'dragon' ? 'dragon'
+        : b.animPrefix === 'fboss' ? 'wendigo'
+        : b.animPrefix === 'iboss' ? 'blighted'
+        : b.animPrefix === 'rboss' ? 'fog'
+        : 'ram';
+      scene.runStats.bossesByKind[bucket] = (scene.runStats.bossesByKind[bucket] ?? 0) + 1;
     }
   }
 
@@ -347,7 +359,9 @@ export class CombatSystem {
     const scene = this.scene;
     if (!e || !e.active || e.dying) return;
     SFX.play('hit');
+    const dmgApplied = Math.min(dmg, Math.max(0, e.hp));
     e.hurt(dmg);
+    scene.runStats.damageDealt += dmgApplied;
     if (e.hp <= 0) {
       if (!e.noCoinDrop) {
         const tier =
@@ -361,6 +375,7 @@ export class CombatSystem {
       burst.once('animationcomplete', () => burst.destroy());
 
       scene.player.kills++;
+      scene.runStats.enemiesKilled++;
       scene.waveState.recordKill();
       scene.hud.pushHud();
       if (getRegistry(scene.game).get('tutorialActive')) getEvents(scene.game.events).emit('tutorial-kill');

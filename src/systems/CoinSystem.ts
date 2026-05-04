@@ -39,6 +39,7 @@ export class CoinSystem {
       if (d < 18) {
         // collect
         scene.player.money += coin.value;
+        scene.runStats.coinsCollected += coin.value;
         scene.hud.pushHud();
         SFX.play('coin');
         // Tutorial event: only emit when the tutorial is active. Otherwise

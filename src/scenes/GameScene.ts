@@ -26,6 +26,7 @@ import { WaveState } from '../state/WaveState';
 import { BuildState, BuildKind } from '../state/BuildState';
 import { BossState } from '../state/BossState';
 import { EndState } from '../state/EndState';
+import { RunStats } from '../state/RunStats';
 import { SFX } from '../audio/sfx';
 import { generateAllArt, registerAnimations } from '../assets/generateArt';
 import { Difficulty, Biome, LEVELS } from '../levels';
@@ -128,6 +129,9 @@ export class GameScene extends Phaser.Scene {
    *  EndSystem reads/writes this; GameScene's update() short-circuits on
    *  endState.gameOver and endState.dying. */
   endState = new EndState();
+  /** Per-run stat counters — populated by callsites throughout the
+   *  systems and rendered on the infinite-mode death screen. */
+  runStats = new RunStats();
   levelId = 1;
   difficulty: Difficulty = 'easy';
   // (Infinite-mode counters live on bossState now: infiniteBossesCleared,
@@ -216,6 +220,7 @@ export class GameScene extends Phaser.Scene {
     getRegistry(this.game).set('gameEndState', undefined);
     this.killsTarget = CFG.winKills;
     this.endState.reset();
+    this.runStats.reset();
     this.boulders = [];
     this.webs = [];
     this.gasClouds = [];

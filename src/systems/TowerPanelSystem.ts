@@ -239,8 +239,12 @@ export class TowerPanelSystem {
       return;
     }
     scene.player.money -= cost;
+    scene.runStats.coinsSpent += cost;
     t.totalSpent += cost;
     t.upgrade();
+    // Track highest tower level reached and count max-tier upgrades.
+    if (t.level > scene.runStats.highestTowerLevel) scene.runStats.highestTowerLevel = t.level;
+    if (!t.canUpgrade()) scene.runStats.towersUpgradedToMax++;
     SFX.play('upgrade');
     scene.hud.floatText(t.x, t.y - 40, `LVL ${t.level + 1}`, '#7cf29a');
     getEvents(scene.game.events).emit('tutorial-tower-upgraded');

@@ -180,6 +180,8 @@ export class BuildSystem {
       const kindCost = CFG.tower.kinds[scene.buildState.towerKind].cost;
       if (scene.player.money < kindCost) return;
       scene.player.money -= kindCost;
+      scene.runStats.coinsSpent += kindCost;
+      scene.runStats.towersBuilt++;
       const t = new Tower(scene, ox, oy, scene.buildState.towerKind);
       scene.towers.push(t);
       scene.towerGroup.add(t);
@@ -216,6 +218,8 @@ export class BuildSystem {
     gridSet(scene.grid, tx, ty, 0);
     if (afterReach < Math.min(beforeReach, 2)) return;
     scene.player.money -= CFG.wall.cost;
+    scene.runStats.coinsSpent += CFG.wall.cost;
+    scene.runStats.wallsBuilt++;
     const w = new Wall(scene, tx, ty);
     scene.walls.push(w);
     scene.wallGroup.add(w);

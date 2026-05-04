@@ -181,9 +181,15 @@ export class EndSystem {
       scene.endState.enterGameOver();
       scene.physics.pause();
       SFX.play('gameOver');
+      // Stats — snapshot the cumulative wave + run duration. Mirrors
+      // bossesKilled from bossState for the death panel.
+      scene.runStats.wavesCleared = scene.waveState.wave;
+      scene.runStats.timeSurvived = scene.vTime;
+      scene.runStats.bossesKilled = scene.bossState.infiniteBossesCleared;
       const payload = {
         win: false, name: 'Ranger',
-        kills: scene.player.kills, money: scene.player.money
+        kills: scene.player.kills, money: scene.player.money,
+        runStats: scene.difficulty === 'infinite' ? scene.runStats : undefined,
       };
       getRegistry(scene.game).set('gameEndState', payload);
       getEvents(scene.game.events).emit('game-end', payload);

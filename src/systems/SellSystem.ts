@@ -153,6 +153,7 @@ export class SellSystem {
     this.cancelSellTimer(w);
     const idx = scene.walls.indexOf(w);
     if (idx >= 0) scene.walls.splice(idx, 1);
+    scene.runStats.wallsDestroyed++;
     const tx = w.tileX, ty = w.tileY;
     gridSet(scene.grid, tx, ty, 0);
     scene.pathing.syncWallTile(tx, ty, false);
