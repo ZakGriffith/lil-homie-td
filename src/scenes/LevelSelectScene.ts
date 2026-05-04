@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { SFX } from '../audio/sfx';
 import { computeViewport } from '../viewport';
@@ -70,10 +72,10 @@ export class LevelSelectScene extends Phaser.Scene {
     // Store all three scales in the registry so GameScene and UIScene can use
     // them. GameScene's create() will resize the canvas back to the full
     // viewport when gameplay starts.
-    this.game.registry.set('sf', vp.uiScale);
-    this.game.registry.set('cameraZoom', vp.cameraZoom);
-    this.game.registry.set('uiScale', vp.uiScale);
-    this.game.registry.set('isMobile', vp.isMobile);
+    getRegistry(this.game).set('sf', vp.uiScale);
+    getRegistry(this.game).set('cameraZoom', vp.cameraZoom);
+    getRegistry(this.game).set('uiScale', vp.uiScale);
+    getRegistry(this.game).set('isMobile', vp.isMobile);
 
     // Layout uses the 3:2-fitted canvas, so the legacy min-ratio formula now
     // resolves to native/CFG (ratio is identical on both axes by construction).
@@ -85,9 +87,9 @@ export class LevelSelectScene extends Phaser.Scene {
       // Only restart while LevelSelect is the active scene.
       if (this.scene.isActive('LevelSelect')) this.scene.restart();
     };
-    this.game.events.once('viewport-changed', onViewportChanged);
+    getEvents(this.game.events).once('viewport-changed', onViewportChanged);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off('viewport-changed', onViewportChanged);
+      getEvents(this.game.events).off('viewport-changed', onViewportChanged);
     });
 
     this.medalStore = loadMedals();
@@ -136,7 +138,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     // Launch tutorial for first-time players
     if (isTutorialNeeded()) {
-      this.game.registry.set('tutorialActive', true);
+      getRegistry(this.game).set('tutorialActive', true);
       this.scene.launch('Tutorial');
     }
   }
@@ -289,7 +291,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
   // ---- LEVEL NODES ----
   drawNodes() {
-    const isMobile = !!this.game.registry.get('isMobile');
+    const isMobile = !!getRegistry(this.game).get('isMobile');
     for (const level of LEVELS) {
       const unlocked = isLevelUnlocked(this.medalStore, level.id);
       const medals = this.medalStore[String(level.id)];
@@ -373,7 +375,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
       hitZone.on('pointerdown', () => {
         // During tutorial, only the Meadow node is clickable
-        if (this.game.registry.get('tutorialStep') === 'ls_click_meadow' && level.id !== 1) return;
+        if (getRegistry(this.game).get('tutorialStep') === 'ls_click_meadow' && level.id !== 1) return;
         if (!unlocked) {
           const prevLevel = LEVELS.find(l => l.id === level.id - 1);
           const prevName = prevLevel ? prevLevel.name : `Level ${level.id - 1}`;
@@ -386,8 +388,8 @@ export class LevelSelectScene extends Phaser.Scene {
         }
         this.playDoorOpen(0.34, 2.0, 0.12);
         this.openDifficultyPanel(level);
-        if (this.game.registry.get('tutorialActive')) {
-          this.game.events.emit('tutorial-level-clicked', level.id);
+        if (getRegistry(this.game).get('tutorialActive')) {
+          getEvents(this.game.events).emit('tutorial-level-clicked', level.id);
         }
       });
 
@@ -458,7 +460,7 @@ export class LevelSelectScene extends Phaser.Scene {
 
     const W = this.scale.width;
     const H = this.scale.height;
-    const isMobile = !!this.game.registry.get('isMobile');
+    const isMobile = !!getRegistry(this.game).get('isMobile');
     // On mobile the panel fills almost the entire canvas vertically so the
     // buttons are tap-friendly. Desktop keeps the original compact size.
     const pw = isMobile ? Math.min(this.p(560), W * 0.92) : this.p(300);
@@ -471,7 +473,7 @@ export class LevelSelectScene extends Phaser.Scene {
     const backdrop = this.add.rectangle(0, 0, W, H, 0x000000, 0.65)
       .setInteractive();
     backdrop.on('pointerdown', () => {
-      if (this.game.registry.get('tutorialActive')) return; // don't close during tutorial
+      if (getRegistry(this.game).get('tutorialActive')) return; // don't close during tutorial
       this.closeDifficultyPanel();
     });
 
@@ -543,7 +545,7 @@ export class LevelSelectScene extends Phaser.Scene {
       }).setOrigin(0, 0.5);
 
       hitRect.on('pointerover', () => {
-        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
+        if (getRegistry(this.game).get('tutorialActive') && diff !== 'easy') return;
         btnBg.clear();
         btnBg.fillStyle(0x2a3760, 1);
         btnBg.fillRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
@@ -551,7 +553,7 @@ export class LevelSelectScene extends Phaser.Scene {
         btnBg.strokeRoundedRect(-btnW / 2, by - btnH / 2, btnW, btnH, this.p(6));
       });
       hitRect.on('pointerout', () => {
-        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
+        if (getRegistry(this.game).get('tutorialActive') && diff !== 'easy') return;
         const selected = this.selectedDiff === diff;
         btnBg.clear();
         btnBg.fillStyle(selected ? 0x2a3a60 : 0x1a2540, 1);
@@ -561,7 +563,7 @@ export class LevelSelectScene extends Phaser.Scene {
       });
       hitRect.on('pointerdown', () => {
         // During tutorial, only Easy is selectable
-        if (this.game.registry.get('tutorialActive') && diff !== 'easy') return;
+        if (getRegistry(this.game).get('tutorialActive') && diff !== 'easy') return;
         this.playDoorOpen(0.34, 2.0, 0.12);
         this.selectedDiff = diff;
         for (const btn of this.diffButtons) {
@@ -575,8 +577,8 @@ export class LevelSelectScene extends Phaser.Scene {
           btn.text.setColor(sel ? '#fff' : '#ccd');
         }
         this.updateStartButton();
-        if (this.game.registry.get('tutorialActive')) {
-          this.game.events.emit('tutorial-diff-clicked', diff);
+        if (getRegistry(this.game).get('tutorialActive')) {
+          getEvents(this.game.events).emit('tutorial-diff-clicked', diff);
         }
       });
 

@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Difficulty, saveMedal, LEVELS, Biome } from '../levels';
 import { SFX } from '../audio/sfx';
@@ -78,12 +80,12 @@ export class UIScene extends Phaser.Scene {
     this.bossIndicator = null;
     // Restore speedIdx if a prior incarnation persisted it (e.g. across a
     // viewport-driven scene restart on rotation). Default to 0 for fresh runs.
-    this.speedIdx = (this.game.registry.get('uiSpeedIdx') as number) ?? 0;
+    this.speedIdx = (getRegistry(this.game).get('uiSpeedIdx') as number) ?? 0;
   }
 
   create() {
-    this.sf = this.game.registry.get('sf') || 1;
-    this.isMobile = !!this.game.registry.get('isMobile');
+    this.sf = getRegistry(this.game).get('sf') || 1;
+    this.isMobile = !!getRegistry(this.game).get('isMobile');
     const W = this.scale.width;
     const H = this.scale.height;
     const T = this.p(20); // top padding
@@ -137,13 +139,13 @@ export class UIScene extends Phaser.Scene {
     const slotX = (i: number) => barCenterX - (slots * slotSize + (slots - 1) * slotGap) / 2 + i * (slotSize + slotGap) + slotSize / 2;
 
     this.btnTower = this.makeHotbarSlot(slotX(0), hotbarY, slotSize, slotSize, '1', 'arrow', 'ARROW', '$60',
-      () => this.game.events.emit('ui-build', 'tower', 'arrow'));
+      () => getEvents(this.game.events).emit('ui-build', 'tower', 'arrow'));
     // Cannon is locked on the meadow level (intro) — unlocks from forest on.
     const cannonLocked = this.levelId === 1;
     this.btnCannon = this.makeHotbarSlot(slotX(1), hotbarY, slotSize, slotSize, '2', 'cannon', 'CANNON', '$60',
       cannonLocked
         ? () => { /* locked on meadow */ }
-        : () => this.game.events.emit('ui-build', 'tower', 'cannon'));
+        : () => getEvents(this.game.events).emit('ui-build', 'tower', 'cannon'));
     this.btnMage = this.makeHotbarSlot(slotX(2), hotbarY, slotSize, slotSize, '3', 'mage', 'MAGE', '$80',
       () => { /* locked — mage tower not yet implemented */ });
 
@@ -167,7 +169,7 @@ export class UIScene extends Phaser.Scene {
     this.btnMage.add(buildLockOverlay());
     if (cannonLocked) this.btnCannon.add(buildLockOverlay());
     this.btnWall = this.makeHotbarSlot(slotX(3), hotbarY, slotSize, slotSize, '4', 'wall', 'WALL', `$${CFG.wall.cost}`,
-      () => this.game.events.emit('ui-build', 'wall'));
+      () => getEvents(this.game.events).emit('ui-build', 'wall'));
     this.btnSpeed = this.makeHotbarSlot(slotX(4), hotbarY, slotSize, slotSize, 'SPC', 'speed', 'SPEED', '',
       () => { if (!this.speedLocked) this.cycleSpeed(); });
     // Speed cycle text overlay — initial text matches the persisted speedIdx
@@ -182,7 +184,7 @@ export class UIScene extends Phaser.Scene {
     // Speed is locked during the tutorial. Lock state survives the lock
     // overlay so SPACE / 5 / hotbar-click all share the same gate, and we
     // can tear the overlay back off later from showSpeedUnlockToast.
-    this.speedLocked = !!this.game.registry.get('tutorialActive');
+    this.speedLocked = !!getRegistry(this.game).get('tutorialActive');
     if (this.speedLocked) {
       this.speedLockOverlay = buildLockOverlay();
       this.btnSpeed.add(this.speedLockOverlay);
@@ -292,25 +294,25 @@ export class UIScene extends Phaser.Scene {
     ).setOrigin(0.5, 1).setDepth(900).setVisible(false);
 
     // listen for HUD updates
-    this.game.events.on('hud', (s: any) => this.updateHud(s));
-    this.game.events.on('game-end', (s: any) => this.showEnd(s));
-    this.game.events.on('boss-spawn', (s: any) => this.showBossBar(s));
-    this.game.events.on('boss-hp', (s: any) => this.updateBossBar(s));
-    this.game.events.on('boss-died', () => this.hideBossBar());
+    getEvents(this.game.events).on('hud', (s: any) => this.updateHud(s));
+    getEvents(this.game.events).on('game-end', (s: any) => this.showEnd(s));
+    getEvents(this.game.events).on('boss-spawn', (s: any) => this.showBossBar(s));
+    getEvents(this.game.events).on('boss-hp', (s: any) => this.updateBossBar(s));
+    getEvents(this.game.events).on('boss-died', () => this.hideBossBar());
     // After the tutorial wraps, give the player a couple seconds to read
     // "Great job, Ranger!", then pop the speed-up unlock toast and
     // remove the speed slot's padlock.
-    this.game.events.on('tutorial-finished', () => {
+    getEvents(this.game.events).on('tutorial-finished', () => {
       this.time.delayedCall(2000, () => this.showSpeedUnlockToast());
     });
-    this.game.events.on('build-error', (msg: string) => {
+    getEvents(this.game.events).on('build-error', (msg: string) => {
       if (msg) {
         this.buildErrorText.setText(msg).setVisible(true);
       } else {
         this.buildErrorText.setVisible(false);
       }
     });
-    this.game.events.on('build-mode', (active: boolean, kind?: string, towerKind?: string) => {
+    getEvents(this.game.events).on('build-mode', (active: boolean, kind?: string, towerKind?: string) => {
       this.buildHintText.setVisible(active);
       if (!active) this.buildErrorText.setVisible(false);
       // Highlight the matching hotbar slot so the player can see at a glance
@@ -322,7 +324,7 @@ export class UIScene extends Phaser.Scene {
 
     // Recover the end-panel after a UI restart (e.g. mid-rotation): if the
     // game already ended and we missed the live event, replay it now.
-    const gameEndState = this.game.registry.get('gameEndState') as any;
+    const gameEndState = getRegistry(this.game).get('gameEndState') as any;
     if (gameEndState) this.showEnd(gameEndState);
 
     // Pull the current HUD state from GameScene so the HP / wave bars
@@ -351,7 +353,7 @@ export class UIScene extends Phaser.Scene {
     // toasts) — they'd fire against the wrong layout, set their
     // localStorage flags, and then get cancelled by the restart, eating
     // the player's only chance to see them.
-    const bootingForResize = !!this.game.registry.get('uiBootingForResize');
+    const bootingForResize = !!getRegistry(this.game).get('uiBootingForResize');
 
     // First time the player drops into the forest level (level 2), pop a
     // 6-second tooltip introducing the now-unlocked cannon tower. Flag is
@@ -397,7 +399,7 @@ export class UIScene extends Phaser.Scene {
       // taps in this region (otherwise tapping the stick during build mode
       // would also fire handleClick and try to place a tower under your thumb).
       const halfSize = outerR + touchPad;
-      this.game.registry.set('joystickBounds', {
+      getRegistry(this.game).set('joystickBounds', {
         x: cx - halfSize,
         y: cy - halfSize,
         w: halfSize * 2,
@@ -409,18 +411,18 @@ export class UIScene extends Phaser.Scene {
     // it from updatePlayer without coupling the two scenes through events.
     this.events.on(Phaser.Scenes.Events.UPDATE, () => {
       if (this.joystick) {
-        this.game.registry.set('joystickX', this.joystick.x);
-        this.game.registry.set('joystickY', this.joystick.y);
+        getRegistry(this.game).set('joystickX', this.joystick.x);
+        getRegistry(this.game).set('joystickY', this.joystick.y);
       }
     });
 
     // If a boss is alive (e.g. we just restarted on rotation), rebuild the
     // boss bar from registry state since boss-spawn is one-shot and we missed
     // the original event.
-    if (this.game.registry.get('bossActive')) {
-      const bossMaxHp = (this.game.registry.get('bossMaxHp') as number) || 1;
-      const bossHp = (this.game.registry.get('bossHp') as number) || 0;
-      const biome = this.game.registry.get('bossBiome') as string;
+    if (getRegistry(this.game).get('bossActive')) {
+      const bossMaxHp = (getRegistry(this.game).get('bossMaxHp') as number) || 1;
+      const bossHp = (getRegistry(this.game).get('bossHp') as number) || 0;
+      const biome = getRegistry(this.game).get('bossBiome') as string;
       this.showBossBar({ maxHp: bossMaxHp, biome });
       this.updateBossBar({ hp: bossHp, maxHp: bossMaxHp });
     }
@@ -430,13 +432,13 @@ export class UIScene extends Phaser.Scene {
     // they don't accumulate across restarts.
     const onViewportChanged = () => {
       // Clear joystick state so the player doesn't drift after restart.
-      this.game.registry.set('joystickX', 0);
-      this.game.registry.set('joystickY', 0);
+      getRegistry(this.game).set('joystickX', 0);
+      getRegistry(this.game).set('joystickY', 0);
       if (this.scene.isActive('UI')) this.scene.restart();
     };
-    this.game.events.on('viewport-changed', onViewportChanged);
+    getEvents(this.game.events).on('viewport-changed', onViewportChanged);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off('viewport-changed', onViewportChanged);
+      getEvents(this.game.events).off('viewport-changed', onViewportChanged);
     });
   }
 
@@ -504,9 +506,9 @@ export class UIScene extends Phaser.Scene {
     const labels = ['>', '>>', '>>>'];
     this.speedIdx = (this.speedIdx + 1) % speeds.length;
     this.speedLabel.setText(labels[this.speedIdx]);
-    this.game.events.emit('ui-speed', speeds[this.speedIdx]);
+    getEvents(this.game.events).emit('ui-speed', speeds[this.speedIdx]);
     // Persist so a viewport-driven scene restart preserves the chosen speed.
-    this.game.registry.set('uiSpeedIdx', this.speedIdx);
+    getRegistry(this.game).set('uiSpeedIdx', this.speedIdx);
   }
 
   makeButton(x: number, y: number, w: number, h: number, label: string, onClick: () => void) {
@@ -1195,13 +1197,13 @@ export class UIScene extends Phaser.Scene {
       this.bossIndicator.ptr.destroy();
       this.bossIndicator = null;
     }
-    this.game.events.off('hud');
-    this.game.events.off('game-end');
-    this.game.events.off('boss-spawn');
-    this.game.events.off('boss-hp');
-    this.game.events.off('boss-died');
-    this.game.events.off('tutorial-finished');
-    this.game.events.off('build-error');
-    this.game.events.off('build-mode');
+    getEvents(this.game.events).off('hud');
+    getEvents(this.game.events).off('game-end');
+    getEvents(this.game.events).off('boss-spawn');
+    getEvents(this.game.events).off('boss-hp');
+    getEvents(this.game.events).off('boss-died');
+    getEvents(this.game.events).off('tutorial-finished');
+    getEvents(this.game.events).off('build-error');
+    getEvents(this.game.events).off('build-mode');
   }
 }
