@@ -205,9 +205,13 @@ export class UIScene extends Phaser.Scene {
     this.progressCircles = [];
     this.progressLabels = [];
     this.progressLines = [];
+    // Infinite mode: 6 rolling nodes (current wave + next 5). Updated
+    // dynamically in updateHud.
     // Castle: 4 waves + queen skull + dragon skull = 6 nodes
     // Others: waveCount waves + 1 boss = waveCount+1 nodes
-    const totalNodes = this.biome === 'castle' ? 6 : CFG.spawn.waveCount + 1;
+    const totalNodes = this.difficulty === 'infinite' ? 6
+      : this.biome === 'castle' ? 6
+      : CFG.spawn.waveCount + 1;
     const nodeSpacing = this.p(36);
     const totalW = (totalNodes - 1) * nodeSpacing;
     const startX = (W - totalW) / 2;
@@ -229,7 +233,10 @@ export class UIScene extends Phaser.Scene {
       items.push(circle);
       // label (number or skull)
       // Castle: nodes 2 (queen) and 5 (dragon) are boss skulls
-      const isBoss = this.biome === 'castle' ? (i === 2 || i === 5) : i === totalNodes - 1;
+      // Infinite: labels are dynamic \u2014 placeholder, updateHud sets them
+      const isBoss = this.difficulty === 'infinite' ? false
+        : this.biome === 'castle' ? (i === 2 || i === 5)
+        : i === totalNodes - 1;
       const waveNum = this.biome === 'castle'
         ? (i < 2 ? i + 1 : i === 2 ? 0 : i < 5 ? i : 0) // 1,2,skull,3,4,skull
         : i + 1;
@@ -725,7 +732,42 @@ export class UIScene extends Phaser.Scene {
 
     // Update level progress circles
     const currentWave = s.wave ?? 1; // 1-indexed
-    if (this.biome === 'castle') {
+    if (this.difficulty === 'infinite') {
+      // Rolling 6-node strip: leftmost = current wave, then next 5.
+      // Wave numbering is cumulative (no reset across cycles), and
+      // every 4th wave (4, 8, 12, ...) is a boss event.
+      for (let i = 0; i < this.progressCircles.length; i++) {
+        const w = currentWave + i;
+        const isBoss = w % 4 === 0;
+        const isCurrent = i === 0;
+        const labelText = isBoss ? '☠' : `${w}`;
+        this.progressLabels[i].setText(labelText);
+        this.progressLabels[i].setFontSize(this.fs(isBoss ? 12 : 10));
+        if (isCurrent && isBoss && s.bossSpawned) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
+          this.progressCircles[i].setFillStyle(0x3a1010);
+          this.progressLabels[i].setColor('#ff6a6a');
+        } else if (isCurrent) {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
+          this.progressCircles[i].setFillStyle(0x1a2a4a);
+          this.progressLabels[i].setColor('#7cc4ff');
+        } else if (isBoss) {
+          // Upcoming boss — dim red so the player can see it coming
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x4a2a2a);
+          this.progressCircles[i].setFillStyle(0x1a0a0a);
+          this.progressLabels[i].setColor('#7a4a4a');
+        } else {
+          this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
+          this.progressCircles[i].setFillStyle(0x11172a);
+          this.progressLabels[i].setColor('#556');
+        }
+        if (i < this.progressLines.length) {
+          // Lines are blue when leading into the current node, dim
+          // otherwise — there's no "completed" past since the strip rolls.
+          this.progressLines[i].setFillStyle(0x2a3760);
+        }
+      }
+    } else if (this.biome === 'castle') {
       // Castle: 6 nodes — W1, W2, Queen, W3, W4, Dragon
       // Map node index to progress state
       const cp = s.castlePhase ?? 0;

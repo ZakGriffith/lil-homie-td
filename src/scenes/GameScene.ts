@@ -3799,11 +3799,19 @@ export class GameScene extends Phaser.Scene {
       { x: px - spawnR, y: py + spawnR },
       { x: px + spawnR, y: py + spawnR },
     ];
-    // Pick opposite corners for double bosses so they don't stack.
-    const cornerIdx = slotIdx === 0
-      ? Math.floor(Math.random() * corners.length)
-      : 3 - (this._infiniteFirstCorner ?? 0);
-    if (slotIdx === 0) this._infiniteFirstCorner = cornerIdx;
+    // Doubles each pick a random corner — they spawn synchronously but
+    // approach the player from different directions for a chaotic feel.
+    // Slot 1 is forced to a different corner from slot 0 so they don't
+    // stack on top of each other by chance.
+    let cornerIdx: number;
+    if (slotIdx === 0) {
+      cornerIdx = Math.floor(Math.random() * corners.length);
+      this._infiniteFirstCorner = cornerIdx;
+    } else {
+      const taken = this._infiniteFirstCorner ?? 0;
+      const others = [0, 1, 2, 3].filter(c => c !== taken);
+      cornerIdx = others[Math.floor(Math.random() * others.length)];
+    }
     const pick = corners[cornerIdx];
     const b = new Boss(this, pick.x, pick.y, def.biome, def.kind ?? '');
 
@@ -4536,15 +4544,15 @@ export class GameScene extends Phaser.Scene {
 
     const waveSize = this.levelWaveSize;
     const isInfinite = this.difficulty === 'infinite';
-    // Infinite mode is always 3 normal waves + 1 boss wave (4 total) and
-    // ignores the castle queen/dragon phase split — the home biome's
-    // boss spawns and the cycle restarts from wave 0 on death.
-    // Castle has 4 waves (0-3) with mid-boss after wave 1, final boss after wave 3
+    // Infinite mode keeps incrementing this.wave across cycles so the
+    // wave numbering reads 1-2-3-4(boss)-5-6-7-8(boss)-... instead of
+    // resetting each cycle. Boss waves land at every 4th index.
+    // Castle non-infinite has 4 waves (0-3) with mid-boss after wave 1,
+    // final boss after wave 3.
     const totalWaves = isInfinite ? 4 : (this.biome === 'castle' ? 4 : CFG.spawn.waveCount);
     const lastWaveIdx = totalWaves - 1;
-    // Castle: wave 1 triggers queen, wave 3 triggers dragon
     const isBossWave = isInfinite
-      ? this.wave >= lastWaveIdx
+      ? this.wave % 4 === 3
       : this.biome === 'castle'
         ? (this.castlePhase === 0 && this.wave === 1) || (this.castlePhase === 2 && this.wave === 3)
         : this.wave >= lastWaveIdx;
@@ -4705,10 +4713,22 @@ export class GameScene extends Phaser.Scene {
     // FAR_AI_CULL_SQ (1100px) and froze the entire pack on contact.
     // -π/2 = north, 0 = east, π/2 = south, π = west.
     const sideAngle = side === 0 ? -Math.PI / 2 : side === 1 ? Math.PI / 2 : side === 2 ? Math.PI : 0;
+    // Pick the pack's spawn direction ONCE so every member arrives in a
+    // tight cluster from the same compass point. Each member then re-
+    // anchors to the player's current position along that fixed angle
+    // (so a moving player doesn't strand the late spawns), with a small
+    // tangent-axis jitter keeping the cluster from stacking exactly.
+    const packAngle = sideAngle + (Math.random() - 0.5) * (Math.PI / 2);
+    const ca = Math.cos(packAngle), sa = Math.sin(packAngle);
+    // Tangent unit vector (perpendicular to the radial direction).
+    const tx = -sa, ty = ca;
     const computeSpawnPos = () => {
       const px = this.player.x, py = this.player.y;
-      const a = sideAngle + (Math.random() - 0.5) * (Math.PI / 2); // ±45° around side direction
-      return { cx: px + Math.cos(a) * spawnR, cy: py + Math.sin(a) * spawnR };
+      const jitter = Phaser.Math.Between(-18, 18);
+      return {
+        cx: px + ca * spawnR + tx * jitter,
+        cy: py + sa * spawnR + ty * jitter,
+      };
     };
     const isForest = this.biome === 'forest';
     const isInfected = this.biome === 'infected';
@@ -4972,7 +4992,9 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = false;
     this.boss = null;
     this.midBoss = null;
-    this.wave = 0;
+    // Wave numbering is cumulative — bump past the boss wave we just
+    // cleared so the next cycle reads wave N+1, not wave 1 again.
+    this.wave++;
     this.waveSpawned = 0;
     this.waveKills = 0;
     this.bossCountdownUntil = 0;
