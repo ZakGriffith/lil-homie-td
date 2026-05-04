@@ -109,6 +109,11 @@ export class GameScene extends Phaser.Scene {
   gameOver = false;
   levelId = 1;
   difficulty: Difficulty = 'easy';
+  // Infinite-mode state — never resets within a run, increments forever.
+  // Used by checkEndConditions to loop the wave/boss cycle instead of
+  // entering the win flow.
+  infiniteBossesCleared = 0;
+  infiniteResetUntil = 0;
   biome: Biome = 'grasslands';
   enemyHpMult = 1;
   enemySpeedMult = 1;
@@ -214,6 +219,8 @@ export class GameScene extends Phaser.Scene {
     this.castlePhase = 0;
     this.midBoss = null;
     this.midBossDefeated = false;
+    this.infiniteBossesCleared = 0;
+    this.infiniteResetUntil = 0;
     // Phaser reuses the scene instance across restarts (level transitions),
     // so class-field initializers don't re-run. The coin-pop pool can hold
     // refs to sprites that were destroyed during the previous level's
@@ -4355,17 +4362,23 @@ export class GameScene extends Phaser.Scene {
     }
 
     const waveSize = this.levelWaveSize;
+    const isInfinite = this.difficulty === 'infinite';
+    // Infinite mode is always 3 normal waves + 1 boss wave (4 total) and
+    // ignores the castle queen/dragon phase split — the home biome's
+    // boss spawns and the cycle restarts from wave 0 on death.
     // Castle has 4 waves (0-3) with mid-boss after wave 1, final boss after wave 3
-    const totalWaves = this.biome === 'castle' ? 4 : CFG.spawn.waveCount;
+    const totalWaves = isInfinite ? 4 : (this.biome === 'castle' ? 4 : CFG.spawn.waveCount);
     const lastWaveIdx = totalWaves - 1;
     // Castle: wave 1 triggers queen, wave 3 triggers dragon
-    const isBossWave = this.biome === 'castle'
-      ? (this.castlePhase === 0 && this.wave === 1) || (this.castlePhase === 2 && this.wave === 3)
-      : this.wave >= lastWaveIdx;
+    const isBossWave = isInfinite
+      ? this.wave >= lastWaveIdx
+      : this.biome === 'castle'
+        ? (this.castlePhase === 0 && this.wave === 1) || (this.castlePhase === 2 && this.wave === 3)
+        : this.wave >= lastWaveIdx;
 
     // Castle mid-boss phase: waiting for queen to die before resuming waves
     // Must come before the bossSpawned early-return so phase advancement can happen
-    if (this.biome === 'castle' && this.castlePhase === 1) {
+    if (!isInfinite && this.biome === 'castle' && this.castlePhase === 1) {
       if (this.midBossDefeated) {
         // Queen is dead — advance to phase 2 (waves 3-4)
         this.castlePhase = 2;
@@ -4413,7 +4426,13 @@ export class GameScene extends Phaser.Scene {
           this.bossCountdownUntil = time + CFG.boss.prepTime;
         }
         if (time >= this.bossCountdownUntil) {
-          if (this.biome === 'castle' && this.castlePhase === 0) {
+          if (isInfinite) {
+            // Phase 1 of infinite mode: always spawn the home biome's
+            // single boss. The full sequence (foreign bosses, doubles)
+            // arrives in phase 2.
+            if (this.biome === 'castle') this.spawnCastleBoss('queen');
+            else this.spawnBoss();
+          } else if (this.biome === 'castle' && this.castlePhase === 0) {
             this.spawnCastleBoss('queen');
           } else if (this.biome === 'castle' && this.castlePhase === 2) {
             this.spawnCastleBoss('dragon');
@@ -4675,6 +4694,35 @@ export class GameScene extends Phaser.Scene {
   checkEndConditions() {
     // Level is won by defeating the boss, not by a kill count.
     if (this.bossSpawned && (!this.boss || this.boss.dying || !this.boss.active)) {
+      // Infinite mode: never enter the win flow. Treat each boss death as
+      // the end of one cycle — let the player loot, then reset wave state
+      // and start the next 3-waves-plus-boss cycle.
+      if (this.difficulty === 'infinite') {
+        if (this.infiniteResetUntil === 0) {
+          this.game.events.emit('boss-died');
+          this.infiniteBossesCleared++;
+          this.infiniteResetUntil = this.vTime + 8000;
+          this.countdownColor = '#7cf29a';
+          const survivors = (this.enemies.getChildren() as Enemy[])
+            .filter((e) => e && e.active && !e.dying);
+          for (let i = 0; i < survivors.length; i++) {
+            const e = survivors[i];
+            this.time.delayedCall(i * 25, () => {
+              if (e.active && !e.dying) e.hurt(9999);
+            });
+          }
+        }
+        const remaining = Math.max(0, Math.ceil((this.infiniteResetUntil - this.vTime) / 1000));
+        this.syncCountdown(`Boss ${this.infiniteBossesCleared} cleared! Next cycle in ${remaining}s`, '#7cf29a');
+        if (this.vTime >= this.infiniteResetUntil) {
+          this.startNextInfiniteCycle();
+        } else if (this.coins.countActive() === 0 && this.winCollectedAt === 0) {
+          this.winCollectedAt = this.vTime;
+        } else if (this.winCollectedAt > 0 && this.vTime >= this.winCollectedAt + 2000) {
+          this.startNextInfiniteCycle();
+        }
+        return;
+      }
       // Castle mid-boss (queen) death: don't win — trigger next phase
       if (this.biome === 'castle' && this.castlePhase < 3) {
         if (!this.midBossDefeated && this.castlePhase === 1) {
@@ -4718,6 +4766,22 @@ export class GameScene extends Phaser.Scene {
         this.win();
       }
     }
+  }
+
+  /** Reset wave state for the next infinite-mode cycle. Called when the
+   *  boss-death loot window ends (or the player has collected everything
+   *  and the trailing pause has elapsed). */
+  startNextInfiniteCycle() {
+    this.bossSpawned = false;
+    this.boss = null;
+    this.wave = 0;
+    this.waveSpawned = 0;
+    this.waveKills = 0;
+    this.bossCountdownUntil = 0;
+    this.infiniteResetUntil = 0;
+    this.winCollectedAt = 0;
+    this.waveBreakUntil = this.vTime + CFG.spawn.waveBreak;
+    this.pushHud();
   }
 
   dying = false;

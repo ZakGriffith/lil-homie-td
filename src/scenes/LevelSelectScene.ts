@@ -462,7 +462,9 @@ export class LevelSelectScene extends Phaser.Scene {
     // On mobile the panel fills almost the entire canvas vertically so the
     // buttons are tap-friendly. Desktop keeps the original compact size.
     const pw = isMobile ? Math.min(this.p(560), W * 0.92) : this.p(300);
-    const ph = isMobile ? H * 0.92 : this.p(360);
+    // Desktop panel grew when we added the Infinite difficulty — five
+    // buttons need a bit more vertical room than the original four.
+    const ph = isMobile ? H * 0.92 : this.p(400);
     const px = W / 2, py = H / 2;
 
     // Backdrop
@@ -513,9 +515,10 @@ export class LevelSelectScene extends Phaser.Scene {
     const btnH = isMobile ? this.p(60) : this.p(38);
     const btnGap = isMobile ? this.p(12) : this.p(6);
     const btnW = isMobile ? Math.min(this.p(460), pw - this.p(40)) : this.p(230);
-    // Center the 4-button block vertically within the panel (between the
-    // title area at top and the START button area at bottom).
-    const btnBlockH = 4 * btnH + 3 * btnGap;
+    // Center the difficulty-button block vertically within the panel
+    // (between the title area at top and the START button area at bottom).
+    const btnCount = DIFFICULTY_ORDER.length;
+    const btnBlockH = btnCount * btnH + (btnCount - 1) * btnGap;
     const btnStartY = isMobile
       ? -btnBlockH / 2 + btnH / 2
       : this.p(-40);
