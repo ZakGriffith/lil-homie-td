@@ -4,6 +4,8 @@ import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { loadMedals, totalMedals } from '../levels';
 import { Enemy } from '../entities/Enemy';
+import type { Step, StepContext, TutorialStepName } from '../tutorial/Step';
+import { buildStepRegistry } from '../tutorial/registry';
 
 const STORAGE_KEY = 'td_tutorial_done';
 
@@ -16,35 +18,31 @@ export function markTutorialDone(): void {
   localStorage.setItem(STORAGE_KEY, 'true');
 }
 
-type Step =
-  | 'ls_click_meadow'
-  | 'ls_click_easy'
-  | 'ls_click_start'
-  | 'game_move'
-  | 'game_hud'
-  | 'game_stand_still'
-  | 'game_kill'
-  | 'game_press_1'
-  | 'game_place_tower'
-  | 'game_watch_tower'
-  | 'game_press_4'
-  | 'game_place_walls'
-  | 'game_exit_build'
-  | 'game_loot_coins'
-  | 'game_collect_60'
-  | 'game_click_tower'
-  | 'game_upgrade_tower'
-  | 'game_deselect_tower'
-  | 'game_done'
-  | 'complete';
-
+/**
+ * Tutorial driver. The actual per-step content (prompt text, overlay
+ * cutouts, advancement logic) lives in `src/tutorial/steps/*.ts`; this
+ * scene owns the lifecycle (lifetime of overlay/text/skip-btn graphics,
+ * pause/resume of GameScene, listener wiring) and dispatches incoming
+ * events / per-frame updates to whichever step is currently active.
+ *
+ * `pendingStep` is non-null while we're between two steps (the screen
+ * is blank during a delay). Some steps care about events that fire
+ * while they're pending — game_kill counts kills landed during the
+ * 2s lead-in, game_exit_build skips itself if the player already
+ * exited build mode. The dispatcher fires both the active step AND
+ * the pending step when one is set so those quirks live entirely
+ * inside the step files.
+ */
 export class TutorialScene extends Phaser.Scene {
-  step: Step = 'ls_click_meadow';
+  step: TutorialStepName = 'ls_click_meadow';
+  pendingStep: TutorialStepName | null = null;
+
   overlay!: Phaser.GameObjects.Graphics;
   textBg!: Phaser.GameObjects.Graphics;
   promptText!: Phaser.GameObjects.Text;
   arrowGfx!: Phaser.GameObjects.Graphics;
   skipBtn!: Phaser.GameObjects.Text;
+
   private sf = 1;
   private isMobile = false;
   private p(v: number) { return v * this.sf; }
@@ -58,16 +56,10 @@ export class TutorialScene extends Phaser.Scene {
   hudClickZone: Phaser.GameObjects.Rectangle | null = null;
   continueZone: Phaser.GameObjects.Rectangle | null = null;
 
-  // Tracking
-  moveDist = 0;
-  lastPx = 0;
-  lastPy = 0;
-  tutorialKills = 0;
-  wallsPlaced = 0;
-  watchTimer = 0;
-  stepDelay = 0;
-  /** Timestamp at which game_loot_coins should auto-advance. 0 = unset. */
-  lootAdvanceAt = 0;
+  /** When > 0, the time at which a pending advanceTo() should fire. */
+  private pendingFireAt = 0;
+
+  private steps: Map<TutorialStepName, Step> = new Map();
 
   constructor() { super('Tutorial'); }
 
@@ -75,7 +67,6 @@ export class TutorialScene extends Phaser.Scene {
     this.sf = getRegistry(this.game).get('sf') || 1;
     this.isMobile = !!getRegistry(this.game).get('isMobile');
     const W = this.scale.width;
-    const H = this.scale.height;
 
     // Full-screen dim overlay
     this.overlay = this.add.graphics().setDepth(100);
@@ -103,24 +94,20 @@ export class TutorialScene extends Phaser.Scene {
     this.skipBtn.on('pointerout', () => this.skipBtn.setColor('#888'));
     this.repositionSkipBtn();
 
-    // Re-render the active step + reposition skip button on viewport change
-    // (rotation, browser resize). Mobile portrait → landscape changes every
-    // tutorial element's coordinates, so we need to redraw them. Defer one
-    // microtask so GameScene's viewport-changed handler (which calls
-    // setGameSize) runs first and this.scale reflects the new dimensions.
+    // Re-render on viewport change. queueMicrotask defers to let
+    // GameScene's viewport-changed handler (which calls setGameSize)
+    // run first, so this.scale reflects the new dimensions.
     const onViewportChanged = () => {
       queueMicrotask(() => {
         this.sf = getRegistry(this.game).get('sf') || 1;
         this.isMobile = !!getRegistry(this.game).get('isMobile');
         this.repositionSkipBtn();
-        // Skip the redraw if a delayed transition is in flight — the screen
-        // is intentionally blank until pendingStep fires.
         if (!this.pendingStep) this.showStep();
       });
     };
     getEvents(this.game.events).on('viewport-changed', onViewportChanged);
     // The scale resize event fires whenever any scene calls setGameSize —
-    // critically, when GameScene expands the canvas back to the full device
+    // critically, when GameScene expands the canvas back to the full
     // viewport on map load. Without this listener the skip button stays
     // anchored to the LevelSelect-sized canvas and (in mobile landscape)
     // ends up overlapping the hotbar until the user rotates.
@@ -136,122 +123,141 @@ export class TutorialScene extends Phaser.Scene {
     });
 
     // Listen for events
-    getEvents(this.game.events).on('tutorial-level-clicked', this.onLevelClicked, this);
-    getEvents(this.game.events).on('tutorial-diff-clicked', this.onDiffClicked, this);
-    getEvents(this.game.events).on('tutorial-kill', this.onKill, this);
-    getEvents(this.game.events).on('tutorial-tower-placed', this.onTowerPlaced, this);
-    getEvents(this.game.events).on('tutorial-wall-placed', this.onWallPlaced, this);
-    getEvents(this.game.events).on('game-ready', this.onGameReady, this);
-    getEvents(this.game.events).on('build-mode', this.onBuildMode, this);
-    getEvents(this.game.events).on('tutorial-coin-collected', this.onCoinCollected, this);
-    getEvents(this.game.events).on('tutorial-tower-selected', this.onTowerSelected, this);
-    getEvents(this.game.events).on('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    getEvents(this.game.events).on('tutorial-tower-deselected', this.onTowerDeselected, this);
+    const ev = getEvents(this.game.events);
+    ev.on('tutorial-level-clicked', this.onLevelClicked, this);
+    ev.on('tutorial-diff-clicked', this.onDiffClicked, this);
+    ev.on('tutorial-kill', this.onKill, this);
+    ev.on('tutorial-tower-placed', this.onTowerPlaced, this);
+    ev.on('tutorial-wall-placed', this.onWallPlaced, this);
+    ev.on('game-ready', this.onGameReady, this);
+    ev.on('build-mode', this.onBuildMode, this);
+    ev.on('tutorial-coin-collected', this.onCoinCollected, this);
+    ev.on('tutorial-tower-selected', this.onTowerSelected, this);
+    ev.on('tutorial-tower-upgraded', this.onTowerUpgraded, this);
+    ev.on('tutorial-tower-deselected', this.onTowerDeselected, this);
+
+    // Build a fresh registry every create() so step-local counters start
+    // clean on tutorial restart.
+    this.steps = buildStepRegistry();
 
     this.step = 'ls_click_meadow';
+    this.pendingStep = null;
+    this.pendingFireAt = 0;
     getRegistry(this.game).set('tutorialStep', this.step);
-    this.moveDist = 0;
-    this.tutorialKills = 0;
-    this.wallsPlaced = 0;
-    this.coinsCollected = 0;
-    this.watchTimer = 0;
-    this.stepDelay = 0;
-    this.lootAdvanceAt = 0;
 
+    // Run enter() on the first step before render() — same lifecycle
+    // every transition uses.
+    this.steps.get(this.step)?.enter?.(this.buildCtx());
     this.showStep();
   }
 
-  onLevelClicked = (_id: number) => {
-    if (this.step === 'ls_click_meadow') this.advanceTo('ls_click_easy');
+  /**
+   * Build the read-through context object that steps see. Cheap (small
+   *  object literal); we don't bother caching it. `step` and `pendingStep`
+   *  are snapshots — buildCtx() is called fresh per event / render / frame
+   *  so they reflect the current values at dispatch time.
+   */
+  private buildCtx(): StepContext {
+    return {
+      scene: this,
+      W: this.scale.width,
+      H: this.scale.height,
+      isMobile: this.isMobile,
+      p: (v: number) => this.p(v),
+      fs: (v: number) => this.fs(v),
+      lsP: (v: number) => this.lsP(v),
+      showPrompt: (text, y, anchorY) => this.showPrompt(text, y, anchorY),
+      showClickPrompt: (text, y, nextStep, nextDelay) => this.showClickPrompt(text, y, nextStep, nextDelay),
+      drawDimWithHole: (cx, cy, r) => this.drawDimWithHole(cx, cy, r),
+      drawDimWithCutout: (x, y, w, h) => this.drawDimWithCutout(x, y, w, h),
+      drawDimWithRect: (x, y, w, h) => this.drawDimWithRect(x, y, w, h),
+      drawArrow: (x, y, dir) => this.drawArrow(x, y, dir),
+      trackLabel: (obj) => { this.hudLabels.push(obj); },
+      setHudClickZone: (zone) => { this.hudClickZone = zone; },
+      arrowGfx: this.arrowGfx,
+      overlay: this.overlay,
+      pauseGame: () => this.pauseGame(),
+      resumeGame: () => this.resumeGame(),
+      spawnTutorialEnemies: (count) => this.spawnTutorialEnemies(this.scene.get('Game') as any, count),
+      advanceTo: (step, delayMs) => this.advanceTo(step, delayMs ?? 0),
+      showStep: () => this.showStep(),
+      step: this.step,
+      pendingStep: this.pendingStep,
+      setPendingStep: (s) => { this.pendingStep = s; },
+      gameScene: this.scene.get('Game') as any,
+    };
+  }
+
+  // ---------- Event dispatchers ----------
+
+  /**
+   * Forward the event to BOTH the active step AND the pending step (when
+   * one is set). game_kill counts kills landed during the 2s lead-in,
+   * and game_exit_build skips itself if the player already exited build
+   * mode during the prior step's delay — both rely on this dual fire.
+   * Stateless steps without the matching handler simply ignore it.
+   */
+  private dispatchEvent<K extends keyof Step>(
+    method: K,
+    invoke: (step: Step) => void,
+  ) {
+    const active = this.steps.get(this.step);
+    if (active && typeof active[method] === 'function') invoke(active);
+    if (this.pendingStep && this.pendingStep !== this.step) {
+      const pending = this.steps.get(this.pendingStep);
+      if (pending && typeof pending[method] === 'function') invoke(pending);
+    }
+  }
+
+  onLevelClicked = (id: number) => {
+    this.dispatchEvent('onLevelClicked', s => s.onLevelClicked!(this.buildCtx(), id));
   };
 
   onDiffClicked = (diff: string) => {
-    if (this.step === 'ls_click_easy' && diff === 'easy') this.advanceTo('ls_click_start');
+    this.dispatchEvent('onDiffClicked', s => s.onDiffClicked!(this.buildCtx(), diff));
   };
 
   onGameReady = () => {
-    // Game loaded — stop the tutorial overlay on level select, restart on game
-    if (this.step === 'ls_click_start') {
-      // Suppress normal spawning
-      const gameScene = this.scene.get('Game') as any;
-      if (gameScene) {
-        gameScene.waveState.suspendInitialBuildPhase();
-      }
-      this.advanceTo('game_move');
-    }
+    this.dispatchEvent('onGameReady', s => s.onGameReady!(this.buildCtx()));
   };
 
-  onBuildMode = (active: boolean, kind: string, _towerKind?: string) => {
-    if (this.step === 'game_press_1' && kind === 'tower') { this.resumeGame(); this.advanceTo('game_place_tower'); }
-    if (this.step === 'game_press_4' && kind === 'wall') { this.resumeGame(); this.advanceTo('game_place_walls'); }
-    if (this.step === 'game_exit_build' && !active) { this.advanceTo(this.nextStepAfterBuild(), 1500); }
-    // If player exits build mode during the delay before game_exit_build shows, skip it
-    if (this.pendingStep === 'game_exit_build' && !active) {
-      this.pendingStep = this.nextStepAfterBuild();
-    }
+  onBuildMode = (active: boolean, kind: string, towerKind?: string) => {
+    this.dispatchEvent('onBuildMode', s => s.onBuildMode!(this.buildCtx(), active, kind, towerKind));
   };
 
   onKill = () => {
-    // Count kills both during game_kill AND while it's queued via the 2s
-    // post-stand_still delay (pendingStep === 'game_kill'). Enemies spawn
-    // before the step transitions, and at high game speed the player can
-    // shred them in those 2s — without this, those kills evaporate and
-    // the tutorial gets stuck.
-    if (this.step === 'game_kill' || this.pendingStep === 'game_kill') {
-      this.tutorialKills++;
-      if (this.tutorialKills >= 6) {
-        if (this.pendingStep === 'game_kill') {
-          // Skip game_kill entirely — they already did it. Reuse the
-          // existing pending timer so the read pacing stays consistent.
-          this.pendingStep = 'game_loot_coins';
-        } else {
-          this.advanceTo('game_loot_coins', 1500);
-        }
-      } else if (this.step === 'game_kill') {
-        this.showStep(); // update counter once active
-      }
-    } else if (this.step === 'game_watch_tower') {
-      this.tutorialKills++;
-    }
+    this.dispatchEvent('onKill', s => s.onKill!(this.buildCtx()));
   };
 
   onTowerPlaced = () => {
-    if (this.step === 'game_place_tower') this.advanceTo('game_watch_tower', 2000);
+    this.dispatchEvent('onTowerPlaced', s => s.onTowerPlaced!(this.buildCtx()));
   };
 
-  coinsCollected = 0;
-
   onCoinCollected = () => {
-    if (this.step === 'game_loot_coins') {
-      this.coinsCollected++;
-    }
+    this.dispatchEvent('onCoinCollected', s => s.onCoinCollected!(this.buildCtx()));
   };
 
   onTowerSelected = () => {
-    if (this.step === 'game_click_tower') { this.resumeGame(); this.advanceTo('game_upgrade_tower'); }
-  };
-
-  onTowerDeselected = () => {
-    if (this.step === 'game_deselect_tower') this.advanceTo('game_done', 1500);
+    this.dispatchEvent('onTowerSelected', s => s.onTowerSelected!(this.buildCtx()));
   };
 
   onTowerUpgraded = () => {
-    if (this.step === 'game_upgrade_tower') this.advanceTo('game_deselect_tower', 1500);
+    this.dispatchEvent('onTowerUpgraded', s => s.onTowerUpgraded!(this.buildCtx()));
+  };
+
+  onTowerDeselected = () => {
+    this.dispatchEvent('onTowerDeselected', s => s.onTowerDeselected!(this.buildCtx()));
   };
 
   onWallPlaced = () => {
-    if (this.step === 'game_place_walls') {
-      this.wallsPlaced++;
-      if (this.wallsPlaced >= 3) this.advanceTo('game_exit_build');
-      else this.showStep(); // update counter
-    }
+    this.dispatchEvent('onWallPlaced', s => s.onWallPlaced!(this.buildCtx()));
   };
 
-  pendingStep: Step | null = null;
+  // ---------- Lifecycle ----------
 
-  advanceTo(step: Step, delayMs = 0) {
+  advanceTo(step: TutorialStepName, delayMs = 0) {
     if (delayMs > 0) {
-      if (this.pendingStep) return; // already waiting for a delayed transition
+      if (this.pendingStep) return; // already waiting
       // Clear the screen during the delay
       this.overlay.clear();
       this.textBg.clear();
@@ -259,310 +265,65 @@ export class TutorialScene extends Phaser.Scene {
       this.promptText.setText('');
       this.cleanupHudLabels();
       this.pendingStep = step;
-      this.stepDelay = this.time.now + delayMs;
+      this.pendingFireAt = this.time.now + delayMs;
       return;
     }
+    this.commitStep(step);
+  }
+
+  /** Actually transition to the named step (no delay). */
+  private commitStep(step: TutorialStepName) {
+    // exit() the previous step
+    const prev = this.steps.get(this.step);
+    prev?.exit?.(this.buildCtx());
+
     this.pendingStep = null;
+    this.pendingFireAt = 0;
     this.step = step;
     getRegistry(this.game).set('tutorialStep', step);
+
+    if (step === 'complete') {
+      this.finish();
+      return;
+    }
+
+    const next = this.steps.get(step);
+    next?.enter?.(this.buildCtx());
     this.showStep();
   }
 
   showStep() {
-    const W = this.scale.width;
-    const H = this.scale.height;
     this.overlay.clear();
     this.textBg.clear();
     this.arrowGfx.clear();
     this.cleanupContinueZone();
     this.cleanupHudLabels();
 
-    switch (this.step) {
-      case 'ls_click_meadow': {
-        const verb = this.isMobile ? 'Tap' : 'Click';
-        this.showPrompt(`Welcome, Ranger!\n${verb} on the Meadow to begin your training.`, this.p(80));
-        // Meadow node lives in LevelSelect's coord system (sf = nativeW/960),
-        // not the tutorial's uiScale-based one — they differ on mobile.
-        this.drawDimWithHole(this.lsP(150), this.lsP(345), this.lsP(40));
-        this.drawArrow(this.lsP(150), this.lsP(295), 'down');
-        break;
-      }
-
-      case 'ls_click_easy': {
-        // The difficulty panel rebuilds with mobile-specific button geometry
-        // (see LevelSelectScene.openDifficultyPanel), so derive the cutout
-        // from the same numbers rather than the desktop-only literals.
-        if (this.isMobile) {
-          const btnH = this.lsP(60);
-          const btnGap = this.lsP(12);
-          const btnBlockH = 4 * btnH + 3 * btnGap;
-          const easyCenterY = H / 2 - btnBlockH / 2 + btnH / 2;
-          const ph = H * 0.92;
-          const pw = Math.min(this.lsP(560), W * 0.92);
-          const btnW = Math.min(this.lsP(460), pw - this.lsP(40));
-          this.drawDimWithCutout(W / 2 - btnW / 2, easyCenterY - btnH / 2, btnW, btnH);
-          this.drawArrow(W / 2 - btnW / 2 - this.lsP(20), easyCenterY, 'right');
-          // Prompt text moves to the bottom of the viewport.
-          this.showPrompt('Tap Easy difficulty to start.', H - this.p(20), 1);
-        } else {
-          this.showPrompt('Select Easy difficulty to start.', this.p(80));
-          this.drawDimWithCutout(W / 2 - this.p(115), H / 2 - this.p(60), this.p(230), this.p(38));
-          this.drawArrow(W / 2 - this.p(130), H / 2 - this.p(41), 'right');
-        }
-        break;
-      }
-
-      case 'ls_click_start': {
-        const verb = this.isMobile ? 'Tap' : 'Click';
-        this.showPrompt(`${verb} START to begin!`, this.p(80));
-        if (this.isMobile) {
-          // Mobile panel: ph = H*0.92, START button at (panel center) + (ph/2 - p(80)).
-          // Absolute top of START = H/2 + ph/2 - p_ls(80).
-          const ph = H * 0.92;
-          const startBtnH = this.lsP(56);
-          const startBtnW = this.lsP(220);
-          const startTop = H / 2 + ph / 2 - startBtnH - this.lsP(24);
-          this.drawDimWithCutout(W / 2 - startBtnW / 2, startTop, startBtnW, startBtnH);
-          // Arrow moved up 1 button height so it sits above the START button.
-          this.drawArrow(W / 2, startTop - this.lsP(8), 'down');
-        } else {
-          this.drawDimWithCutout(W / 2 - this.p(60), H / 2 + this.p(128), this.p(120), this.p(36));
-          this.drawArrow(W / 2, H / 2 + this.p(120), 'down');
-        }
-        break;
-      }
-
-      case 'game_move':
-        this.showPrompt(
-          this.isMobile ? 'Use the joystick to move.' : 'Use WASD or Arrow Keys to move.',
-          this.p(150)
-        );
-        break;
-
-      case 'game_hud': {
-        this.pauseGame();
-        // Highlight the full top HUD bar with labeled callouts
-        // UIScene layout: circles at y=p(20) r=p(9), wave bar bottom at p(20)+p(52)=p(72)
-        const hudTop = this.p(4);       // above the progress circle tops
-        const hudBottom = this.p(80);   // below wave bar with padding
-        // Dim everything below the HUD
-        this.overlay.fillStyle(0x000000, 0.55);
-        this.overlay.fillRect(0, hudBottom + this.p(6), W, H - hudBottom - this.p(6));
-        // Highlight border around top bar
-        this.overlay.lineStyle(this.p(2), 0x4ad96a, 0.8);
-        this.overlay.strokeRoundedRect(this.p(4), hudTop, W - this.p(8), hudBottom - hudTop + this.p(4), this.p(6));
-
-        // HP label — arrow pointing up to HP bar (top-left)
-        const hpLabelY = hudBottom + this.p(28);
-        const hpCenterX = this.p(100);
-        this.drawArrow(hpCenterX, hudBottom + this.p(10), 'up');
-        const hpLabel = this.add.text(hpCenterX, hpLabelY, 'HEALTH', {
-          fontFamily: 'monospace', fontSize: this.fs(11), color: '#d94a4a',
-          stroke: '#000', strokeThickness: this.p(2)
-        }).setOrigin(0.5).setDepth(102);
-        this.hudLabels.push(hpLabel);
-
-        // Wave progress label — arrow pointing up to center progress circles
-        const waveCenterX = W / 2;
-        this.arrowGfx.fillStyle(0x4ad96a, 0.9);
-        const asz = this.p(10);
-        const ay = hudBottom + this.p(10);
-        this.arrowGfx.fillTriangle(waveCenterX - asz, ay, waveCenterX + asz, ay, waveCenterX, ay - asz * 1.5);
-        const waveLabel = this.add.text(waveCenterX, hpLabelY, 'WAVE PROGRESS', {
-          fontFamily: 'monospace', fontSize: this.fs(11), color: '#7cc4ff',
-          stroke: '#000', strokeThickness: this.p(2)
-        }).setOrigin(0.5).setDepth(102);
-        this.hudLabels.push(waveLabel);
-
-        // Gold label — arrow pointing up to gold badge (top-right)
-        const goldCenterX = W - this.p(80);
-        this.arrowGfx.fillTriangle(goldCenterX - asz, ay, goldCenterX + asz, ay, goldCenterX, ay - asz * 1.5);
-        const goldLabel = this.add.text(goldCenterX, hpLabelY, 'GOLD', {
-          fontFamily: 'monospace', fontSize: this.fs(11), color: '#ffd84a',
-          stroke: '#000', strokeThickness: this.p(2)
-        }).setOrigin(0.5).setDepth(102);
-        this.hudLabels.push(goldLabel);
-
-        // Main prompt below labels
-        this.showPrompt(
-          this.isMobile
-            ? 'Keep an eye on your HUD!\nIt shows your health, wave progress, and gold reserves.\n\nTAP anywhere to continue.'
-            : 'Keep an eye on your HUD!\nIt shows your health, wave progress, and gold reserves.\n\nClick anywhere to continue.',
-          this.p(180)
-        );
-
-        // Click anywhere to advance
-        this.hudClickZone = this.add.rectangle(W / 2, H / 2, W, H, 0x000000, 0)
-          .setInteractive({ useHandCursor: true }).setDepth(100);
-        this.hudClickZone.on('pointerdown', () => {
-          this.cleanupHudLabels();
-          this.resumeGame();
-          this.advanceTo('game_stand_still', 2000);
-        });
-        break;
-      }
-
-      case 'game_stand_still':
-        this.showPrompt('Your ranger fires automatically!\nStanding still shoots faster than while moving.', this.p(150));
-        break;
-
-      case 'game_kill':
-        this.showPrompt(`Enemies incoming! Shoot them down!\nKills: ${this.tutorialKills}/6`, this.p(150));
-        break;
-
-      case 'game_press_1': {
-        this.pauseGame();
-        this.showPrompt(
-          this.isMobile
-            ? 'Time to build defenses!\nTap the hotbar to select the Arrow Tower.'
-            : 'Time to build defenses!\nPress 1 or click the hotbar to select the Arrow Tower.',
-          H - this.p(140)
-        );
-        // Highlight hotbar slot 1 area — hotbarY is the TOP of the slot
-        const slotSize = this.p(48);
-        const slotGap = this.p(10);
-        const hotbarY = H - slotSize - this.p(32);
-        const barCenterX = W / 2;
-        const slots = 5;
-        const slotX = barCenterX - (slots * slotSize + (slots - 1) * slotGap) / 2 + slotSize / 2;
-        this.drawDimWithRect(slotX - slotSize / 2 - this.p(4), hotbarY - this.p(4), slotSize + this.p(8), slotSize + this.p(8));
-        this.drawArrow(slotX, hotbarY - this.p(12), 'down');
-        break;
-      }
-
-      case 'game_place_tower':
-        this.showPrompt(
-          this.isMobile
-            ? 'Tap near your ranger to place the Arrow Tower.'
-            : 'Click near your ranger to place the Arrow Tower.\nThe green ghost shows where it will go.',
-          this.p(150)
-        );
-        // Light dim, no specific hole — player needs to see the grid
-        this.overlay.fillStyle(0x000000, 0.2);
-        this.overlay.fillRect(0, 0, W, H);
-        break;
-
-      case 'game_watch_tower':
-        this.tutorialKills = 0; // reset from game_kill phase
-        this.watchTimer = 0;
-        this.showPrompt('Your tower shoots enemies automatically!', this.p(150));
-        break;
-
-      case 'game_press_4': {
-        this.pauseGame();
-        this.showPrompt(
-          this.isMobile
-            ? 'Walls block enemy paths!\nTap the hotbar to select Wall.'
-            : 'Walls block enemy paths!\nPress 4 or click the hotbar to select Wall.',
-          H - this.p(140)
-        );
-        const slotSize2 = this.p(48);
-        const slotGap2 = this.p(10);
-        const hotbarY2 = H - slotSize2 - this.p(32);
-        const barCenterX2 = W / 2;
-        const slots2 = 5;
-        const wallSlotX = barCenterX2 - (slots2 * slotSize2 + (slots2 - 1) * slotGap2) / 2 + 3 * (slotSize2 + slotGap2) + slotSize2 / 2;
-        this.drawDimWithRect(wallSlotX - slotSize2 / 2 - this.p(4), hotbarY2 - this.p(4), slotSize2 + this.p(8), slotSize2 + this.p(8));
-        this.drawArrow(wallSlotX, hotbarY2 - this.p(12), 'down');
-        break;
-      }
-
-      case 'game_place_walls':
-        this.showPrompt(`Place walls to funnel enemies past your tower! (${this.wallsPlaced}/3)\nEnemies will pathfind around walls.`, this.p(150));
-        this.overlay.fillStyle(0x000000, 0.15);
-        this.overlay.fillRect(0, 0, W, H);
-        break;
-
-      case 'game_exit_build': {
-        // If the player already exited build mode, skip this step
-        const gs = this.scene.get('Game') as any;
-        if (gs?.buildKind === 'none' || !gs?.buildKind) {
-          this.advanceTo(this.nextStepAfterBuild(), 1500);
-          return;
-        }
-        if (this.isMobile) {
-          this.showPrompt('Tap the wall icon in the hotbar to leave build menu.', H - this.p(140));
-          // Highlight the wall hotbar slot so the player knows where to tap.
-          const slotSize3 = this.p(48);
-          const slotGap3 = this.p(10);
-          const hotbarY3 = H - slotSize3 - this.p(32);
-          const barCenterX3 = W / 2;
-          const slots3 = 5;
-          const wallSlotX2 = barCenterX3 - (slots3 * slotSize3 + (slots3 - 1) * slotGap3) / 2 + 3 * (slotSize3 + slotGap3) + slotSize3 / 2;
-          this.drawDimWithRect(wallSlotX2 - slotSize3 / 2 - this.p(4), hotbarY3 - this.p(4), slotSize3 + this.p(8), slotSize3 + this.p(8));
-          this.drawArrow(wallSlotX2, hotbarY3 - this.p(12), 'down');
-        } else {
-          this.showPrompt('Right-click or press ESC to leave build menu.', this.p(150));
-        }
-        break;
-      }
-
-      case 'game_loot_coins':
-        // Reset counters on entry — onCoinCollected counts pickups during
-        // this step. Seed lootAdvanceAt with a hard 6s fallback so the tip
-        // dismisses even when the player keeps running and ignores the
-        // coins; the update tick shrinks it when the ground is clear.
-        this.coinsCollected = 0;
-        this.lootAdvanceAt = this.time.now + 6000;
-        this.showPrompt('Enemies drop coins when defeated!\nCollect them by getting close.', this.p(150));
-        break;
-
-      case 'game_collect_60':
-        this.showPrompt('Gather 60 coins to upgrade your tower!', this.p(150));
-        break;
-
-      case 'game_click_tower': {
-        // No pause / dim — by this point the player has 60+ coins and is
-        // playing freely. Just the prompt — the highlight ring never
-        // landed correctly on the tower so it was removed.
-        this.showPrompt(
-          this.isMobile
-            ? 'Tap on your Arrow Tower to select it.'
-            : 'Click on your Arrow Tower to select it.',
-          this.p(150)
-        );
-        break;
-      }
-
-      case 'game_upgrade_tower':
-        // Drop the prompt to the bottom of the canvas so it doesn't sit on
-        // top of the tower select panel (which pops up above the tower).
-        this.showPrompt(
-          this.isMobile
-            ? 'Tap the Upgrade button to make your tower stronger!'
-            : 'Click the Upgrade button to make your tower stronger!',
-          H - this.p(120)
-        );
-        break;
-
-      case 'game_deselect_tower': {
-        // If the player already clicked out of the tower panel during the
-        // 1.5s delay before this step, skip the prompt — there's nothing
-        // for them to do and a stale "click somewhere else" tooltip would
-        // hang until they clicked again.
-        const gsSel = this.scene.get('Game') as any;
-        if (!gsSel?.selectedTower) {
-          this.advanceTo('game_done', 1500);
-          return;
-        }
-        this.showPrompt(
-          this.isMobile
-            ? 'Tap somewhere else to close the tower panel.'
-            : 'Click somewhere else to close the tower panel.',
-          this.p(150)
-        );
-        break;
-      }
-
-      case 'game_done':
-        this.showClickPrompt('Great job, Ranger!\nEnemies will find a path around walls — use them wisely.\nGood luck!', this.p(150), 'complete');
-        break;
-
-      case 'complete':
-        this.finish();
-        break;
+    if (this.step === 'complete') {
+      this.finish();
+      return;
     }
+
+    const step = this.steps.get(this.step);
+    step?.render(this.buildCtx());
   }
+
+  update() {
+    // Handle delayed transitions
+    if (this.pendingStep && this.pendingFireAt > 0 && this.time.now > this.pendingFireAt) {
+      this.commitStep(this.pendingStep);
+      return;
+    }
+
+    // Skip step logic while waiting for a delayed transition
+    if (this.pendingStep) return;
+
+    // Step-specific update logic
+    const active = this.steps.get(this.step);
+    active?.update?.(this.buildCtx(), this.time.now, this.game.loop.delta);
+  }
+
+  // ---------- Helpers exposed via StepContext ----------
 
   pauseGame() {
     const gameScene = this.scene.get('Game') as any;
@@ -574,17 +335,8 @@ export class TutorialScene extends Phaser.Scene {
     if (gameScene?.physics?.world) gameScene.physics.resume();
   }
 
-  /** After the player exits build mode, decide whether to prompt them to
-   *  click the tower (already has upgrade money) or grind 60 coins first. */
-  private nextStepAfterBuild(): Step {
-    const upgradeCost = CFG.tower.kinds.arrow.levels[0].upgradeCost;
-    const gs = this.scene.get('Game') as any;
-    const money = gs?.player?.money ?? 0;
-    return money >= upgradeCost ? 'game_click_tower' : 'game_collect_60';
-  }
-
   /** Show prompt with "Click/Tap to continue" and advance to nextStep on click */
-  showClickPrompt(text: string, y: number, nextStep: Step, nextDelay = 0) {
+  showClickPrompt(text: string, y: number, nextStep: TutorialStepName, nextDelay = 0) {
     const continueHint = this.isMobile ? '\n\nTap to continue.' : '\n\nClick to continue.';
     this.showPrompt(text + continueHint, y);
     const W = this.scale.width;
@@ -607,14 +359,16 @@ export class TutorialScene extends Phaser.Scene {
     if (this.hudClickZone) { this.hudClickZone.destroy(); this.hudClickZone = null; }
   }
 
-  /** Place the skip-tutorial link based on viewport / orientation:
+  /**
+   * Place the skip-tutorial link based on viewport / orientation:
    *   - Mobile portrait: vertically centered on the right edge so the user's
    *     thumb (which usually rests near the bottom holding the phone) doesn't
    *     hit it accidentally.
    *   - Mobile landscape: bottom-right with extra vertical standoff so the
    *     link clears the Vibe Jam 2026 badge anchored to the bottom-right of
    *     the viewport.
-   *   - Desktop: lower-right corner (the legacy spot). */
+   *   - Desktop: lower-right corner (the legacy spot).
+   */
   private repositionSkipBtn() {
     if (!this.skipBtn) return;
     const W = this.scale.width;
@@ -713,103 +467,6 @@ export class TutorialScene extends Phaser.Scene {
     this.tweens.add({ targets: this.arrowGfx, alpha: 0.4, yoyo: true, repeat: -1, duration: 600 });
   }
 
-  update() {
-    // Handle delayed transitions
-    if (this.pendingStep && this.stepDelay > 0 && this.time.now > this.stepDelay) {
-      const next = this.pendingStep;
-      this.pendingStep = null;
-      this.stepDelay = 0;
-      this.step = next;
-      getRegistry(this.game).set('tutorialStep', next);
-      this.showStep();
-      return;
-    }
-
-    // Skip step logic while waiting for a delayed transition
-    if (this.pendingStep) return;
-
-    // Handle step-specific update logic
-    const gameScene = this.scene.get('Game') as any;
-
-    switch (this.step) {
-      case 'game_move':
-        if (gameScene?.player) {
-          const px = gameScene.player.x;
-          const py = gameScene.player.y;
-          if (this.lastPx !== 0 || this.lastPy !== 0) {
-            this.moveDist += Math.hypot(px - this.lastPx, py - this.lastPy);
-          }
-          this.lastPx = px;
-          this.lastPy = py;
-          if (this.moveDist > 150) {
-            this.advanceTo('game_hud', 2000);
-          }
-        }
-        break;
-
-      case 'game_stand_still':
-        if (this.stepDelay === 0) this.stepDelay = this.time.now + 7000; // show prompt for 7s
-        if (this.stepDelay > 0 && this.time.now > this.stepDelay) {
-          this.stepDelay = 0;
-          // Hide prompt, then wait 2s before spawning enemies
-          this.spawnTutorialEnemies(gameScene, 6);
-          this.advanceTo('game_kill', 2000);
-        }
-        break;
-
-      case 'game_watch_tower': {
-        this.watchTimer += this.game.loop.delta;
-        // Spawn a wave of enemies for the tower to kill (wait 3s so player can read prompt)
-        if (this.watchTimer > 3000 && this.tutorialKills < 6 && gameScene?.enemies?.countActive() < 3) {
-          this.spawnTutorialEnemies(gameScene, 2);
-        }
-        // Wait until the tower has killed them all before moving on
-        if (this.tutorialKills >= 6 && gameScene?.enemies?.countActive() === 0) {
-          this.watchTimer = 0;
-          this.tutorialKills = 0;
-          this.advanceTo('game_press_4', 2000);
-        }
-        break;
-      }
-
-      case 'game_loot_coins': {
-        const coinsLeft = gameScene?.coins?.countActive() ?? 0;
-        // lootAdvanceAt is seeded to "now + 8s" on entry. Shrink it when
-        // the ground is clear: 1.2s read pause if they actively collected,
-        // 3s if it was already empty (no kills yet or coins picked up
-        // before the step started).
-        if (coinsLeft === 0) {
-          const tighter = this.coinsCollected >= 1
-            ? this.time.now + 1200
-            : this.time.now + 3000;
-          if (this.lootAdvanceAt > tighter) this.lootAdvanceAt = tighter;
-        }
-        if (this.lootAdvanceAt > 0 && this.time.now >= this.lootAdvanceAt) {
-          this.lootAdvanceAt = 0;
-          // 2s blank gap before the tower-build tip — gives the player a
-          // breather between tooltips.
-          this.advanceTo('game_press_1', 2000);
-        }
-        break;
-      }
-
-      case 'game_collect_60': {
-        // Drip-feed enemies so coin drops keep coming while the player
-        // grinds toward the upgrade cost.
-        if (gameScene?.enemies?.countActive() < 2) {
-          this.spawnTutorialEnemies(gameScene, 2);
-        }
-        const upgradeCost = CFG.tower.kinds.arrow.levels[0].upgradeCost;
-        if ((gameScene?.player?.money ?? 0) >= upgradeCost) {
-          this.advanceTo('game_click_tower', 1500);
-        }
-        break;
-      }
-
-      // game_done handled by click-to-continue
-    }
-  }
-
   spawnTutorialEnemies(gameScene: any, count: number) {
     if (!gameScene?.player) return;
     const px = gameScene.player.x;
@@ -842,33 +499,26 @@ export class TutorialScene extends Phaser.Scene {
       gameScene.waveState.resumeInitialBuildPhase(gameScene.vTime);
     }
 
-    // Clean up listeners
-    getEvents(this.game.events).off('tutorial-level-clicked', this.onLevelClicked, this);
-    getEvents(this.game.events).off('tutorial-diff-clicked', this.onDiffClicked, this);
-    getEvents(this.game.events).off('tutorial-kill', this.onKill, this);
-    getEvents(this.game.events).off('tutorial-tower-placed', this.onTowerPlaced, this);
-    getEvents(this.game.events).off('tutorial-wall-placed', this.onWallPlaced, this);
-    getEvents(this.game.events).off('game-ready', this.onGameReady, this);
-    getEvents(this.game.events).off('build-mode', this.onBuildMode, this);
-    getEvents(this.game.events).off('tutorial-coin-collected', this.onCoinCollected, this);
-    getEvents(this.game.events).off('tutorial-tower-selected', this.onTowerSelected, this);
-    getEvents(this.game.events).off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    getEvents(this.game.events).off('tutorial-tower-deselected', this.onTowerDeselected, this);
-
+    this.detachListeners();
     this.scene.stop('Tutorial');
   }
 
   shutdown() {
-    getEvents(this.game.events).off('tutorial-level-clicked', this.onLevelClicked, this);
-    getEvents(this.game.events).off('tutorial-diff-clicked', this.onDiffClicked, this);
-    getEvents(this.game.events).off('tutorial-kill', this.onKill, this);
-    getEvents(this.game.events).off('tutorial-tower-placed', this.onTowerPlaced, this);
-    getEvents(this.game.events).off('tutorial-wall-placed', this.onWallPlaced, this);
-    getEvents(this.game.events).off('game-ready', this.onGameReady, this);
-    getEvents(this.game.events).off('build-mode', this.onBuildMode, this);
-    getEvents(this.game.events).off('tutorial-coin-collected', this.onCoinCollected, this);
-    getEvents(this.game.events).off('tutorial-tower-selected', this.onTowerSelected, this);
-    getEvents(this.game.events).off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    getEvents(this.game.events).off('tutorial-tower-deselected', this.onTowerDeselected, this);
+    this.detachListeners();
+  }
+
+  private detachListeners() {
+    const ev = getEvents(this.game.events);
+    ev.off('tutorial-level-clicked', this.onLevelClicked, this);
+    ev.off('tutorial-diff-clicked', this.onDiffClicked, this);
+    ev.off('tutorial-kill', this.onKill, this);
+    ev.off('tutorial-tower-placed', this.onTowerPlaced, this);
+    ev.off('tutorial-wall-placed', this.onWallPlaced, this);
+    ev.off('game-ready', this.onGameReady, this);
+    ev.off('build-mode', this.onBuildMode, this);
+    ev.off('tutorial-coin-collected', this.onCoinCollected, this);
+    ev.off('tutorial-tower-selected', this.onTowerSelected, this);
+    ev.off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
+    ev.off('tutorial-tower-deselected', this.onTowerDeselected, this);
   }
 }
