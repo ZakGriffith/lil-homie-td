@@ -24,6 +24,54 @@ import cannonBase2Img from '../assets/sprites/cannon_base_2.png';
 
 type BuildKind = 'none' | 'tower' | 'wall';
 
+// ---------------------------------------------------------------------------
+// Infinite-mode boss progression
+// ---------------------------------------------------------------------------
+// Singles run events 1-6 (one boss per event, fixed order regardless of
+// which level the run started on). Doubles run events 7+, looping the
+// 9-entry table with HP scaling that compounds 1.15× per full pass past
+// the first.
+type InfBossDef = { biome: Biome; kind?: 'queen' | 'dragon' };
+const INF_RAM:    InfBossDef = { biome: 'grasslands' };
+const INF_FOREST: InfBossDef = { biome: 'forest' };
+const INF_INFEC:  InfBossDef = { biome: 'infected' };
+const INF_RIVER:  InfBossDef = { biome: 'river' };
+const INF_QUEEN:  InfBossDef = { biome: 'castle', kind: 'queen' };
+const INF_DRAGON: InfBossDef = { biome: 'castle', kind: 'dragon' };
+
+const INF_SINGLES: InfBossDef[] = [
+  INF_RAM, INF_FOREST, INF_INFEC, INF_RIVER, INF_QUEEN, INF_DRAGON,
+];
+
+const INF_DOUBLES: { bosses: [InfBossDef, InfBossDef]; baseHpMult: number }[] = [
+  { bosses: [INF_RAM,    INF_FOREST], baseHpMult: 1 },     // event 7
+  { bosses: [INF_FOREST, INF_INFEC],  baseHpMult: 1 },     // event 8
+  { bosses: [INF_INFEC,  INF_RIVER],  baseHpMult: 1 },     // event 9
+  { bosses: [INF_RIVER,  INF_QUEEN],  baseHpMult: 1 },     // event 10
+  { bosses: [INF_QUEEN,  INF_DRAGON], baseHpMult: 1 },     // event 11
+  { bosses: [INF_DRAGON, INF_RAM],    baseHpMult: 1.15 },  // event 12
+  { bosses: [INF_RAM,    INF_FOREST], baseHpMult: 1.15 },  // event 13
+  { bosses: [INF_FOREST, INF_DRAGON], baseHpMult: 1.15 },  // event 14
+  { bosses: [INF_QUEEN,  INF_DRAGON], baseHpMult: 1.15 },  // event 15 — peak
+];
+
+/** Pick the boss(es) for a 0-indexed boss event in infinite mode. Wraps
+ *  past event 15 by re-iterating the doubles table with an extra 1.15×
+ *  HP factor per full cycle. */
+function pickInfiniteBosses(eventIdx: number): { bosses: InfBossDef[]; hpMult: number } {
+  if (eventIdx < INF_SINGLES.length) {
+    return { bosses: [INF_SINGLES[eventIdx]], hpMult: 1 };
+  }
+  const di = eventIdx - INF_SINGLES.length;
+  const slot = di % INF_DOUBLES.length;
+  const cycle = Math.floor(di / INF_DOUBLES.length);
+  const entry = INF_DOUBLES[slot];
+  return {
+    bosses: [...entry.bosses],
+    hpMult: entry.baseHpMult * Math.pow(1.15, cycle),
+  };
+}
+
 export class GameScene extends Phaser.Scene {
   player!: Player;
   enemies!: Phaser.Physics.Arcade.Group;
@@ -2263,15 +2311,21 @@ export class GameScene extends Phaser.Scene {
       candidates.push({ px, py });
       return true;
     });
-    // Also consider the boss
-    if (this.boss && this.boss.active && !this.boss.dying) {
-      const d2 = (this.boss.x - tx) ** 2 + (this.boss.y - ty) ** 2;
+    // Also consider the boss(es). Infinite mode's double-boss events
+    // stash the secondary in midBoss, so cannons can lead-target either.
+    const bossesToCheck: (Boss | null)[] = [this.boss];
+    if (this.difficulty === 'infinite' && this.midBoss && this.midBoss !== this.boss) {
+      bossesToCheck.push(this.midBoss);
+    }
+    for (const bb of bossesToCheck) {
+      if (!bb || !bb.active || bb.dying) continue;
+      const d2 = (bb.x - tx) ** 2 + (bb.y - ty) ** 2;
       if (d2 <= r2) {
         const dist = Math.sqrt(d2) || 1;
         const travelTime = dist / projSpeed;
-        const b = this.boss.body as Phaser.Physics.Arcade.Body;
-        const px = this.boss.x + (b ? b.velocity.x * travelTime : 0);
-        const py = this.boss.y + (b ? b.velocity.y * travelTime : 0);
+        const body = bb.body as Phaser.Physics.Arcade.Body;
+        const px = bb.x + (body ? body.velocity.x * travelTime : 0);
+        const py = bb.y + (body ? body.velocity.y * travelTime : 0);
         candidates.push({ px, py });
       }
     }
@@ -2310,6 +2364,11 @@ export class GameScene extends Phaser.Scene {
       const d = (this.boss.x - x) ** 2 + (this.boss.y - y) ** 2;
       if (d < bestD) { bestD = d; best = this.boss; }
     }
+    if (this.difficulty === 'infinite' && this.midBoss && this.midBoss !== this.boss
+        && this.midBoss.active && !this.midBoss.dying) {
+      const d = (this.midBoss.x - x) ** 2 + (this.midBoss.y - y) ** 2;
+      if (d < bestD) { bestD = d; best = this.midBoss; }
+    }
     return best;
   }
 
@@ -2332,14 +2391,18 @@ export class GameScene extends Phaser.Scene {
       if (pathDist < bestPathDist) { bestPathDist = pathDist; best = e; }
       return true;
     });
-    if (this.boss && this.boss.active && !this.boss.dying) {
-      const eucD2 = (this.boss.x - x) ** 2 + (this.boss.y - y) ** 2;
+    const bossesToCheck: (Boss | null)[] = [this.boss];
+    if (this.difficulty === 'infinite' && this.midBoss && this.midBoss !== this.boss) {
+      bossesToCheck.push(this.midBoss);
+    }
+    for (const bb of bossesToCheck) {
+      if (!bb || !bb.active || bb.dying) continue;
+      const eucD2 = (bb.x - x) ** 2 + (bb.y - y) ** 2;
       if (eucD2 <= r2) {
-        const b = this.boss;
-        const pathDist = b.path && b.path.length > 0
-          ? (b.path.length - b.pathIdx) * CFG.tile
+        const pathDist = bb.path && bb.path.length > 0
+          ? (bb.path.length - bb.pathIdx) * CFG.tile
           : Math.sqrt(eucD2);
-        if (pathDist < bestPathDist) { bestPathDist = pathDist; best = b; }
+        if (pathDist < bestPathDist) { bestPathDist = pathDist; best = bb; }
       }
     }
     return best;
@@ -2752,7 +2815,22 @@ export class GameScene extends Phaser.Scene {
   // ---------- BOSS ----------
 
   updateBoss(time: number) {
-    const b = this.boss;
+    if (this.boss) this._updateOneBoss(this.boss, time);
+    // Infinite-mode double-boss events stash the second boss in midBoss.
+    // Update it on the same tick so abilities + AI run for both bosses.
+    // (In castle non-infinite, midBoss aliases this.boss for the queen
+    // fight and is null after she dies — the !== guard avoids double-
+    // updating the same Boss instance.)
+    if (this.difficulty === 'infinite'
+      && this.midBoss
+      && this.midBoss !== this.boss
+      && this.midBoss.active
+      && !this.midBoss.dying) {
+      this._updateOneBoss(this.midBoss, time);
+    }
+  }
+
+  _updateOneBoss(b: Boss, time: number) {
     if (!b || !b.active || b.dying) return;
     b.drawHpBar();
 
@@ -3707,6 +3785,92 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(300, 0.005);
   }
 
+  /** Boss-spawn for infinite mode. Builds a Boss with explicit biome+kind
+   *  (so a Forest Wendigo can spawn in a Meadows level), wires overlap
+   *  and colliders, and applies the per-event HP multiplier. slotIdx 0
+   *  is the primary boss (this.boss); slotIdx 1 is the secondary
+   *  (this.midBoss) used only by double-boss events. */
+  spawnInfiniteBoss(def: InfBossDef, hpMult: number, slotIdx: number) {
+    const spawnR = this.spawnDist * CFG.tile;
+    const px = this.player.x, py = this.player.y;
+    const corners = [
+      { x: px - spawnR, y: py - spawnR },
+      { x: px + spawnR, y: py - spawnR },
+      { x: px - spawnR, y: py + spawnR },
+      { x: px + spawnR, y: py + spawnR },
+    ];
+    // Pick opposite corners for double bosses so they don't stack.
+    const cornerIdx = slotIdx === 0
+      ? Math.floor(Math.random() * corners.length)
+      : 3 - (this._infiniteFirstCorner ?? 0);
+    if (slotIdx === 0) this._infiniteFirstCorner = cornerIdx;
+    const pick = corners[cornerIdx];
+    const b = new Boss(this, pick.x, pick.y, def.biome, def.kind ?? '');
+
+    // Per-biome / per-kind base stats. Mirrors spawnBoss + spawnCastleBoss
+    // tuning so the same boss feels the same regardless of which mode
+    // spawned it. HP is then scaled by hpMult for the loot-cycle ramp.
+    if (def.kind === 'queen') {
+      b.hp = CFG.castle.queenHp; b.maxHp = CFG.castle.queenHp;
+      b.dmg = CFG.castle.queenDmg; b.speed = CFG.castle.queenSpeed;
+      this.nextQueenOrb = this.vTime + CFG.castle.queenOrbFireRate;
+      this.nextQueenTeleport = this.vTime + CFG.castle.queenTeleportCooldown;
+      this.nextQueenAura = this.vTime + CFG.castle.queenAuraCooldown;
+    } else if (def.kind === 'dragon') {
+      b.hp = CFG.castle.dragonHp; b.maxHp = CFG.castle.dragonHp;
+      b.dmg = CFG.castle.dragonDmg; b.speed = CFG.castle.dragonSpeed;
+      this.nextDragonFireball = this.vTime + CFG.castle.dragonFireballRate;
+    } else if (def.biome === 'grasslands') {
+      // Meadow ram tuning matches spawnBoss()
+      b.hp = 800; b.maxHp = 800;
+      b.dmg = 15; b.speed = 24;
+    }
+    // Apply the cycle HP multiplier on top of base stats.
+    b.hp = Math.round(b.hp * hpMult);
+    b.maxHp = b.hp;
+
+    if (slotIdx === 0) this.boss = b;
+    else this.midBoss = b;
+    this.bossSpawned = true;
+
+    this.physics.add.overlap(this.projectiles, b, (a: any, bb: any) => {
+      const pr = (a instanceof Projectile ? a : bb) as Projectile;
+      const bs = (a instanceof Boss ? a : bb) as Boss;
+      this.projectileHitsBoss(pr, bs);
+    });
+    const onStructureHit = () => {
+      if (b.state === 'charging') b.stateEnd = 0;
+    };
+    this.physics.add.collider(b, this.wallGroup, onStructureHit);
+    this.physics.add.collider(b, this.towerGroup, onStructureHit);
+
+    // Only the PRIMARY boss drives the registry / boss-spawn payload —
+    // the existing UI listens for one event. The secondary HP bar is
+    // handled separately (see UIScene.midBoss bar).
+    if (slotIdx === 0) {
+      this.game.events.emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: def.biome, bossKind: def.kind });
+      this.game.registry.set('bossActive', true);
+      this.game.registry.set('bossHp', b.hp);
+      this.game.registry.set('bossMaxHp', b.maxHp);
+      this.game.registry.set('bossBiome', def.biome);
+    }
+    this.pushHud();
+  }
+
+  /** Title text used by the boss-warning countdown / "X APPROACHES" banner. */
+  static infiniteBossTitle(def: InfBossDef): string {
+    if (def.kind === 'queen') return 'PHANTOM QUEEN';
+    if (def.kind === 'dragon') return 'CASTLE DRAGON';
+    if (def.biome === 'forest') return 'WENDIGO';
+    if (def.biome === 'infected') return 'BLIGHTED ONE';
+    if (def.biome === 'river') return 'FOG PHANTOM';
+    return 'ANCIENT RAM';
+  }
+
+  /** Tracks the corner used by the primary boss so the secondary spawns
+   *  at the opposite corner. Reset implicitly by the slotIdx===0 branch. */
+  private _infiniteFirstCorner: number | undefined = undefined;
+
   enemyHitsPlayer(e: Enemy) {
     if (!e.active || e.dying) return;
     // mosquitoes handle their own melee in the update loop
@@ -4083,10 +4247,19 @@ export class GameScene extends Phaser.Scene {
     spark.play('fx-hit');
     spark.once('animationcomplete', () => spark.destroy());
     pr.destroy();
-    this.game.events.emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
-    this.game.registry.set('bossHp', b.hp);
+    // Only the primary boss drives the top HUD bar — otherwise infinite-
+    // mode double-boss events flicker the bar between two HP values as
+    // hits land on each. Each boss still gets its own in-world bar via
+    // Boss.drawHpBar().
+    if (b === this.boss) {
+      this.game.events.emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
+      this.game.registry.set('bossHp', b.hp);
+    }
     if (b.dying) {
-      this.game.registry.set('bossActive', false);
+      // bossActive only flips off when the primary dies — for infinite
+      // doubles we still want the HUD to show the secondary's HP via
+      // its in-world bar; the primary bar hides at this moment.
+      if (b === this.boss) this.game.registry.set('bossActive', false);
       this.dropBossLoot(b);
     }
   }
@@ -4427,11 +4600,21 @@ export class GameScene extends Phaser.Scene {
         }
         if (time >= this.bossCountdownUntil) {
           if (isInfinite) {
-            // Phase 1 of infinite mode: always spawn the home biome's
-            // single boss. The full sequence (foreign bosses, doubles)
-            // arrives in phase 2.
-            if (this.biome === 'castle') this.spawnCastleBoss('queen');
-            else this.spawnBoss();
+            const pick = pickInfiniteBosses(this.infiniteBossesCleared);
+            this._infiniteFirstCorner = undefined;
+            for (let i = 0; i < pick.bosses.length; i++) {
+              this.spawnInfiniteBoss(pick.bosses[i], pick.hpMult, i);
+            }
+            const titles = pick.bosses.map(GameScene.infiniteBossTitle);
+            const banner = titles.length === 1
+              ? `THE ${titles[0]} APPROACHES`
+              : `${titles[0]} & ${titles[1]} APPROACH`;
+            this.countdownMsg = banner;
+            this.countdownColor = '#ff5050';
+            SFX.play('bossSpawn');
+            this.cameras.main.shake(300, 0.005);
+            this.pushHud();
+            this.time.delayedCall(3000, () => { this.countdownMsg = ''; this.pushHud(); });
           } else if (this.biome === 'castle' && this.castlePhase === 0) {
             this.spawnCastleBoss('queen');
           } else if (this.biome === 'castle' && this.castlePhase === 2) {
@@ -4442,12 +4625,18 @@ export class GameScene extends Phaser.Scene {
           return;
         }
         const secs = Math.ceil((this.bossCountdownUntil - time) / 1000);
-        const bossName = this.biome === 'forest' ? 'WENDIGO'
+        let bossName: string;
+        if (isInfinite) {
+          const pick = pickInfiniteBosses(this.infiniteBossesCleared);
+          bossName = pick.bosses.map(GameScene.infiniteBossTitle).join(' & ');
+        } else {
+          bossName = this.biome === 'forest' ? 'WENDIGO'
                        : this.biome === 'infected' ? 'BLIGHTED ONE'
                        : this.biome === 'river' ? 'FOG PHANTOM'
                        : this.biome === 'castle' && this.castlePhase === 0 ? 'PHANTOM QUEEN'
                        : this.biome === 'castle' && this.castlePhase === 2 ? 'CASTLE DRAGON'
                        : 'ANCIENT RAM';
+        }
         this.syncCountdown(`${bossName} SPAWNING IN ${secs}`, '#ff5050');
       }
       return;
@@ -4692,6 +4881,14 @@ export class GameScene extends Phaser.Scene {
   winCollectedAt = 0;
 
   checkEndConditions() {
+    // Infinite double-boss events keep the secondary in midBoss. The
+    // cycle is over only when BOTH are dying/inactive — guard for that
+    // before falling through to the (single-boss) win path.
+    if (this.difficulty === 'infinite' && this.bossSpawned) {
+      const primaryDone = !this.boss || this.boss.dying || !this.boss.active;
+      const secondaryDone = !this.midBoss || this.midBoss === this.boss || this.midBoss.dying || !this.midBoss.active;
+      if (!primaryDone || !secondaryDone) return;
+    }
     // Level is won by defeating the boss, not by a kill count.
     if (this.bossSpawned && (!this.boss || this.boss.dying || !this.boss.active)) {
       // Infinite mode: never enter the win flow. Treat each boss death as
@@ -4774,6 +4971,7 @@ export class GameScene extends Phaser.Scene {
   startNextInfiniteCycle() {
     this.bossSpawned = false;
     this.boss = null;
+    this.midBoss = null;
     this.wave = 0;
     this.waveSpawned = 0;
     this.waveKills = 0;
