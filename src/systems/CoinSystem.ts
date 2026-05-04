@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { SFX } from '../audio/sfx';
 import { Coin } from '../entities/Coin';
@@ -41,8 +43,8 @@ export class CoinSystem {
         SFX.play('coin');
         // Tutorial event: only emit when the tutorial is active. Otherwise
         // every coin pickup paid for an event dispatch with no listeners.
-        if (scene.game.registry.get('tutorialActive')) {
-          scene.game.events.emit('tutorial-coin-collected');
+        if (getRegistry(scene.game).get('tutorialActive')) {
+          getEvents(scene.game.events).emit('tutorial-coin-collected');
         }
         this.playFxPop(coin.x, coin.y);
         coin.destroy();

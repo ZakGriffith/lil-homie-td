@@ -1,5 +1,6 @@
 import Phaser from 'phaser';
 import type { GameScene } from '../scenes/GameScene';
+import { getEvents } from '../core/events';
 
 /**
  * HUD-side helpers: per-frame coalesced HUD emit, countdown-text dedupe,
@@ -35,7 +36,7 @@ export class HudSystem {
     const scene = this.scene;
     scene.events.once(Phaser.Scenes.Events.POST_UPDATE, () => {
       this.flushScheduled = false;
-      scene.game.events.emit('hud', scene.hudState());
+      getEvents(scene.game.events).emit('hud', scene.hudState());
     });
   }
 

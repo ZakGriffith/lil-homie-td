@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Enemy, EnemyKind } from '../entities/Enemy';
 import { Boss } from '../entities/Boss';
@@ -131,11 +133,11 @@ export class SpawnSystem {
     };
     scene.physics.add.collider(scene.boss, scene.wallGroup, onStructureHit, () => scene.biome !== 'river');
     scene.physics.add.collider(scene.boss, scene.towerGroup, onStructureHit, () => scene.biome !== 'river');
-    scene.game.events.emit('boss-spawn', { hp: scene.boss.hp, maxHp: scene.boss.maxHp, biome: scene.biome });
-    scene.game.registry.set('bossActive', true);
-    scene.game.registry.set('bossHp', scene.boss.hp);
-    scene.game.registry.set('bossMaxHp', scene.boss.maxHp);
-    scene.game.registry.set('bossBiome', scene.biome);
+    getEvents(scene.game.events).emit('boss-spawn', { hp: scene.boss.hp, maxHp: scene.boss.maxHp, biome: scene.biome });
+    getRegistry(scene.game).set('bossActive', true);
+    getRegistry(scene.game).set('bossHp', scene.boss.hp);
+    getRegistry(scene.game).set('bossMaxHp', scene.boss.maxHp);
+    getRegistry(scene.game).set('bossBiome', scene.biome);
     SFX.play('bossSpawn');
     const bossTitle = scene.biome === 'forest' ? 'THE WENDIGO'
                     : scene.biome === 'infected' ? 'THE BLIGHTED ONE'
@@ -196,7 +198,7 @@ export class SpawnSystem {
     scene.physics.add.collider(b, scene.towerGroup, onStructureHit);
 
     const bossTitle = kind === 'queen' ? 'THE PHANTOM QUEEN' : 'THE CASTLE DRAGON';
-    scene.game.events.emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: 'castle', bossKind: kind });
+    getEvents(scene.game.events).emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: 'castle', bossKind: kind });
     SFX.play('bossSpawn');
     scene.countdownMsg = `${bossTitle} APPROACHES`;
     scene.countdownColor = '#ff5050';
@@ -260,11 +262,11 @@ export class SpawnSystem {
     scene.physics.add.collider(b, scene.towerGroup, onStructureHit);
 
     if (slotIdx === 0) {
-      scene.game.events.emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: def.biome, bossKind: def.kind });
-      scene.game.registry.set('bossActive', true);
-      scene.game.registry.set('bossHp', b.hp);
-      scene.game.registry.set('bossMaxHp', b.maxHp);
-      scene.game.registry.set('bossBiome', def.biome);
+      getEvents(scene.game.events).emit('boss-spawn', { hp: b.hp, maxHp: b.maxHp, biome: def.biome, bossKind: def.kind });
+      getRegistry(scene.game).set('bossActive', true);
+      getRegistry(scene.game).set('bossHp', b.hp);
+      getRegistry(scene.game).set('bossMaxHp', b.maxHp);
+      getRegistry(scene.game).set('bossBiome', def.biome);
     }
     scene.hud.pushHud();
   }

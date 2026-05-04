@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Enemy } from '../entities/Enemy';
 import { SFX } from '../audio/sfx';
@@ -29,7 +31,7 @@ export class EndSystem {
     if (scene.bossSpawned && (!scene.boss || scene.boss.dying || !scene.boss.active)) {
       if (scene.difficulty === 'infinite') {
         if (scene.infiniteResetUntil === 0) {
-          scene.game.events.emit('boss-died');
+          getEvents(scene.game.events).emit('boss-died');
           scene.infiniteBossesCleared++;
           scene.infiniteResetUntil = scene.vTime + 8000;
           scene.countdownColor = '#7cf29a';
@@ -57,7 +59,7 @@ export class EndSystem {
       if (scene.biome === 'castle' && scene.castlePhase < 3) {
         if (!scene.midBossDefeated && scene.castlePhase === 1) {
           scene.midBossDefeated = true;
-          scene.game.events.emit('boss-died');
+          getEvents(scene.game.events).emit('boss-died');
           for (const e of scene.enemies.getChildren() as Enemy[]) {
             if (!e.dying && e.active) e.hurt(9999);
           }
@@ -65,7 +67,7 @@ export class EndSystem {
         return;
       }
       if (this.winDelayUntil === 0) {
-        scene.game.events.emit('boss-died');
+        getEvents(scene.game.events).emit('boss-died');
         this.winDelayUntil = scene.vTime + 12000;
         scene.countdownColor = '#7cf29a';
         const survivors = (scene.enemies.getChildren() as Enemy[])
@@ -187,8 +189,8 @@ export class EndSystem {
         win: false, name: 'Ranger',
         kills: scene.player.kills, money: scene.player.money
       };
-      scene.game.registry.set('gameEndState', payload);
-      scene.game.events.emit('game-end', payload);
+      getRegistry(scene.game).set('gameEndState', payload);
+      getEvents(scene.game.events).emit('game-end', payload);
     }, 3500);
   }
 
@@ -200,7 +202,7 @@ export class EndSystem {
     SFX.fadeOutBgm(1500);
     SFX.play('victory');
     const payload = { win: true, name: 'Ranger', kills: scene.player.kills, money: scene.player.money };
-    scene.game.registry.set('gameEndState', payload);
-    scene.game.events.emit('game-end', payload);
+    getRegistry(scene.game).set('gameEndState', payload);
+    getEvents(scene.game.events).emit('game-end', payload);
   }
 }

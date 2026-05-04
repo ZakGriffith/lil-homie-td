@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Tower, TowerKind } from '../entities/Tower';
 import { Wall } from '../entities/Wall';
@@ -49,9 +51,9 @@ export class BuildSystem {
     scene.ghost.setVisible(k !== 'none');
     if (scene.deleteIcon) scene.deleteIcon.setVisible(false);
     if (scene.gridOverlay) scene.gridOverlay.setVisible(k !== 'none');
-    scene.game.events.emit('build-mode', k !== 'none', k, towerKind);
+    getEvents(scene.game.events).emit('build-mode', k !== 'none', k, towerKind);
     if (k === 'none') {
-      scene.game.events.emit('build-error', '');
+      getEvents(scene.game.events).emit('build-error', '');
       this.lastBuildErr = '';
     }
     if (k === 'tower') {
@@ -114,7 +116,7 @@ export class BuildSystem {
     // Ignore taps that land inside the mobile joystick's hit zone — otherwise
     // dragging the stick during build mode would also place a tower beneath
     // the thumb. Bounds are published by UIScene in screen-space pixels.
-    const jb = scene.game.registry.get('joystickBounds') as
+    const jb = getRegistry(scene.game).get('joystickBounds') as
       | { x: number; y: number; w: number; h: number }
       | undefined;
     if (jb && p.x >= jb.x && p.x <= jb.x + jb.w && p.y >= jb.y && p.y <= jb.y + jb.h) {
@@ -131,7 +133,7 @@ export class BuildSystem {
 
     // sell with X held + click
     if (scene.keys.X.isDown) {
-      if (scene.game.registry.get('tutorialActive')) return; // no selling during tutorial
+      if (getRegistry(scene.game).get('tutorialActive')) return; // no selling during tutorial
       scene.sell.sellAt(tx, ty);
       return;
     }
@@ -148,7 +150,7 @@ export class BuildSystem {
       // No tower under cursor — if it's a wall, start the sell countdown
       // (click it again to cancel). Towers still need the upgrade panel
       // for sell, so we don't auto-sell them on click.
-      if (!scene.game.registry.get('tutorialActive')) {
+      if (!getRegistry(scene.game).get('tutorialActive')) {
         const wHit = scene.walls.find(w => w.tileX === tx && w.tileY === ty);
         if (wHit) {
           scene.sell.startSellTimer(wHit);
@@ -165,7 +167,7 @@ export class BuildSystem {
     if (scene.buildKind === 'tower') {
       // Tutorial caps placements at 1 tower; ignore further click-to-place
       // even if the player somehow stays in tower build mode.
-      if (scene.game.registry.get('tutorialActive') && scene.towers.length >= 1) return;
+      if (getRegistry(scene.game).get('tutorialActive') && scene.towers.length >= 1) return;
       const s = CFG.tower.tiles;
       // For even-size footprints, snap to the nearest grid intersection
       // so the tower centers under the cursor. For odd, snap to tile center.
@@ -187,7 +189,7 @@ export class BuildSystem {
       scene.gridVersion++; scene._wallCheckCache.clear(); scene.pathing.rebuildGapBlockers(); scene.pathing.rebuildGapBlockers();
       scene.hud.pushHud();
       SFX.play('towerPlace');
-      if (scene.game.registry.get('tutorialActive')) scene.game.events.emit('tutorial-tower-placed');
+      if (getRegistry(scene.game).get('tutorialActive')) getEvents(scene.game.events).emit('tutorial-tower-placed');
       this.setBuild('none');
       return;
     }
@@ -196,7 +198,7 @@ export class BuildSystem {
     // Click on an existing wall while in wall build mode = start the
     // sell countdown instead of trying (and failing) to place. Skip
     // during tutorial since we don't allow selling there.
-    if (!scene.game.registry.get('tutorialActive')) {
+    if (!getRegistry(scene.game).get('tutorialActive')) {
       const wHit = scene.walls.find(w => w.tileX === tx && w.tileY === ty);
       if (wHit) {
         scene.sell.startSellTimer(wHit);
@@ -204,7 +206,7 @@ export class BuildSystem {
       }
     }
     // Tutorial caps placements at 3 walls.
-    if (scene.game.registry.get('tutorialActive') && scene.walls.length >= 3) return;
+    if (getRegistry(scene.game).get('tutorialActive') && scene.walls.length >= 3) return;
     if (gridGet(scene.grid, tx, ty) !== 0) return;
     if (scene.player.money < CFG.wall.cost) return;
     const pt = scene.pathing.worldToTile(scene.player.x, scene.player.y);
@@ -224,7 +226,7 @@ export class BuildSystem {
     scene.gridVersion++; scene._wallCheckCache.clear(); scene.pathing.rebuildGapBlockers();
     scene.hud.pushHud();
     SFX.play('wallPlace');
-    if (scene.game.registry.get('tutorialActive')) scene.game.events.emit('tutorial-wall-placed');
+    if (getRegistry(scene.game).get('tutorialActive')) getEvents(scene.game.events).emit('tutorial-wall-placed');
   }
 
   /**
@@ -238,7 +240,7 @@ export class BuildSystem {
     const p = scene.input.activePointer;
     // Don't snap the ghost onto the joystick when the player's thumb is on
     // the stick — keep it at its last position until they tap elsewhere.
-    const jb = scene.game.registry.get('joystickBounds') as
+    const jb = getRegistry(scene.game).get('joystickBounds') as
       | { x: number; y: number; w: number; h: number }
       | undefined;
     const overJoystick = !!jb && p.x >= jb.x && p.x <= jb.x + jb.w && p.y >= jb.y && p.y <= jb.y + jb.h;
@@ -270,8 +272,8 @@ export class BuildSystem {
       // so suppress the red X there — it would spuriously appear over
       // the just-placed wall every time the player taps to build. Tap-
       // to-sell still works through the regular pointer-down handler.
-      const wallHere = !scene.game.registry.get('tutorialActive')
-        && !scene.game.registry.get('isMobile')
+      const wallHere = !getRegistry(scene.game).get('tutorialActive')
+        && !getRegistry(scene.game).get('isMobile')
         && scene.walls.find(w => w.tileX === tx && w.tileY === ty);
       if (wallHere) {
         scene.ghost.setVisible(false);
@@ -321,7 +323,7 @@ export class BuildSystem {
         // frame. The red ghost tint already conveys "can't place here".
         // The "Not enough gold" toast still shows since it isn't tied to
         // cursor location.
-        const suppressPlacementToast = !!scene.game.registry.get('isMobile');
+        const suppressPlacementToast = !!getRegistry(scene.game).get('isMobile');
         if (!canAffordWall) buildErr = 'Not enough gold';
         else if (tileBlocked && !suppressPlacementToast) buildErr = 'Blocked';
         else if (!valid && !suppressPlacementToast) buildErr = 'Blocks path';
@@ -330,7 +332,7 @@ export class BuildSystem {
     }
     if (buildErr !== this.lastBuildErr) {
       this.lastBuildErr = buildErr;
-      scene.game.events.emit('build-error', buildErr);
+      getEvents(scene.game.events).emit('build-error', buildErr);
     }
   }
 

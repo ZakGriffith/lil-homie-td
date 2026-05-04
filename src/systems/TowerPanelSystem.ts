@@ -1,4 +1,6 @@
 import { CFG } from '../config';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { Tower } from '../entities/Tower';
 import { SFX } from '../audio/sfx';
 import type { GameScene } from '../scenes/GameScene';
@@ -17,7 +19,7 @@ export class TowerPanelSystem {
     scene.selectedTower = t;
     this.drawSelectionRing(t);
     this.buildPanel(t);
-    scene.game.events.emit('tutorial-tower-selected');
+    getEvents(scene.game.events).emit('tutorial-tower-selected');
     // Freeze game while tower panel is open
     if (!scene.buildPaused) {
       scene.buildPaused = true;
@@ -33,7 +35,7 @@ export class TowerPanelSystem {
     scene.selectionRing.clear().setVisible(false);
     scene.towerPanel.removeAll(true);
     scene.towerPanel.setVisible(false);
-    scene.game.events.emit('tutorial-tower-deselected');
+    getEvents(scene.game.events).emit('tutorial-tower-deselected');
     // Unfreeze if no build mode active either
     if (scene.buildPaused && scene.buildKind === 'none') {
       scene.buildPaused = false;
@@ -69,7 +71,7 @@ export class TowerPanelSystem {
     // Mobile gets a 1.5× larger panel so the buttons are tap-friendly. Every
     // literal pixel size below is multiplied by `ms` so the layout stays
     // proportional at the larger size (text included via fontSize: `${n*ms}px`).
-    const isMobile = !!scene.game.registry.get('isMobile');
+    const isMobile = !!getRegistry(scene.game).get('isMobile');
     const ms = isMobile ? 1.5 : 1;
 
     const W = 184 * ms, H = 76 * ms;
@@ -87,7 +89,7 @@ export class TowerPanelSystem {
     // units via uiScale / camera zoom before comparing against worldView.
     if (isMobile) {
       const view = scene.cameras.main.worldView;
-      const sf = scene.game.registry.get('sf') || 1;
+      const sf = getRegistry(scene.game).get('sf') || 1;
       const camZoom = scene.cameras.main.zoom || 1;
       const hudClearWorld = (90 * sf) / camZoom; // 80px HUD region + a little padding
       if (py - H / 2 < view.y + hudClearWorld) {
@@ -218,7 +220,7 @@ export class TowerPanelSystem {
     const sellHit = scene.add.rectangle(sellCX, btnY, btnW, btnH, 0x000000, 0).setInteractive({ useHandCursor: true });
     sellHit.on('pointerdown', (_p: any, _lx: any, _ly: any, ev: any) => {
       ev?.stopPropagation?.();
-      if (scene.game.registry.get('tutorialActive')) return;
+      if (getRegistry(scene.game).get('tutorialActive')) return;
       this.doSellSelected();
     });
     sellHit.on('pointerover', () => { sellHover = true; drawSell(); });
@@ -241,7 +243,7 @@ export class TowerPanelSystem {
     t.upgrade();
     SFX.play('upgrade');
     scene.hud.floatText(t.x, t.y - 40, `LVL ${t.level + 1}`, '#7cf29a');
-    scene.game.events.emit('tutorial-tower-upgraded');
+    getEvents(scene.game.events).emit('tutorial-tower-upgraded');
     scene.hud.pushHud();
     // Auto-close the panel — the upgrade succeeded so the player isn't
     // about to do anything else with this tower.

@@ -1,4 +1,5 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
 import { CFG } from '../config';
 import { Tower } from '../entities/Tower';
 import { Wall } from '../entities/Wall';
@@ -16,7 +17,7 @@ export class SellSystem {
 
   sellAt(tx: number, ty: number) {
     const scene = this.scene;
-    if (scene.game.registry.get('tutorialActive')) return;
+    if (getRegistry(scene.game).get('tutorialActive')) return;
     // tower: click anywhere inside the footprint
     const ti = scene.towers.findIndex(t =>
       tx >= t.tileX && tx < t.tileX + t.size &&

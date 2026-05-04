@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Player } from '../entities/Player';
 import { Enemy, EnemyKind } from '../entities/Enemy';
@@ -206,11 +208,11 @@ export class GameScene extends Phaser.Scene {
     this.bossSpawned = false;
     this.bossCountdownUntil = 0;
     // Clear any persisted boss state from the previous run/level.
-    this.game.registry.set('bossActive', false);
-    this.game.registry.set('bossHp', 0);
-    this.game.registry.set('bossMaxHp', 0);
-    this.game.registry.set('bossBiome', '');
-    this.game.registry.set('gameEndState', null);
+    getRegistry(this.game).set('bossActive', false);
+    getRegistry(this.game).set('bossHp', 0);
+    getRegistry(this.game).set('bossMaxHp', 0);
+    getRegistry(this.game).set('bossBiome', undefined);
+    getRegistry(this.game).set('gameEndState', undefined);
     this.killsTarget = CFG.winKills;
     this.gameOver = false;
     this.boulders = [];
@@ -366,11 +368,11 @@ export class GameScene extends Phaser.Scene {
       // its first create — that initial pass runs against the old
       // LevelSelect gameSize and is about to be restarted at the right
       // size on the next tick.
-      this.game.registry.set('uiBootingForResize', true);
+      getRegistry(this.game).set('uiBootingForResize', true);
       this.scale.setGameSize(vp.renderW, vp.renderH);
       this.scale.refresh();
       this.time.delayedCall(0, () => {
-        this.game.registry.set('uiBootingForResize', false);
+        getRegistry(this.game).set('uiBootingForResize', false);
         const ui = this.scene.get('UI');
         if (ui?.scene.isActive()) ui.scene.restart();
       });
@@ -378,8 +380,8 @@ export class GameScene extends Phaser.Scene {
 
     // player — starts at origin, camera follows
     this.player = new Player(this, 0, 0);
-    this.sf = this.game.registry.get('sf') || 1;
-    const cameraZoom = this.game.registry.get('cameraZoom') ?? this.sf;
+    this.sf = getRegistry(this.game).get('sf') || 1;
+    const cameraZoom = getRegistry(this.game).get('cameraZoom') ?? this.sf;
     this.cameras.main.setZoom(cameraZoom);
     this.cameras.main.startFollow(this.player, true, 0.12, 0.12);
 
@@ -402,9 +404,9 @@ export class GameScene extends Phaser.Scene {
       this.lastChunkCx = -9999;
       this.lastChunkCy = -9999;
     };
-    this.game.events.on('viewport-changed', onViewportChanged);
+    getEvents(this.game.events).on('viewport-changed', onViewportChanged);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off('viewport-changed', onViewportChanged);
+      getEvents(this.game.events).off('viewport-changed', onViewportChanged);
     });
 
     // Apply difficulty adjustments. Starting gold is now uniform across all
@@ -460,19 +462,19 @@ export class GameScene extends Phaser.Scene {
     // input
     this.keys = this.input.keyboard!.addKeys('W,A,S,D,UP,DOWN,LEFT,RIGHT,ONE,TWO,THREE,FOUR,X,ESC');
     this.input.keyboard!.on('keydown-ONE', () => {
-      const ts = this.game.registry.get('tutorialStep');
+      const ts = getRegistry(this.game).get('tutorialStep');
       if (ts && ts !== 'game_press_1' && ts !== 'game_place_tower') return;
       this.build.toggleBuild('tower', 'arrow');
     });
     this.input.keyboard!.on('keydown-TWO', () => {
-      if (this.game.registry.get('tutorialStep')) return; // blocked during tutorial
+      if (getRegistry(this.game).get('tutorialStep')) return; // blocked during tutorial
       // Cannon is locked on the meadow level (intro). Unlocked from forest on.
       if (this.biome === 'grasslands') return;
       this.build.toggleBuild('tower', 'cannon');
     });
     // Key 3 reserved for mage tower (not yet implemented)
     this.input.keyboard!.on('keydown-FOUR', () => {
-      const ts = this.game.registry.get('tutorialStep');
+      const ts = getRegistry(this.game).get('tutorialStep');
       if (ts && ts !== 'game_press_4' && ts !== 'game_place_walls') return;
       this.build.toggleBuild('wall');
     });
@@ -513,7 +515,7 @@ export class GameScene extends Phaser.Scene {
     this.towerPanel = this.add.container(0, 0).setDepth(900).setVisible(false);
 
     // events from UI
-    this.events.emit('hud', this.hudState());
+    getEvents(this.events).emit('hud', this.hudState());
     // Defensive: drop any leftover listeners from a previous run before
     // registering ours. The old shutdown path doesn't always fire in time
     // (e.g. on win the panel→stop happens synchronously inside an input
@@ -521,11 +523,11 @@ export class GameScene extends Phaser.Scene {
     // the previous shutdown), which would leave us with two listeners both
     // toggling buildKind on the same singleton scene instance — they cancel
     // each other and the build menu never opens.
-    this.game.events.off('ui-build');
-    this.game.events.off('ui-sell');
-    this.game.events.off('ui-speed');
+    getEvents(this.game.events).off('ui-build');
+    getEvents(this.game.events).off('ui-sell');
+    getEvents(this.game.events).off('ui-speed');
     this._onUiBuild = (k: BuildKind, tk?: TowerKind) => {
-      const ts = this.game.registry.get('tutorialStep');
+      const ts = getRegistry(this.game).get('tutorialStep');
       if (ts) {
         if (ts === 'game_press_1' && k === 'tower' && tk === 'arrow') { /* allowed */ }
         // Tutorial caps placements at 3 walls — once 3 are down, don't let
@@ -545,15 +547,15 @@ export class GameScene extends Phaser.Scene {
     };
     this._onUiSell = () => this.build.setBuild('none');
     this._onUiSpeed = (mult: number) => this.setTimeScale(mult);
-    this.game.events.on('ui-build', this._onUiBuild);
-    this.game.events.on('ui-sell', this._onUiSell);
-    this.game.events.on('ui-speed', this._onUiSpeed);
+    getEvents(this.game.events).on('ui-build', this._onUiBuild);
+    getEvents(this.game.events).on('ui-sell', this._onUiSell);
+    getEvents(this.game.events).on('ui-speed', this._onUiSpeed);
 
     // Apply default game speed (1.25x base)
     this.setTimeScale(this.timeMult);
 
     // initial UI update
-    this.scene.get('UI').events.emit('hud', this.hudState());
+    getEvents(this.scene.get('UI').events).emit('hud', this.hudState());
 
     // pre-wave build phase
     this.waveStartAt = CFG.spawn.startDelay;
@@ -675,7 +677,7 @@ export class GameScene extends Phaser.Scene {
         this.loadingDone = true;
         this.physics.resume();
         this.hud.pushHud();
-        this.game.events.emit('game-ready');
+        getEvents(this.game.events).emit('game-ready');
         // Pick the biome's BGM. Falls through to 'castle' for any biome
         // that doesn't yet have its own track.
         const bgmKey = (['grasslands', 'forest', 'infected', 'river', 'castle'] as const)
@@ -741,8 +743,8 @@ export class GameScene extends Phaser.Scene {
     // stick vector to the registry every frame. A generous deadzone (0.3
     // magnitude) ignores thumb rest / jitter; outside the deadzone the input
     // snaps to a unit vector so movement is binary (full speed, no analog).
-    const jx = (this.game.registry.get('joystickX') as number) || 0;
-    const jy = (this.game.registry.get('joystickY') as number) || 0;
+    const jx = (getRegistry(this.game).get('joystickX') as number) || 0;
+    const jy = (getRegistry(this.game).get('joystickY') as number) || 0;
     const jmag2 = jx * jx + jy * jy;
     const JOYSTICK_DEADZONE_SQ = 0.3 * 0.3;
     if (jmag2 >= JOYSTICK_DEADZONE_SQ) {
@@ -786,7 +788,7 @@ export class GameScene extends Phaser.Scene {
     }
 
     // Tutorial leash: keep tower visible on screen
-    if (this.game.registry.get('tutorialActive') && this.towers.length > 0) {
+    if (getRegistry(this.game).get('tutorialActive') && this.towers.length > 0) {
       const anchor = this.towers[0];
       const cam = this.cameras.main;
       const margin = 40; // keep tower at least this far from screen edge
@@ -884,9 +886,9 @@ export class GameScene extends Phaser.Scene {
 
   shutdown() {
     SFX.stopBgm();
-    if (this._onUiBuild) this.game.events.off('ui-build', this._onUiBuild);
-    if (this._onUiSell) this.game.events.off('ui-sell', this._onUiSell);
-    if (this._onUiSpeed) this.game.events.off('ui-speed', this._onUiSpeed);
+    if (this._onUiBuild) getEvents(this.game.events).off('ui-build', this._onUiBuild);
+    if (this._onUiSell) getEvents(this.game.events).off('ui-sell', this._onUiSell);
+    if (this._onUiSpeed) getEvents(this.game.events).off('ui-speed', this._onUiSpeed);
     this._onUiBuild = undefined;
     this._onUiSell = undefined;
     this._onUiSpeed = undefined;

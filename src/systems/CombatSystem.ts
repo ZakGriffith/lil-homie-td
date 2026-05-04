@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Enemy } from '../entities/Enemy';
 import { Boss } from '../entities/Boss';
@@ -304,14 +306,14 @@ export class CombatSystem {
     // hits land on each. Each boss still gets its own in-world bar via
     // Boss.drawHpBar().
     if (b === scene.boss) {
-      scene.game.events.emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
-      scene.game.registry.set('bossHp', b.hp);
+      getEvents(scene.game.events).emit('boss-hp', { hp: b.hp, maxHp: b.maxHp });
+      getRegistry(scene.game).set('bossHp', b.hp);
     }
     if (b.dying) {
       // bossActive only flips off when the primary dies — for infinite
       // doubles we still want the HUD to show the secondary's HP via
       // its in-world bar; the primary bar hides at this moment.
-      if (b === scene.boss) scene.game.registry.set('bossActive', false);
+      if (b === scene.boss) getRegistry(scene.game).set('bossActive', false);
       this.dropBossLoot(b);
     }
   }
@@ -361,7 +363,7 @@ export class CombatSystem {
       scene.player.kills++;
       scene.waveKills++;
       scene.hud.pushHud();
-      if (scene.game.registry.get('tutorialActive')) scene.game.events.emit('tutorial-kill');
+      if (getRegistry(scene.game).get('tutorialActive')) getEvents(scene.game.events).emit('tutorial-kill');
     }
   }
 
@@ -491,10 +493,10 @@ export class CombatSystem {
       const dx = scene.boss.x - x, dy = scene.boss.y - y;
       if (dx * dx + dy * dy <= r2) {
         scene.boss.hurt(Math.floor(dmg * 0.6));
-        scene.game.events.emit('boss-hp', { hp: scene.boss.hp, maxHp: scene.boss.maxHp });
-        scene.game.registry.set('bossHp', scene.boss.hp);
+        getEvents(scene.game.events).emit('boss-hp', { hp: scene.boss.hp, maxHp: scene.boss.maxHp });
+        getRegistry(scene.game).set('bossHp', scene.boss.hp);
         if (scene.boss.dying) {
-          scene.game.registry.set('bossActive', false);
+          getRegistry(scene.game).set('bossActive', false);
           this.dropBossLoot(scene.boss);
         }
       }

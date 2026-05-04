@@ -1,4 +1,6 @@
 import Phaser from 'phaser';
+import { getRegistry } from '../core/registry';
+import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { loadMedals, totalMedals } from '../levels';
 import { Enemy } from '../entities/Enemy';
@@ -70,8 +72,8 @@ export class TutorialScene extends Phaser.Scene {
   constructor() { super('Tutorial'); }
 
   create() {
-    this.sf = this.game.registry.get('sf') || 1;
-    this.isMobile = !!this.game.registry.get('isMobile');
+    this.sf = getRegistry(this.game).get('sf') || 1;
+    this.isMobile = !!getRegistry(this.game).get('isMobile');
     const W = this.scale.width;
     const H = this.scale.height;
 
@@ -108,46 +110,46 @@ export class TutorialScene extends Phaser.Scene {
     // setGameSize) runs first and this.scale reflects the new dimensions.
     const onViewportChanged = () => {
       queueMicrotask(() => {
-        this.sf = this.game.registry.get('sf') || 1;
-        this.isMobile = !!this.game.registry.get('isMobile');
+        this.sf = getRegistry(this.game).get('sf') || 1;
+        this.isMobile = !!getRegistry(this.game).get('isMobile');
         this.repositionSkipBtn();
         // Skip the redraw if a delayed transition is in flight — the screen
         // is intentionally blank until pendingStep fires.
         if (!this.pendingStep) this.showStep();
       });
     };
-    this.game.events.on('viewport-changed', onViewportChanged);
+    getEvents(this.game.events).on('viewport-changed', onViewportChanged);
     // The scale resize event fires whenever any scene calls setGameSize —
     // critically, when GameScene expands the canvas back to the full device
     // viewport on map load. Without this listener the skip button stays
     // anchored to the LevelSelect-sized canvas and (in mobile landscape)
     // ends up overlapping the hotbar until the user rotates.
     const onScaleResize = () => {
-      this.sf = this.game.registry.get('sf') || 1;
+      this.sf = getRegistry(this.game).get('sf') || 1;
       this.repositionSkipBtn();
       if (!this.pendingStep) this.showStep();
     };
     this.scale.on(Phaser.Scale.Events.RESIZE, onScaleResize);
     this.events.once(Phaser.Scenes.Events.SHUTDOWN, () => {
-      this.game.events.off('viewport-changed', onViewportChanged);
+      getEvents(this.game.events).off('viewport-changed', onViewportChanged);
       this.scale.off(Phaser.Scale.Events.RESIZE, onScaleResize);
     });
 
     // Listen for events
-    this.game.events.on('tutorial-level-clicked', this.onLevelClicked, this);
-    this.game.events.on('tutorial-diff-clicked', this.onDiffClicked, this);
-    this.game.events.on('tutorial-kill', this.onKill, this);
-    this.game.events.on('tutorial-tower-placed', this.onTowerPlaced, this);
-    this.game.events.on('tutorial-wall-placed', this.onWallPlaced, this);
-    this.game.events.on('game-ready', this.onGameReady, this);
-    this.game.events.on('build-mode', this.onBuildMode, this);
-    this.game.events.on('tutorial-coin-collected', this.onCoinCollected, this);
-    this.game.events.on('tutorial-tower-selected', this.onTowerSelected, this);
-    this.game.events.on('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    this.game.events.on('tutorial-tower-deselected', this.onTowerDeselected, this);
+    getEvents(this.game.events).on('tutorial-level-clicked', this.onLevelClicked, this);
+    getEvents(this.game.events).on('tutorial-diff-clicked', this.onDiffClicked, this);
+    getEvents(this.game.events).on('tutorial-kill', this.onKill, this);
+    getEvents(this.game.events).on('tutorial-tower-placed', this.onTowerPlaced, this);
+    getEvents(this.game.events).on('tutorial-wall-placed', this.onWallPlaced, this);
+    getEvents(this.game.events).on('game-ready', this.onGameReady, this);
+    getEvents(this.game.events).on('build-mode', this.onBuildMode, this);
+    getEvents(this.game.events).on('tutorial-coin-collected', this.onCoinCollected, this);
+    getEvents(this.game.events).on('tutorial-tower-selected', this.onTowerSelected, this);
+    getEvents(this.game.events).on('tutorial-tower-upgraded', this.onTowerUpgraded, this);
+    getEvents(this.game.events).on('tutorial-tower-deselected', this.onTowerDeselected, this);
 
     this.step = 'ls_click_meadow';
-    this.game.registry.set('tutorialStep', this.step);
+    getRegistry(this.game).set('tutorialStep', this.step);
     this.moveDist = 0;
     this.tutorialKills = 0;
     this.wallsPlaced = 0;
@@ -262,7 +264,7 @@ export class TutorialScene extends Phaser.Scene {
     }
     this.pendingStep = null;
     this.step = step;
-    this.game.registry.set('tutorialStep', step);
+    getRegistry(this.game).set('tutorialStep', step);
     this.showStep();
   }
 
@@ -718,7 +720,7 @@ export class TutorialScene extends Phaser.Scene {
       this.pendingStep = null;
       this.stepDelay = 0;
       this.step = next;
-      this.game.registry.set('tutorialStep', next);
+      getRegistry(this.game).set('tutorialStep', next);
       this.showStep();
       return;
     }
@@ -824,14 +826,14 @@ export class TutorialScene extends Phaser.Scene {
 
   finish() {
     markTutorialDone();
-    this.game.registry.set('tutorialActive', false);
-    this.game.registry.set('tutorialStep', null);
+    getRegistry(this.game).set('tutorialActive', false);
+    getRegistry(this.game).set('tutorialStep', null);
     this.cleanupContinueZone();
     this.resumeGame();
 
     // Tells UIScene the tutorial just wrapped — it pops the speed-up
     // unlock toast a couple seconds later and removes the speed slot lock.
-    this.game.events.emit('tutorial-finished');
+    getEvents(this.game.events).emit('tutorial-finished');
 
     // Resume normal spawning in GameScene — skip the standard build break
     // since the tutorial already walked the player through placement.
@@ -841,32 +843,32 @@ export class TutorialScene extends Phaser.Scene {
     }
 
     // Clean up listeners
-    this.game.events.off('tutorial-level-clicked', this.onLevelClicked, this);
-    this.game.events.off('tutorial-diff-clicked', this.onDiffClicked, this);
-    this.game.events.off('tutorial-kill', this.onKill, this);
-    this.game.events.off('tutorial-tower-placed', this.onTowerPlaced, this);
-    this.game.events.off('tutorial-wall-placed', this.onWallPlaced, this);
-    this.game.events.off('game-ready', this.onGameReady, this);
-    this.game.events.off('build-mode', this.onBuildMode, this);
-    this.game.events.off('tutorial-coin-collected', this.onCoinCollected, this);
-    this.game.events.off('tutorial-tower-selected', this.onTowerSelected, this);
-    this.game.events.off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    this.game.events.off('tutorial-tower-deselected', this.onTowerDeselected, this);
+    getEvents(this.game.events).off('tutorial-level-clicked', this.onLevelClicked, this);
+    getEvents(this.game.events).off('tutorial-diff-clicked', this.onDiffClicked, this);
+    getEvents(this.game.events).off('tutorial-kill', this.onKill, this);
+    getEvents(this.game.events).off('tutorial-tower-placed', this.onTowerPlaced, this);
+    getEvents(this.game.events).off('tutorial-wall-placed', this.onWallPlaced, this);
+    getEvents(this.game.events).off('game-ready', this.onGameReady, this);
+    getEvents(this.game.events).off('build-mode', this.onBuildMode, this);
+    getEvents(this.game.events).off('tutorial-coin-collected', this.onCoinCollected, this);
+    getEvents(this.game.events).off('tutorial-tower-selected', this.onTowerSelected, this);
+    getEvents(this.game.events).off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
+    getEvents(this.game.events).off('tutorial-tower-deselected', this.onTowerDeselected, this);
 
     this.scene.stop('Tutorial');
   }
 
   shutdown() {
-    this.game.events.off('tutorial-level-clicked', this.onLevelClicked, this);
-    this.game.events.off('tutorial-diff-clicked', this.onDiffClicked, this);
-    this.game.events.off('tutorial-kill', this.onKill, this);
-    this.game.events.off('tutorial-tower-placed', this.onTowerPlaced, this);
-    this.game.events.off('tutorial-wall-placed', this.onWallPlaced, this);
-    this.game.events.off('game-ready', this.onGameReady, this);
-    this.game.events.off('build-mode', this.onBuildMode, this);
-    this.game.events.off('tutorial-coin-collected', this.onCoinCollected, this);
-    this.game.events.off('tutorial-tower-selected', this.onTowerSelected, this);
-    this.game.events.off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
-    this.game.events.off('tutorial-tower-deselected', this.onTowerDeselected, this);
+    getEvents(this.game.events).off('tutorial-level-clicked', this.onLevelClicked, this);
+    getEvents(this.game.events).off('tutorial-diff-clicked', this.onDiffClicked, this);
+    getEvents(this.game.events).off('tutorial-kill', this.onKill, this);
+    getEvents(this.game.events).off('tutorial-tower-placed', this.onTowerPlaced, this);
+    getEvents(this.game.events).off('tutorial-wall-placed', this.onWallPlaced, this);
+    getEvents(this.game.events).off('game-ready', this.onGameReady, this);
+    getEvents(this.game.events).off('build-mode', this.onBuildMode, this);
+    getEvents(this.game.events).off('tutorial-coin-collected', this.onCoinCollected, this);
+    getEvents(this.game.events).off('tutorial-tower-selected', this.onTowerSelected, this);
+    getEvents(this.game.events).off('tutorial-tower-upgraded', this.onTowerUpgraded, this);
+    getEvents(this.game.events).off('tutorial-tower-deselected', this.onTowerDeselected, this);
   }
 }

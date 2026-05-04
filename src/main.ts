@@ -7,6 +7,8 @@ import { UIScene } from './scenes/UIScene';
 import { TutorialScene } from './scenes/TutorialScene';
 import { SFX } from './audio/sfx';
 import { installViewportResizeListener } from './viewport';
+import { getRegistry } from './core/registry';
+import { getEvents } from './core/events';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
@@ -102,7 +104,7 @@ function start() {
   });
 
   // Hide overlay once GameScene is ready (after "Generating world..." from level select)
-  game.events.on('game-ready', () => {
+  getEvents(game.events).on('game-ready', () => {
     overlay.classList.add('hidden');
     const landing = document.getElementById('landingPanel');
     if (landing) landing.classList.remove('loading');
@@ -113,12 +115,13 @@ function start() {
   // Each scene is responsible for setting its own gameSize (LevelSelect locks
   // to a 3:2 fit; GameScene fills the device viewport), so this top-level
   // handler intentionally does NOT call setGameSize itself.
+  const reg = getRegistry(game);
   installViewportResizeListener((vp) => {
-    game.registry.set('sf', vp.uiScale);
-    game.registry.set('cameraZoom', vp.cameraZoom);
-    game.registry.set('uiScale', vp.uiScale);
-    game.registry.set('isMobile', vp.isMobile);
-    game.events.emit('viewport-changed', vp);
+    reg.set('sf', vp.uiScale);
+    reg.set('cameraZoom', vp.cameraZoom);
+    reg.set('uiScale', vp.uiScale);
+    reg.set('isMobile', vp.isMobile);
+    getEvents(game.events).emit('viewport-changed', vp);
   });
 }
 
