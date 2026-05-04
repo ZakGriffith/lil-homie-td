@@ -29,6 +29,15 @@ export class EndSystem {
         if (scene.bossState.infiniteResetUntil === 0) {
           getEvents(scene.game.events).emit('boss-died');
           scene.bossState.startInfiniteReset(scene.vTime, 8000);
+          // Per-boss-cleared difficulty ramp. Compounds forever, no
+          // cap — paired with the per-cycle boss HP scaling already
+          // baked into pickInfiniteBosses(), this is what makes deep
+          // runs increasingly nasty.
+          scene.enemyHpMult *= 1.08;
+          scene.enemyDmgMult *= 1.05;
+          scene.levelMinInterval = Math.max(200, Math.round(scene.levelMinInterval * 0.95));
+          // Don't let the active spawnInterval lag the new floor.
+          scene.spawnInterval = Math.min(scene.spawnInterval, scene.levelMinInterval * 4);
           scene.countdownColor = '#7cf29a';
           const survivors = (scene.enemies.getChildren() as Enemy[])
             .filter((e) => e && e.active && !e.dying);

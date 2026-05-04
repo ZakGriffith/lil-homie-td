@@ -136,6 +136,9 @@ export class GameScene extends Phaser.Scene {
   biome: Biome = 'grasslands';
   enemyHpMult = 1;
   enemySpeedMult = 1;
+  // Per-enemy damage multiplier. Stays at 1 in campaign modes; infinite
+  // mode compounds it 1.05× per boss cleared via EndSystem.
+  enemyDmgMult = 1;
   levelRampFactor = CFG.spawn.rampFactor;
   levelMinInterval = CFG.spawn.minInterval;
   levelWaveSize = CFG.spawn.waveSize;
@@ -250,6 +253,7 @@ export class GameScene extends Phaser.Scene {
     // enemies, more of them, and faster spawn pacing — but the same
     // starting gold across all modes.
     this.enemySpeedMult = 1;
+    this.enemyDmgMult = 1;
     let waveSizeMult = 1;
     let intervalMult = 1;
     switch (this.difficulty) {

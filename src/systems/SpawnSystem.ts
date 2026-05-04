@@ -63,6 +63,110 @@ export function infiniteBossTitle(def: InfBossDef): string {
   return 'ANCIENT RAM';
 }
 
+// ---------------------------------------------------------------------------
+// Infinite-mode enemy theme rotation
+// ---------------------------------------------------------------------------
+// Normal-wave enemy pool grows with bossesCleared:
+//   events 1-2 (cycles 0-1): home biome only
+//   events 3-4 (cycles 2-3): home + 1 neighbour
+//   events 5-6 (cycles 4-5): home + 2 neighbours
+//   events 7+  (cycles 6+) : all 5 biomes mixed
+// "Castle elites" (warlock / golem / shadow_imp / skeleton) trickle in
+// starting event 5 with 5% chance, +5% per event, capped at 30%.
+
+type SpawnBiome = 'grasslands' | 'forest' | 'infected' | 'river' | 'castle';
+
+/** Order in which non-home biomes get added to the rotation pool. */
+const BIOME_RAMP: SpawnBiome[] = ['grasslands', 'forest', 'infected', 'river', 'castle'];
+
+/** Pool of biomes the normal-wave picker may sample from for this run. */
+function getInfinitePool(home: SpawnBiome, bossesCleared: number): SpawnBiome[] {
+  if (bossesCleared < 2) return [home];
+  const others = BIOME_RAMP.filter(b => b !== home);
+  if (bossesCleared < 4) return [home, others[0]];
+  if (bossesCleared < 6) return [home, others[0], others[1]];
+  return BIOME_RAMP.slice();
+}
+
+/** Per-biome kind picker — same odds as the campaign-mode spawnEnemy
+ *  branches, just factored out so the infinite picker can reuse them
+ *  for any biome it samples. */
+function pickKindForBiome(biome: SpawnBiome, heavyChance: number): EnemyKind {
+  if (biome === 'forest') return Math.random() < heavyChance ? 'bear' : 'spider';
+  if (biome === 'infected') {
+    const r = Math.random();
+    if (r < CFG.infected.toadChance) return 'toad';
+    if (r < CFG.infected.toadChance + heavyChance) return 'infected_heavy';
+    return 'infected_basic';
+  }
+  if (biome === 'river') {
+    const r = Math.random();
+    if (r < heavyChance) return 'bat';
+    if (r < 0.4) return 'mosquito';
+    return 'crow';
+  }
+  if (biome === 'castle') {
+    const r = Math.random();
+    if (r < heavyChance) return 'golem';
+    if (r < heavyChance + 0.15) return 'warlock';
+    if (r < heavyChance + 0.35) return 'shadow_imp';
+    return 'skeleton';
+  }
+  return Math.random() < heavyChance ? 'deer' : 'snake';
+}
+
+/** Maps an enemy kind back to its "home" biome — used for cluster sizing
+ *  / spread now that infinite mode mixes kinds across biomes. */
+function biomeOfKind(kind: EnemyKind): SpawnBiome {
+  switch (kind) {
+    case 'bear': case 'spider': case 'wolf':
+      return 'forest';
+    case 'toad': case 'infected_basic': case 'infected_heavy': case 'infected_runner':
+      return 'infected';
+    case 'crow': case 'bat': case 'mosquito': case 'dragonfly':
+      return 'river';
+    case 'skeleton': case 'warlock': case 'golem': case 'shadow_imp':
+    case 'castle_bat': case 'castle_rat':
+      return 'castle';
+    default:
+      return 'grasslands';
+  }
+}
+
+/** Pick a normal-wave enemy kind in infinite mode. Honours theme
+ *  rotation and the castle-elite trickle. */
+function pickInfiniteEnemyKind(home: SpawnBiome, bossesCleared: number, heavyChance: number): EnemyKind {
+  // Castle elite trickle starts at event 5 (after 4 bosses cleared).
+  if (bossesCleared >= 4) {
+    const eliteChance = Math.min(0.3, 0.05 + (bossesCleared - 4) * 0.05);
+    if (Math.random() < eliteChance) {
+      const r = Math.random();
+      if (r < 0.25) return 'warlock';
+      if (r < 0.50) return 'skeleton';
+      if (r < 0.75) return 'shadow_imp';
+      return 'golem';
+    }
+  }
+  const pool = getInfinitePool(home, bossesCleared);
+  const biome = pool[Math.floor(Math.random() * pool.length)];
+  return pickKindForBiome(biome, heavyChance);
+}
+
+/** Pool of pack KINDS available for runner-pack bursts in infinite mode.
+ *  Same theme-rotation rules as normal enemies. */
+function pickInfinitePackKind(home: SpawnBiome, bossesCleared: number): EnemyKind {
+  const pool = getInfinitePool(home, bossesCleared);
+  const biome = pool[Math.floor(Math.random() * pool.length)];
+  if (biome === 'castle') {
+    const r = Math.random();
+    return r < 0.33 ? 'castle_bat' : r < 0.66 ? 'castle_rat' : 'shadow_imp';
+  }
+  return biome === 'forest' ? 'wolf'
+    : biome === 'infected' ? 'infected_runner'
+    : biome === 'river' ? 'dragonfly'
+    : 'rat';
+}
+
 /**
  * Wave-driven spawning: ramps difficulty, fires runner-pack bursts, picks
  * enemy types per biome, and triggers the boss lead-in / spawn for each
@@ -99,6 +203,9 @@ export class SpawnSystem {
     }
     if (scene.enemySpeedMult !== 1) {
       e.speed = Math.ceil(e.speed * scene.enemySpeedMult);
+    }
+    if (scene.enemyDmgMult !== 1) {
+      e.dmg = Math.ceil(e.dmg * scene.enemyDmgMult);
     }
   }
 
@@ -389,7 +496,10 @@ export class SpawnSystem {
     if (scene.rampTimer > CFG.spawn.rampEvery) {
       scene.rampTimer = 0;
       scene.spawnInterval = Math.max(scene.levelMinInterval, scene.spawnInterval * scene.levelRampFactor);
-      scene.heavyChance = Math.min(CFG.spawn.heavyChanceMax, scene.heavyChance + CFG.spawn.heavyChanceStep);
+      // Infinite mode lets heavyChance climb past the campaign cap so
+      // late-run waves shift toward the tougher enemy variants.
+      const heavyCap = scene.difficulty === 'infinite' ? 0.6 : CFG.spawn.heavyChanceMax;
+      scene.heavyChance = Math.min(heavyCap, scene.heavyChance + CFG.spawn.heavyChanceStep);
     }
     if (scene.spawnTimer > scene.spawnInterval && scene.waveState.waveSpawned < waveSize) {
       scene.spawnTimer = 0;
@@ -435,23 +545,25 @@ export class SpawnSystem {
         cy: py + sa * spawnR + ty * jitter,
       };
     };
-    const isForest = scene.biome === 'forest';
-    const isInfected = scene.biome === 'infected';
-    const isRiver = scene.biome === 'river';
-    const isCastle = scene.biome === 'castle';
-    const base = isForest ? CFG.forest.wolfPackSize
-               : isInfected ? CFG.infected.runnerPackSize
-               : isRiver ? CFG.river.dragonflyPackSize
-               : isCastle ? CFG.castle.impPackSize
+    // Infinite mode rotates through biome packs after a couple of bosses
+    // are cleared; campaign mode stays on the home biome's pack.
+    const packKind: EnemyKind = scene.difficulty === 'infinite'
+      ? pickInfinitePackKind(scene.biome as SpawnBiome, scene.bossState.infiniteBossesCleared)
+      : (scene.biome === 'forest' ? 'wolf'
+        : scene.biome === 'infected' ? 'infected_runner'
+        : scene.biome === 'river' ? 'dragonfly'
+        : scene.biome === 'castle'
+          ? (Math.random() < 0.33 ? 'castle_bat' : Math.random() < 0.5 ? 'castle_rat' : 'shadow_imp')
+          : 'rat');
+    // Pack size keys off the picked kind's biome so foreign packs feel
+    // identically meaty to their home-biome version.
+    const packBiome = biomeOfKind(packKind);
+    const base = packBiome === 'forest' ? CFG.forest.wolfPackSize
+               : packBiome === 'infected' ? CFG.infected.runnerPackSize
+               : packBiome === 'river' ? CFG.river.dragonflyPackSize
+               : packBiome === 'castle' ? CFG.castle.impPackSize
                : CFG.spawn.runnerPackSize;
-    const n = isForest ? base + Phaser.Math.Between(0, 5) : base;
-    let packKind: EnemyKind;
-    if (isCastle) {
-      const r = Math.random();
-      packKind = r < 0.33 ? 'castle_bat' : r < 0.66 ? 'castle_rat' : 'shadow_imp';
-    } else {
-      packKind = isForest ? 'wolf' : isInfected ? 'infected_runner' : isRiver ? 'dragonfly' : 'rat';
-    }
+    const n = packBiome === 'forest' ? base + Phaser.Math.Between(0, 5) : base;
     const delay = 150;
     const toSpawn = Math.min(n, waveSize - scene.waveState.waveSpawned);
     for (let i = 0; i < toSpawn; i++) {
@@ -492,7 +604,9 @@ export class SpawnSystem {
     const x = px + Math.cos(angle) * spawnR;
     const y = py + Math.sin(angle) * spawnR;
     let kind: EnemyKind;
-    if (scene.biome === 'forest') {
+    if (scene.difficulty === 'infinite') {
+      kind = pickInfiniteEnemyKind(scene.biome as SpawnBiome, scene.bossState.infiniteBossesCleared, scene.heavyChance);
+    } else if (scene.biome === 'forest') {
       kind = Math.random() < scene.heavyChance ? 'bear' : 'spider';
     } else if (scene.biome === 'infected') {
       const r = Math.random();
@@ -514,7 +628,13 @@ export class SpawnSystem {
       kind = Math.random() < scene.heavyChance ? 'deer' : 'snake';
     }
 
-    if (scene.biome === 'forest' && kind === 'spider') {
+    // Cluster behaviour was originally biome-keyed but enemy kind alone
+    // determines whether/how to cluster. Infinite-mode mixed-biome rolls
+    // need this kind-keyed check to still get the right cluster shape
+    // even though scene.biome != biomeOfKind(kind).
+    const kindBiome = biomeOfKind(kind);
+
+    if (kindBiome === 'forest' && kind === 'spider') {
       const n = Math.min(Phaser.Math.Between(CFG.forest.spiderClusterMin, CFG.forest.spiderClusterMax), scene.levelClusterMax);
       const spread = CFG.forest.spiderClusterSpread;
       const waveSize = scene.levelWaveSize;
@@ -530,7 +650,7 @@ export class SpawnSystem {
       return;
     }
 
-    if (scene.biome === 'infected' && kind !== 'toad') {
+    if (kindBiome === 'infected' && kind !== 'toad') {
       const n = Math.min(Phaser.Math.Between(CFG.infected.clusterMin, CFG.infected.clusterMax), scene.levelClusterMax);
       const spread = CFG.infected.clusterSpread;
       const waveSize = scene.levelWaveSize;
@@ -546,7 +666,7 @@ export class SpawnSystem {
       return;
     }
 
-    if (scene.biome === 'castle' && kind !== 'warlock') {
+    if (kindBiome === 'castle' && kind !== 'warlock') {
       const n = Math.min(Phaser.Math.Between(CFG.castle.clusterMin, CFG.castle.clusterMax), scene.levelClusterMax);
       const spread = CFG.castle.clusterSpread;
       const waveSize = scene.levelWaveSize;
@@ -562,7 +682,7 @@ export class SpawnSystem {
       return;
     }
 
-    if (scene.biome === 'river') {
+    if (kindBiome === 'river') {
       const n = Math.min(Phaser.Math.Between(CFG.river.clusterMin, CFG.river.clusterMax), scene.levelClusterMax);
       const spread = CFG.river.clusterSpread;
       const waveSize = scene.levelWaveSize;
