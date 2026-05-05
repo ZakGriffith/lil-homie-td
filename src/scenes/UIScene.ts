@@ -860,7 +860,7 @@ export class UIScene extends Phaser.Scene {
         this.progressLabels[i].setVisible(!isBossNode);
         this.progressIcons[i].setVisible(isBossNode);
         if (isBossNode) {
-          let iconColor = 0x556a78;
+          let iconColor = 0x7a4a4a;
           if (completed) {
             this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
             this.progressCircles[i].setFillStyle(0x1a3a1a);
@@ -870,9 +870,10 @@ export class UIScene extends Phaser.Scene {
             this.progressCircles[i].setFillStyle(0x3a1010);
             iconColor = 0xff6a6a;
           } else {
-            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
-            this.progressCircles[i].setFillStyle(0x11172a);
-            iconColor = 0x556a78;
+            // Upcoming boss — dim red so the player can see it coming.
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x4a2a2a);
+            this.progressCircles[i].setFillStyle(0x1a0a0a);
+            iconColor = 0x7a4a4a;
           }
           this.drawSkullIcon(this.progressIcons[i], iconColor);
         } else if (completed) {
@@ -904,15 +905,16 @@ export class UIScene extends Phaser.Scene {
         this.progressLabels[i].setVisible(!isBoss);
         this.progressIcons[i].setVisible(isBoss);
         if (isBoss) {
-          let iconColor = 0x556a78;
+          let iconColor = 0x7a4a4a;
           if (s.bossSpawned) {
             this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
             this.progressCircles[i].setFillStyle(0x3a1010);
             iconColor = 0xff6a6a;
           } else {
-            this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
-            this.progressCircles[i].setFillStyle(0x11172a);
-            iconColor = 0x556a78;
+            // Upcoming boss — dim red so the player can see it coming.
+            this.progressCircles[i].setStrokeStyle(this.p(2), 0x4a2a2a);
+            this.progressCircles[i].setFillStyle(0x1a0a0a);
+            iconColor = 0x7a4a4a;
           }
           this.drawSkullIcon(this.progressIcons[i], iconColor);
         } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
