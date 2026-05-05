@@ -539,9 +539,22 @@ export class LevelSelectScene extends Phaser.Scene {
     // On mobile the panel fills almost the entire canvas vertically so the
     // buttons are tap-friendly. Desktop keeps the original compact size.
     const pw = isMobile ? Math.min(this.p(560), W * 0.92) : this.p(300);
-    // Desktop panel grew when we added the Infinite difficulty — five
-    // buttons need a bit more vertical room than the original four.
-    const ph = isMobile ? H * 0.92 : this.p(400);
+    // Panel height is content-driven: header + button block + start
+    // button + small bottom margin. Sized to wrap the contents so we
+    // don't leave a big void below the START button when the difficulty
+    // count grows. Mobile is capped to 92% of the canvas in case a tiny
+    // viewport can't fit the full content height.
+    const _btnCount = DIFFICULTY_ORDER.length;
+    const _headerH = this.p(isMobile ? 92 : 68);
+    const _blockTopGap = isMobile ? this.p(20) : this.p(14);
+    const _btnH = isMobile ? this.p(54) : this.p(36);
+    const _btnGap = isMobile ? this.p(10) : this.p(6);
+    const _btnBlockH = _btnCount * _btnH + (_btnCount - 1) * _btnGap;
+    const _gapToStart = isMobile ? this.p(20) : this.p(14);
+    const _startBtnH = isMobile ? this.p(56) : this.p(36);
+    const _bottomMargin = isMobile ? this.p(24) : this.p(20);
+    const phContent = _headerH + _blockTopGap + _btnBlockH + _gapToStart + _startBtnH + _bottomMargin;
+    const ph = isMobile ? Math.min(phContent, H * 0.92) : phContent;
     const px = W / 2, py = H / 2;
 
     // Backdrop
@@ -589,16 +602,20 @@ export class LevelSelectScene extends Phaser.Scene {
     // Difficulty buttons — larger and more spaced on mobile to fill the
     // taller panel and stay tap-friendly.
     const medals = this.medalStore[String(level.id)];
-    const btnH = isMobile ? this.p(60) : this.p(38);
-    const btnGap = isMobile ? this.p(12) : this.p(6);
+    const btnH = isMobile ? this.p(54) : this.p(36);
+    const btnGap = isMobile ? this.p(10) : this.p(6);
     const btnW = isMobile ? Math.min(this.p(460), pw - this.p(40)) : this.p(230);
-    // Center the difficulty-button block vertically within the panel
-    // (between the title area at top and the START button area at bottom).
+    // Anchor the button block just below the divider with a consistent
+    // gap. (Centering left a big void above the buttons when the count
+    // grew from 4 to 5, and the bottom of the block could overlap the
+    // START button.) First-button center is placed at a fixed offset
+    // below the divider regardless of how many buttons there are.
     const btnCount = DIFFICULTY_ORDER.length;
     const btnBlockH = btnCount * btnH + (btnCount - 1) * btnGap;
-    const btnStartY = isMobile
-      ? -btnBlockH / 2 + btnH / 2
-      : this.p(-40);
+    const blockTopGap = isMobile ? this.p(20) : this.p(14);
+    const btnStartY = dividerY + blockTopGap + btnH / 2;
+    this.diffBtnW = btnW;
+    this.diffBtnH = btnH;
     const items: Phaser.GameObjects.GameObject[] = [backdrop, outerBox, innerBox, title, tag, divider];
 
     for (let i = 0; i < DIFFICULTY_ORDER.length; i++) {
@@ -674,9 +691,14 @@ export class LevelSelectScene extends Phaser.Scene {
     }
 
     // START button — sized up on mobile to match the larger panel.
+    // Positioned just below the last difficulty button so the gap stays
+    // tight regardless of how many difficulties exist. (Bottom-anchoring
+    // left a big void below the difficulties when the count was 4.)
     const startBtnW = isMobile ? this.p(220) : this.p(120);
     const startBtnH = isMobile ? this.p(56) : this.p(36);
-    this.startBtnY = ph / 2 - startBtnH - this.p(isMobile ? 24 : 16);
+    const lastBtnBottom = btnStartY + (btnCount - 1) * (btnH + btnGap) + btnH / 2;
+    const gapToStart = isMobile ? this.p(20) : this.p(14);
+    this.startBtnY = lastBtnBottom + gapToStart;
     this.startBtnG = this.add.graphics();
     this.startBtnG.fillStyle(0x1a2540, 1);
     this.startBtnG.fillRoundedRect(-startBtnW / 2, this.startBtnY, startBtnW, startBtnH, this.p(8));
@@ -738,6 +760,10 @@ export class LevelSelectScene extends Phaser.Scene {
   startBtnY = 0;
   startBtnW = 0;
   startBtnH = 0;
+  /** Difficulty-button geometry — exposed so the tutorial can highlight
+   *  the Easy button without re-deriving the panel layout math. */
+  diffBtnW = 0;
+  diffBtnH = 0;
 
   updateStartButton() {
     if (!this.startBtnG || !this.startHit || !this.startText) return;
