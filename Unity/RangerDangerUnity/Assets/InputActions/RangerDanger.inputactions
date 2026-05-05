@@ -1,0 +1,72 @@
+{
+  "name": "RangerDanger",
+  "maps": [
+    {
+      "name": "Gameplay",
+      "id": "f82b1f91-9d5c-46d5-9c74-f83f5902eb7e",
+      "actions": [
+        {
+          "name": "Move",
+          "type": "Value",
+          "id": "f573e197-2fe2-411e-8cab-a51887749d56",
+          "expectedControlType": "Vector2"
+        },
+        {
+          "name": "Aim",
+          "type": "Value",
+          "id": "d3211e36-1c73-4494-b312-5e08a80ca5c5",
+          "expectedControlType": "Vector2"
+        },
+        {
+          "name": "Fire",
+          "type": "Button",
+          "id": "5a70856d-3b1d-4b67-8ba6-9ec7fcde76b1",
+          "expectedControlType": "Button"
+        },
+        {
+          "name": "Build",
+          "type": "Button",
+          "id": "f81660d4-d252-4036-93d2-970411fe9049",
+          "expectedControlType": "Button"
+        }
+      ],
+      "bindings": [
+        {
+          "name": "WASD",
+          "id": "13bd045c-2a05-4c13-bc25-8a5806437fb8",
+          "path": "2DVector",
+          "action": "Move",
+          "isComposite": true
+        },
+        { "name": "up", "id": "ba702d28-df2d-4d1c-8084-3d85a65a913d", "path": "<Keyboard>/w", "action": "Move", "isPartOfComposite": true },
+        { "name": "down", "id": "29d7a4ff-c544-4a87-9c18-b9779c6640a6", "path": "<Keyboard>/s", "action": "Move", "isPartOfComposite": true },
+        { "name": "left", "id": "8a65d0e4-78c6-4964-8bc0-5490064f362d", "path": "<Keyboard>/a", "action": "Move", "isPartOfComposite": true },
+        { "name": "right", "id": "9671ebcb-5991-4884-a8c9-2a66710a7658", "path": "<Keyboard>/d", "action": "Move", "isPartOfComposite": true },
+        { "id": "31316edb-cf12-4482-816e-c6d8d1b46706", "path": "<Gamepad>/leftStick", "action": "Move" },
+        { "id": "934dd81f-5cc2-4dc2-96ff-7f28baf4aa54", "path": "<Gamepad>/rightStick", "action": "Aim" },
+        { "id": "a19e41e6-3580-42e2-aeb6-589c75944fc0", "path": "<Mouse>/delta", "action": "Aim" },
+        { "id": "7ded5b48-c407-447d-af8f-fe74f18e1a0f", "path": "<Mouse>/leftButton", "action": "Fire" },
+        { "id": "b7248820-b157-4afe-b9b6-bcc4c317a825", "path": "<Gamepad>/rightTrigger", "action": "Fire" },
+        { "id": "f54a74fa-fe1a-4882-8c2f-77ea92edc44b", "path": "<Keyboard>/space", "action": "Build" },
+        { "id": "3d43e218-e351-40da-b7c5-85ec74b66fb3", "path": "<Gamepad>/buttonSouth", "action": "Build" }
+      ]
+    }
+  ],
+  "controlSchemes": [
+    {
+      "name": "KeyboardMouse",
+      "bindingGroup": "KeyboardMouse",
+      "devices": [
+        { "devicePath": "<Keyboard>", "isOptional": false, "isOR": false },
+        { "devicePath": "<Mouse>", "isOptional": false, "isOR": false }
+      ]
+    },
+    {
+      "name": "Gamepad",
+      "bindingGroup": "Gamepad",
+      "devices": [
+        { "devicePath": "<Gamepad>", "isOptional": false, "isOR": false }
+      ]
+    }
+  ]
+}
