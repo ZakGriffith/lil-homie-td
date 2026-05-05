@@ -428,6 +428,16 @@ export class SpawnSystem {
       return;
     }
 
+    // Break just ended — force a HUD push so the "WAVE N IN 1s" label
+    // flips to "WAVE N" the instant the timer expires, instead of
+    // lingering until the first enemy spawn (~spawnInterval later)
+    // happens to push for some other reason.
+    if (scene.hud.lastWaveBreakUntil > 0) {
+      scene.hud.lastWaveBreakUntil = 0;
+      scene.hud.lastWaveBreakSecond = -1;
+      scene.hud.pushHud();
+    }
+
     if (isBossWave && scene.waveState.waveSpawned >= waveSize) {
       const live = this.liveEnemyCount();
       const left = Math.max(live, waveSize - scene.waveState.waveKills);

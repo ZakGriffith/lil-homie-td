@@ -29,6 +29,11 @@ export class UIScene extends Phaser.Scene {
   waveLabel!: Phaser.GameObjects.Text;
   progressCircles: Phaser.GameObjects.Arc[] = [];
   progressLabels: Phaser.GameObjects.Text[] = [];
+  /** One Graphics overlay per node — draws a tiny skull (eyes + mouth)
+   *  for boss nodes. Avoids the unreliable centering of the ☠ unicode
+   *  glyph in the browser's monospace fallback font. Hidden on non-boss
+   *  nodes; the underlying Text label handles those. */
+  progressIcons: Phaser.GameObjects.Graphics[] = [];
   progressLines: Phaser.GameObjects.Rectangle[] = [];
   progressContainer!: Phaser.GameObjects.Container;
   countdownText!: Phaser.GameObjects.Text;
@@ -54,6 +59,42 @@ export class UIScene extends Phaser.Scene {
   private sf = 1;
   /** Scale a base-resolution value to native */
   private p(v: number) { return v * this.sf; }
+  /** Convert a 1-indexed cumulative wave number into the display number
+   *  shown to the player. In infinite mode, every 4th wave is a boss
+   *  event that doesn't get a number — so the visible sequence reads
+   *  1, 2, 3, [boss], 4, 5, 6, [boss], 7, 8, 9, ... For non-infinite
+   *  difficulties this is a no-op (the number is shown as-is). */
+  private displayWaveNum(cumulativeWave: number): number {
+    if (this.difficulty !== 'infinite') return cumulativeWave;
+    return cumulativeWave - Math.floor(cumulativeWave / 4);
+  }
+  /** Draw a small skull-and-jaw icon into the given Graphics object,
+   *  centered on its local origin. Used as the boss marker in the
+   *  progress strip — Graphics-drawn so it always centers cleanly,
+   *  unlike the ☠ unicode glyph which depends on the browser's
+   *  monospace font fallback. */
+  private drawSkullIcon(g: Phaser.GameObjects.Graphics, color: number) {
+    g.clear();
+    const p = this.p.bind(this);
+    const dark = 0x0a0510;
+    // Cranium — round skull top
+    g.fillStyle(color, 1);
+    g.fillCircle(0, -p(0.5), p(3.5));
+    // Jaw — narrower rectangle below the cranium
+    g.fillRect(-p(2.4), p(1.5), p(4.8), p(2));
+    // Eye sockets — two dark circles cut into the cranium
+    g.fillStyle(dark, 1);
+    g.fillCircle(-p(1.4), -p(0.6), p(1));
+    g.fillCircle(+p(1.4), -p(0.6), p(1));
+    // Tiny nose hole
+    g.fillRect(-p(0.4), p(0.5), p(0.8), p(0.8));
+    // Tooth grid: dark mouth bar with three light vertical teeth on top
+    g.fillRect(-p(1.9), p(1.7), p(3.8), p(1.5));
+    g.fillStyle(color, 1);
+    g.fillRect(-p(1.4), p(1.7), p(0.3), p(1.5));
+    g.fillRect(-p(0.15), p(1.7), p(0.3), p(1.5));
+    g.fillRect(+p(1.1), p(1.7), p(0.3), p(1.5));
+  }
   /** Build a font-size string at scaled resolution */
   private fs(px: number) { return `${Math.round(px * this.sf)}px`; }
   /** Design-space width (canvas divided by uiScale) — how many base units of
@@ -207,6 +248,7 @@ export class UIScene extends Phaser.Scene {
     // Level progress graphic (wave circles + boss skull)
     this.progressCircles = [];
     this.progressLabels = [];
+    this.progressIcons = [];
     this.progressLines = [];
     // Infinite mode: 6 rolling nodes (current wave + next 5). Updated
     // dynamically in updateHud.
@@ -243,11 +285,19 @@ export class UIScene extends Phaser.Scene {
       const waveNum = this.biome === 'castle'
         ? (i < 2 ? i + 1 : i === 2 ? 0 : i < 5 ? i : 0) // 1,2,skull,3,4,skull
         : i + 1;
-      const label = this.add.text(nx, nodeY, isBoss ? '\u2620' : `${waveNum}`, {
-        fontFamily: 'monospace', fontSize: isBoss ? this.fs(12) : this.fs(10), color: '#556',
+      const label = this.add.text(nx, nodeY, isBoss ? '' : `${waveNum}`, {
+        fontFamily: 'monospace', fontSize: this.fs(10), color: '#556',
       }).setOrigin(0.5);
+      // Boss icon \u2014 drawn as Graphics so it doesn't depend on the
+      // browser's font-fallback metrics for the \u2620 glyph. Hidden when
+      // the node isn't a boss node.
+      const icon = this.add.graphics().setPosition(nx, nodeY);
+      this.drawSkullIcon(icon, 0x556a78);
+      icon.setVisible(isBoss);
+      this.progressIcons.push(icon);
+      label.setVisible(!isBoss);
       this.progressLabels.push(label);
-      items.push(label);
+      items.push(label, icon);
     }
     this.progressContainer = this.add.container(0, 0, items);
 
@@ -743,27 +793,34 @@ export class UIScene extends Phaser.Scene {
         const w = currentWave + i;
         const isBoss = w % 4 === 0;
         const isCurrent = i === 0;
-        const labelText = isBoss ? '☠' : `${w}`;
-        this.progressLabels[i].setText(labelText);
-        this.progressLabels[i].setFontSize(this.fs(isBoss ? 12 : 10));
+        // Boss circles use the Graphics-drawn skull icon; non-boss use
+        // the text label. Toggle visibility per role.
+        this.progressLabels[i].setVisible(!isBoss);
+        this.progressIcons[i].setVisible(isBoss);
+        if (!isBoss) this.progressLabels[i].setText(`${this.displayWaveNum(w)}`);
+        let iconColor = 0x556a78;
         if (isCurrent && isBoss && s.bossSpawned) {
           this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
           this.progressCircles[i].setFillStyle(0x3a1010);
           this.progressLabels[i].setColor('#ff6a6a');
+          iconColor = 0xff6a6a;
         } else if (isCurrent) {
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x7cc4ff);
           this.progressCircles[i].setFillStyle(0x1a2a4a);
           this.progressLabels[i].setColor('#7cc4ff');
+          iconColor = 0x7cc4ff;
         } else if (isBoss) {
           // Upcoming boss — dim red so the player can see it coming
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x4a2a2a);
           this.progressCircles[i].setFillStyle(0x1a0a0a);
           this.progressLabels[i].setColor('#7a4a4a');
+          iconColor = 0x7a4a4a;
         } else {
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
           this.progressCircles[i].setFillStyle(0x11172a);
           this.progressLabels[i].setColor('#556');
         }
+        if (isBoss) this.drawSkullIcon(this.progressIcons[i], iconColor);
         if (i < this.progressLines.length) {
           // Lines are blue when leading into the current node, dim
           // otherwise — there's no "completed" past since the strip rolls.
@@ -799,20 +856,25 @@ export class UIScene extends Phaser.Scene {
           active = cp === 3 && s.bossSpawned;
         }
 
+        // Boss nodes show the Graphics skull; everything else shows the text label.
+        this.progressLabels[i].setVisible(!isBossNode);
+        this.progressIcons[i].setVisible(isBossNode);
         if (isBossNode) {
+          let iconColor = 0x556a78;
           if (completed) {
             this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
             this.progressCircles[i].setFillStyle(0x1a3a1a);
-            this.progressLabels[i].setColor('#4ad96a');
+            iconColor = 0x4ad96a;
           } else if (active) {
             this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
             this.progressCircles[i].setFillStyle(0x3a1010);
-            this.progressLabels[i].setColor('#ff6a6a');
+            iconColor = 0xff6a6a;
           } else {
             this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
             this.progressCircles[i].setFillStyle(0x11172a);
-            this.progressLabels[i].setColor('#556');
+            iconColor = 0x556a78;
           }
+          this.drawSkullIcon(this.progressIcons[i], iconColor);
         } else if (completed) {
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
           this.progressCircles[i].setFillStyle(0x1a3a1a);
@@ -838,18 +900,21 @@ export class UIScene extends Phaser.Scene {
       for (let i = 0; i < this.progressCircles.length; i++) {
         const isBoss = i === waveCount;
         const waveNum = i + 1; // 1-indexed wave for this node
+        // Boss nodes show the Graphics skull; everything else shows text.
+        this.progressLabels[i].setVisible(!isBoss);
+        this.progressIcons[i].setVisible(isBoss);
         if (isBoss) {
+          let iconColor = 0x556a78;
           if (s.bossSpawned) {
-            // Boss active - highlight red
             this.progressCircles[i].setStrokeStyle(this.p(2), 0xff6a6a);
             this.progressCircles[i].setFillStyle(0x3a1010);
-            this.progressLabels[i].setColor('#ff6a6a');
+            iconColor = 0xff6a6a;
           } else {
-            // Boss not yet
             this.progressCircles[i].setStrokeStyle(this.p(2), 0x2a3760);
             this.progressCircles[i].setFillStyle(0x11172a);
-            this.progressLabels[i].setColor('#556');
+            iconColor = 0x556a78;
           }
+          this.drawSkullIcon(this.progressIcons[i], iconColor);
         } else if (waveNum < currentWave || (waveNum === currentWave && s.bossSpawned)) {
           // Completed wave - green with checkmark
           this.progressCircles[i].setStrokeStyle(this.p(2), 0x4ad96a);
@@ -904,13 +969,18 @@ export class UIScene extends Phaser.Scene {
         this.waveBarGfx.fillRoundedRect(wbX + this.p(2), wbY + this.p(2), wbFillW, wbH - this.p(4), wbR - this.p(1));
       }
 
+      // In infinite mode every 4th wave (cumulative) is a boss event
+      // and shouldn't share a number with the surrounding numbered
+      // waves. Label it "BOSS" instead.
+      const isBossWave = this.difficulty === 'infinite' && s.wave % 4 === 0;
+      const displayWave = this.displayWaveNum(s.wave);
       if (s.waveBreakUntil > 0 && s.vTime < s.waveBreakUntil) {
         const secs = Math.ceil((s.waveBreakUntil - s.vTime) / 1000);
-        this.waveLabel.setText(`WAVE ${s.wave} IN ${secs}s`);
+        this.waveLabel.setText(isBossWave ? `BOSS IN ${secs}s` : `WAVE ${displayWave} IN ${secs}s`);
         this.waveLabel.setColor('#ffd84a');
       } else {
-        this.waveLabel.setText(`WAVE ${s.wave}`);
-        this.waveLabel.setColor('#7cc4ff');
+        this.waveLabel.setText(isBossWave ? `BOSS WAVE` : `WAVE ${displayWave}`);
+        this.waveLabel.setColor(isBossWave ? '#ff6a6a' : '#7cc4ff');
       }
     }
   }
