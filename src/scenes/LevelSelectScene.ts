@@ -8,7 +8,7 @@ import {
   LEVELS, LevelDef, Difficulty, DIFFICULTY_ORDER, DIFFICULTY_LABELS,
   MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, isLevelUnlocked, MedalStore
 } from '../levels';
-import { isTutorialNeeded } from './TutorialScene';
+import { isTutorialNeeded, markTutorialDone } from './TutorialScene';
 
 /** Testing toggle — when on, every level whose `implemented` flag is true
  *  is treated as unlocked, regardless of medals. Persisted in localStorage
@@ -359,6 +359,15 @@ export class LevelSelectScene extends Phaser.Scene {
       this.testUnlockAll = !this.testUnlockAll;
       saveTestUnlock(this.testUnlockAll);
       SFX.play('click');
+      // Turning the toggle ON also ends the tutorial so the tester can
+      // jump straight into any unlocked level. The tutorial otherwise
+      // walls them off to the Meadow → Easy → Start path.
+      if (this.testUnlockAll && getRegistry(this.game).get('tutorialActive')) {
+        markTutorialDone();
+        getRegistry(this.game).set('tutorialActive', false);
+        getRegistry(this.game).set('tutorialStep', null);
+        if (this.scene.isActive('Tutorial')) this.scene.stop('Tutorial');
+      }
       // Restart so path lines + node states re-render against the new
       // unlock predicate. Cheap — LevelSelect has no game state to lose.
       this.scene.restart();
