@@ -12,12 +12,21 @@ namespace RangerDanger.Input
 
         public static void SetMove(InputAction.CallbackContext context)
         {
-            Move = context.ReadValue<Vector2>();
+            SetMove(context.ReadValue<Vector2>());
+        }
+
+        public static void SetMove(Vector2 value)
+        {
+            Move = value;
         }
 
         public static void SetAim(InputAction.CallbackContext context)
         {
-            var value = context.ReadValue<Vector2>();
+            SetAim(context.ReadValue<Vector2>());
+        }
+
+        public static void SetAim(Vector2 value)
+        {
             if (value.sqrMagnitude > 0.001f)
             {
                 Aim = value;
@@ -26,15 +35,25 @@ namespace RangerDanger.Input
 
         public static void SetFire(InputAction.CallbackContext context)
         {
-            FireHeld = context.ReadValueAsButton();
+            SetFire(context.ReadValueAsButton());
+        }
+
+        public static void SetFire(bool held)
+        {
+            FireHeld = held;
         }
 
         public static void SetBuild(InputAction.CallbackContext context)
         {
             if (context.performed)
             {
-                BuildPressed = true;
+                PressBuild();
             }
+        }
+
+        public static void PressBuild()
+        {
+            BuildPressed = true;
         }
 
         public static bool ConsumeBuildPressed()

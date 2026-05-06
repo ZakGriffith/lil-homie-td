@@ -9,6 +9,7 @@ namespace RangerDanger.Combat
         [SerializeField] private float lifetimeSeconds = 2f;
 
         private Rigidbody2D body;
+        private Damageable owner;
         private int damage;
         private float despawnAt;
 
@@ -17,13 +18,14 @@ namespace RangerDanger.Combat
             body = GetComponent<Rigidbody2D>();
         }
 
-        public void Launch(Vector2 position, Vector2 direction, float speed, int amount)
+        public void Launch(Vector2 position, Vector2 direction, float speed, int amount, Damageable ignoredOwner = null)
         {
             transform.position = position;
             transform.right = direction;
+            owner = ignoredOwner;
             damage = amount;
             despawnAt = Time.time + lifetimeSeconds;
-            body.velocity = direction.normalized * speed;
+            body.linearVelocity = direction.normalized * speed;
             gameObject.SetActive(true);
         }
 
@@ -38,6 +40,11 @@ namespace RangerDanger.Combat
         private void OnTriggerEnter2D(Collider2D other)
         {
             if (!other.TryGetComponent<Damageable>(out var damageable))
+            {
+                return;
+            }
+
+            if (damageable == owner)
             {
                 return;
             }

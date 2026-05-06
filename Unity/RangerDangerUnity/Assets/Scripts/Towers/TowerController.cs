@@ -12,21 +12,45 @@ namespace RangerDanger.Towers
         [SerializeField] private int levelIndex;
         [SerializeField] private Projectile projectilePrefab;
         [SerializeField] private Transform projectileSpawn;
-        [SerializeField] private LayerMask enemyMask;
+        [SerializeField] private LayerMask enemyMask = ~0;
+        [SerializeField] private int totalInvested;
 
         private TowerLevelBalance stats;
         private float nextShotAt;
 
+        public int LevelIndex => levelIndex;
+        public int TotalInvested => totalInvested;
+
         private void Awake()
         {
-            Configure(balance, kind, levelIndex);
+            RefreshStats();
         }
 
-        public void Configure(GameBalance gameBalance, TowerKind towerKind, int level)
+        public void Configure(GameBalance gameBalance, TowerKind towerKind, int level, Projectile projectilePrototype = null, int initialInvestment = 0)
         {
             balance = gameBalance;
             kind = towerKind;
             levelIndex = level;
+            if (initialInvestment > 0)
+            {
+                totalInvested = initialInvestment;
+            }
+
+            if (projectilePrototype != null)
+            {
+                projectilePrefab = projectilePrototype;
+            }
+
+            if (balance == null)
+            {
+                return;
+            }
+
+            RefreshStats();
+        }
+
+        private void RefreshStats()
+        {
             if (balance == null)
             {
                 return;
@@ -34,6 +58,39 @@ namespace RangerDanger.Towers
 
             var tower = balance.GetTower(kind);
             stats = tower.levels[Mathf.Clamp(levelIndex, 0, tower.levels.Length - 1)];
+        }
+
+        public bool CanUpgrade()
+        {
+            if (balance == null)
+            {
+                return false;
+            }
+
+            var tower = balance.GetTower(kind);
+            return levelIndex < tower.levels.Length - 1;
+        }
+
+        public int GetUpgradeCost()
+        {
+            return CanUpgrade() ? stats.upgradeCost : 0;
+        }
+
+        public void Upgrade()
+        {
+            if (!CanUpgrade())
+            {
+                return;
+            }
+
+            totalInvested += GetUpgradeCost();
+            levelIndex++;
+            RefreshStats();
+        }
+
+        public int GetSellRefund()
+        {
+            return Mathf.FloorToInt(totalInvested * 0.5f);
         }
 
         private void Update()
@@ -60,7 +117,7 @@ namespace RangerDanger.Towers
 
             foreach (var hit in hits)
             {
-                if (!hit.TryGetComponent<Damageable>(out var damageable) || damageable.IsDead)
+                if (!hit.TryGetComponent<EnemyController>(out _) || !hit.TryGetComponent<Damageable>(out var damageable) || damageable.IsDead)
                 {
                     continue;
                 }

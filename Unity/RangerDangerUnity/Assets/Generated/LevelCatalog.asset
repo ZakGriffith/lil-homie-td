@@ -1,0 +1,26 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4ab8c91243f719f4a971e92e6bb0aa5f, type: 3}
+  m_Name: LevelCatalog
+  m_EditorClassIdentifier: RangerDangerUnity::RangerDanger.Data.LevelCatalog
+  levels:
+  - id: 1
+    levelName: Meadow
+    biome: 0
+    mapPosition: {x: 150, y: 345}
+    connectsTo: 02000000
+    unlockCost: 0
+    implemented: 1
+    rampFactor: 0.93
+    minIntervalSeconds: 0.35
+    waveSize: 100
+    clusterMax: 4

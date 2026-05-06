@@ -1,4 +1,5 @@
 using RangerDanger.Data;
+using RangerDanger.Economy;
 using RangerDanger.Entities;
 using RangerDanger.Grid;
 using UnityEngine;
@@ -9,6 +10,7 @@ namespace RangerDanger.Waves
     {
         [SerializeField] private GameBalance balance;
         [SerializeField] private EnemyController enemyPrefab;
+        [SerializeField] private CoinPickup coinPrefab;
         [SerializeField] private GridOccupancy grid;
         [SerializeField] private Transform player;
 
@@ -19,10 +21,20 @@ namespace RangerDanger.Waves
         private int waveIndex;
         private bool started;
 
+        public void Configure(GameBalance gameBalance, EnemyController enemyPrototype, GridOccupancy occupancy, Transform playerTransform, CoinPickup coinPrototype = null)
+        {
+            balance = gameBalance;
+            enemyPrefab = enemyPrototype;
+            coinPrefab = coinPrototype;
+            grid = occupancy;
+            player = playerTransform;
+        }
+
         private void Start()
         {
             if (balance == null)
             {
+                Debug.LogWarning("WaveDirector disabled because no GameBalance is assigned.", this);
                 enabled = false;
                 return;
             }
@@ -37,6 +49,12 @@ namespace RangerDanger.Waves
         {
             if (!started || enemyPrefab == null || player == null || grid == null)
             {
+                if (started)
+                {
+                    Debug.LogWarning("WaveDirector cannot spawn until enemy prefab, player, and grid are assigned.", this);
+                    started = false;
+                }
+
                 return;
             }
 
@@ -65,7 +83,7 @@ namespace RangerDanger.Waves
 
             var roll = Random.value;
             var kind = roll < 0.2f ? EnemyKind.Deer : roll < 0.55f ? EnemyKind.Rat : EnemyKind.Snake;
-            enemy.Configure(balance, grid, player, kind);
+            enemy.Configure(balance, grid, player, kind, coinPrefab);
         }
     }
 }

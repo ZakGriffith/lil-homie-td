@@ -6,6 +6,8 @@ namespace RangerDanger.Entities
     {
         [SerializeField] private int maxHp = 1;
 
+        public event System.Action<Damageable> Died;
+
         public int Hp { get; private set; }
         public int MaxHp => maxHp;
         public bool IsDead => Hp <= 0;
@@ -31,6 +33,7 @@ namespace RangerDanger.Entities
             Hp = Mathf.Max(0, Hp - amount);
             if (IsDead)
             {
+                Died?.Invoke(this);
                 gameObject.SetActive(false);
             }
         }

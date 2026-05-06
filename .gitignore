@@ -12,6 +12,8 @@ src/**/*.js
 [Tt]emp/
 [Oo]bj/
 [Bb]uild/
+!Unity/RangerDangerUnity/Assets/Scripts/Build/
+!Unity/RangerDangerUnity/Assets/Scripts/Build/**
 [Bb]uilds/
 [Ll]ogs/
 [Uu]ser[Ss]ettings/

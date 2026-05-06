@@ -2,7 +2,8 @@
   "name": "RangerDangerUnity.Editor",
   "rootNamespace": "RangerDanger.Editor",
   "references": [
-    "RangerDangerUnity"
+    "RangerDangerUnity",
+    "Unity.InputSystem"
   ],
   "includePlatforms": [
     "Editor"
