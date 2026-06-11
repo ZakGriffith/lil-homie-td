@@ -8,12 +8,14 @@ export interface RunStatsSnapshot {
   coinsCollected: number;
   coinsSpent: number;
   towersBuilt: number;
+  towersLost: number;
   towersUpgradedToMax: number;
   highestTowerLevel: number;
   wallsBuilt: number;
   wallsDestroyed: number;
   damageDealt: number;
   damageTaken: number;
+  playerHits: number;
   timeSurvived: number;
 }
 
@@ -70,12 +72,14 @@ export function saveEndlessBest(levelId: number, run: RunStatsSnapshot): Set<str
     coinsCollected:      Math.max(prev.coinsCollected,      run.coinsCollected),
     coinsSpent:          Math.max(prev.coinsSpent,          run.coinsSpent),
     towersBuilt:         Math.max(prev.towersBuilt,         run.towersBuilt),
+    towersLost:          Math.max(prev.towersLost ?? 0,     run.towersLost),
     towersUpgradedToMax: Math.max(prev.towersUpgradedToMax, run.towersUpgradedToMax),
     highestTowerLevel:   Math.max(prev.highestTowerLevel,   run.highestTowerLevel),
     wallsBuilt:          Math.max(prev.wallsBuilt,          run.wallsBuilt),
     wallsDestroyed:      Math.max(prev.wallsDestroyed,      run.wallsDestroyed),
     damageDealt:         Math.max(prev.damageDealt,         run.damageDealt),
     damageTaken:         Math.max(prev.damageTaken,         run.damageTaken),
+    playerHits:          Math.max(prev.playerHits ?? 0,     run.playerHits),
     timeSurvived:        Math.max(prev.timeSurvived,        run.timeSurvived),
   };
   for (const k of Object.keys(merged) as (keyof RunStatsSnapshot)[]) {
@@ -118,6 +122,9 @@ export class RunStats {
   coinsSpent = 0;
 
   towersBuilt = 0;
+  /** Towers killed by enemies during the run (player-initiated sells
+   *  don't count). Drives the "no towers lost" XP bonus. */
+  towersLost = 0;
   /** Towers that hit the max level (level === levels.length - 1) at
    *  least once during the run. */
   towersUpgradedToMax = 0;
@@ -128,6 +135,9 @@ export class RunStats {
 
   damageDealt = 0;
   damageTaken = 0;
+  /** Count of distinct hurt() events that landed on the player (after
+   *  i-frames). Drives the "less hits taken" XP bonus. */
+  playerHits = 0;
 
   /** vTime in ms at game-over. Set once when the player dies. */
   timeSurvived = 0;
@@ -140,12 +150,14 @@ export class RunStats {
     this.coinsCollected = 0;
     this.coinsSpent = 0;
     this.towersBuilt = 0;
+    this.towersLost = 0;
     this.towersUpgradedToMax = 0;
     this.highestTowerLevel = 0;
     this.wallsBuilt = 0;
     this.wallsDestroyed = 0;
     this.damageDealt = 0;
     this.damageTaken = 0;
+    this.playerHits = 0;
     this.timeSurvived = 0;
   }
 }

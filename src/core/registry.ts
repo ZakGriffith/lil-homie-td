@@ -1,5 +1,8 @@
 import type { Biome } from '../levels';
 import type { RunStatsSnapshot } from '../state/RunStats';
+import type { PlayerProgressState } from '../state/PlayerProgressState';
+import type { UnlockDef } from '../state/unlocks';
+import type { XpBreakdown } from './events';
 
 /**
  * Payload of the `game-end` event AND of the `gameEndState` registry key.
@@ -12,6 +15,13 @@ export type GameEndState = {
   kills: number;
   money: number;
   runStats?: RunStatsSnapshot;
+  /** Per-source XP breakdown awarded for this run. Drives the summary
+   *  block in the end panel. Absent for ends where no XP was granted
+   *  (campaign death). */
+  xpBreakdown?: XpBreakdown;
+  /** Set when this run's XP gain crossed at least one level boundary.
+   *  Used by the summary UI to show the level-up pop / unlock callout. */
+  levelUp?: { oldLevel: number; newLevel: number; unlocked: UnlockDef[] };
 };
 
 /**
@@ -57,6 +67,12 @@ export interface RegistrySchema {
   // ---- Win/lose modal ----
   /** Persisted so a UIScene restart can recover the panel. */
   gameEndState: GameEndState | undefined;
+
+  // ---- Meta-progression (persists across runs/levels) ----
+  /** Player XP/level + unlocks. Loaded once from localStorage at game
+   *  boot in main.ts, mutated by EndSystem on win and per-wave in
+   *  endless. Saves to localStorage on every addXp(). */
+  playerProgress: PlayerProgressState;
 }
 
 /**

@@ -9,6 +9,7 @@ import {
   MEDAL_COLORS, BIOME_COLORS, loadMedals, totalMedals, isLevelUnlocked, MedalStore
 } from '../levels';
 import { isTutorialNeeded, markTutorialDone } from './TutorialScene';
+import { PlayerProfilePanel } from '../ui/PlayerProfilePanel';
 
 /** Testing toggle — when on, every map level is treated as unlocked,
  *  regardless of medals or implementation status. Persisted in localStorage
@@ -48,9 +49,9 @@ export class LevelSelectScene extends Phaser.Scene {
   /** Scale factor: all base-resolution (960×640) coordinates get multiplied by this */
   private sf = 1;
   /** Scale a value from base resolution to native */
-  private p(v: number) { return v * this.sf; }
+  p(v: number) { return v * this.sf; }
   /** Build a font-size string at the scaled resolution */
-  private fs(px: number) { return `${Math.round(px * this.sf)}px`; }
+  fs(px: number) { return `${Math.round(px * this.sf)}px`; }
   /** Play the door-open pitched sound, falling back to a click if the buffer isn't loaded yet. */
   private playDoorOpen(volume: number, rate: number, offset = 0) {
     SFX.hasBuffer('doorOpen') ? SFX.playPitched('doorOpen', volume, rate, offset) : SFX.play('click');
@@ -161,6 +162,7 @@ export class LevelSelectScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: this.p(2)
     }).setOrigin(0.5).setDepth(2);
 
+    this.drawPlayerLevelBanner();
     this.drawTestUnlockToggle();
 
     // Launch tutorial for first-time players
@@ -316,6 +318,60 @@ export class LevelSelectScene extends Phaser.Scene {
         break;
       }
     }
+  }
+
+  // ---- PLAYER LEVEL BANNER ----
+  /** Top-left pill showing player level + XP progress toward next.
+   *  Mirrors the top-right medal counter so the two HUD pieces balance. */
+  drawPlayerLevelBanner() {
+    const progress = getRegistry(this.game).get('playerProgress');
+    if (!progress) return;
+    const lvl = progress.level;
+    const inLvl = progress.xpInCurrentLevel;
+    const need = progress.xpToNextLevel;
+    const pillW = this.p(158), pillH = this.p(48);
+    const pillX = this.p(12), pillY = this.p(6);
+    const g = this.add.graphics().setDepth(2);
+    g.fillStyle(0x11172a, 0.85);
+    g.fillRoundedRect(pillX, pillY, pillW, pillH, this.p(8));
+    g.lineStyle(this.p(1), 0x2a3760, 0.8);
+    g.strokeRoundedRect(pillX, pillY, pillW, pillH, this.p(8));
+    this.add.text(pillX + pillW / 2, pillY + this.p(12), `LVL ${lvl}`, {
+      fontFamily: 'monospace', fontSize: this.fs(13), fontStyle: 'bold', color: '#b4a8ff',
+      stroke: '#000', strokeThickness: this.p(2),
+    }).setOrigin(0.5).setDepth(2);
+    // XP bar inside the pill
+    const barX = pillX + this.p(10);
+    const barY = pillY + this.p(25);
+    const barW = pillW - this.p(20);
+    const barH = this.p(6);
+    g.fillStyle(0x0b0f1a, 0.9);
+    g.fillRoundedRect(barX, barY, barW, barH, this.p(2));
+    const pct = Math.max(0, Math.min(1, inLvl / need));
+    g.fillStyle(0x8a78ff, 0.95);
+    g.fillRoundedRect(barX, barY, barW * pct, barH, this.p(2));
+    this.add.text(pillX + pillW / 2, pillY + this.p(40), `${inLvl} / ${need} XP`, {
+      fontFamily: 'monospace', fontSize: this.fs(9), color: '#9ab0d0',
+    }).setOrigin(0.5).setDepth(2);
+    // Click pill → open player profile modal. Hover redraws the pill
+    // border in the progression purple so the affordance reads.
+    const hit = this.add.rectangle(pillX, pillY, pillW, pillH, 0x000000, 0)
+      .setOrigin(0, 0)
+      .setDepth(3)
+      .setInteractive({ useHandCursor: true });
+    const redrawHover = (hover: boolean) => {
+      g.lineStyle(this.p(hover ? 2 : 1), hover ? 0x8a78ff : 0x2a3760, hover ? 0.9 : 0.8);
+      g.strokeRoundedRect(pillX, pillY, pillW, pillH, this.p(8));
+    };
+    hit.on('pointerover', () => redrawHover(true));
+    hit.on('pointerout', () => redrawHover(false));
+    hit.on('pointerdown', () => this.openPlayerProfile());
+  }
+
+  private playerProfile: PlayerProfilePanel | null = null;
+  private openPlayerProfile() {
+    if (this.playerProfile) return;
+    this.playerProfile = new PlayerProfilePanel(this, () => { this.playerProfile = null; });
   }
 
   // ---- LEVEL NODES ----

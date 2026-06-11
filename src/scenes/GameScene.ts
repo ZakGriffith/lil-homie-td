@@ -190,6 +190,11 @@ export class GameScene extends Phaser.Scene {
   /** Per-run stat counters — populated by callsites throughout the
    *  systems and rendered on the endless-mode death screen. */
   runStats = new RunStats();
+  /** Sum of XP awarded by per-wave endless XP this run. Tracked
+   *  separately from progress.totalXp so the end-of-run summary can
+   *  display the wave XP earned alongside the death-bonus breakdown.
+   *  Reset on init. */
+  endlessWaveXpEarned = 0;
   levelId = 1;
   difficulty: Difficulty = 'easy';
   // (Endless-mode counters live on bossState now: endlessBossesCleared,
@@ -301,6 +306,7 @@ export class GameScene extends Phaser.Scene {
     this.killsTarget = CFG.winKills;
     this.endState.reset();
     this.runStats.reset();
+    this.endlessWaveXpEarned = 0;
     this.boulders = [];
     this.webs = [];
     this.gasClouds = [];

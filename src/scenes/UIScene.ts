@@ -12,7 +12,7 @@ import type { Tower } from '../entities/Tower';
 import type { GameScene } from './GameScene';
 import type { GameEndState } from '../core/registry';
 import type { Biome, Difficulty } from '../levels';
-import type { BossHpPayload, BossSpawnPayload, HudState } from '../core/events';
+import type { BossHpPayload, BossSpawnPayload, HudState, LevelUpPayload, XpBreakdown } from '../core/events';
 
 type SelectableContainer = Phaser.GameObjects.Container & {
   setSelected?: (selected: boolean) => void;
@@ -99,6 +99,24 @@ export class UIScene extends Phaser.Scene {
       this.upgradesLockOverlay.destroy();
       this.upgradesLockOverlay = null;
     }
+  };
+  private readonly onLevelUp = (p: LevelUpPayload) => {
+    // Suppress the toast when the run is already wrapping up — the
+    // end-of-run summary will surface this level-up via its own
+    // dedicated row, so a duplicate mid-screen toast on the same beat
+    // feels noisy.
+    const game = this.scene.get('Game') as GameScene;
+    if (game?.endState?.gameOver) return;
+    const unlocks = p.unlocked.length > 0
+      ? ` • UNLOCKED: ${p.unlocked.map((u) => u.label).join(', ')}`
+      : '';
+    this.showIntroToast(
+      `LEVEL UP!  LVL ${p.oldLevel} → ${p.newLevel}${unlocks}`,
+      0x8a78ff, // progression purple
+      this.p(150),
+      3500,
+    );
+    SFX.play('upgrade');
   };
   private readonly onBuildError = (msg: string) => {
     if (msg) {
@@ -489,6 +507,7 @@ export class UIScene extends Phaser.Scene {
     getEvents(this.game.events).on('tutorial-finished', this.onTutorialFinished);
     getEvents(this.game.events).on('build-error', this.onBuildError);
     getEvents(this.game.events).on('build-mode', this.onBuildMode);
+    getEvents(this.game.events).on('level-up', this.onLevelUp);
 
     // Recover the end-panel after a UI restart (e.g. mid-rotation): if the
     // game already ended and we missed the live event, replay it now.
@@ -1553,10 +1572,18 @@ export class UIScene extends Phaser.Scene {
     // Fullscreen dim
     const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.7).setOrigin(0);
 
+    // XP block is only shown when this run actually granted XP — campaign
+    // defeats currently grant none, so the panel collapses back to its
+    // previous compact size in that case.
+    const hasXp = !!s.xpBreakdown && s.xpBreakdown.total > 0;
+    const xpRowCount = hasXp ? this.countXpRows(s.xpBreakdown!) : 0;
+    const xpBlockH = hasXp ? this.p(60) + xpRowCount * this.p(15) + (s.levelUp ? this.p(40) : 0) : 0;
+
     // Modal panel — matches the HUD's rounded-rect language: dark navy fill,
     // subtle inner stroke, themed outer stroke. Same colour family as the
     // HP / wave / boss bars.
-    const boxW = this.p(380), boxH = this.p(200);
+    const boxW = this.p(380);
+    const boxH = this.p(200) + xpBlockH;
     const boxX = W / 2 - boxW / 2, boxY = H / 2 - boxH / 2;
     const boxR = this.p(10);
     const panel = this.add.graphics();
@@ -1568,20 +1595,27 @@ export class UIScene extends Phaser.Scene {
     panel.strokeRoundedRect(boxX, boxY, boxW, boxH, boxR);
 
     // Title
-    const title = this.add.text(W / 2, H / 2 - this.p(60), s.win ? 'VICTORY' : 'DEFEAT', {
+    const title = this.add.text(W / 2, boxY + this.p(40), s.win ? 'VICTORY' : 'DEFEAT', {
       fontFamily: 'monospace', fontSize: this.fs(32), fontStyle: 'bold',
       color: titleHex, stroke: '#0b0f1a', strokeThickness: this.p(4)
     }).setOrigin(0.5);
 
     // Stats line
-    const sub = this.add.text(W / 2, H / 2 - this.p(15), `${s.name}   Kills: ${s.kills}   $ ${s.money}`, {
+    const sub = this.add.text(W / 2, boxY + this.p(82), `${s.name}   Kills: ${s.kills}   $ ${s.money}`, {
       fontFamily: 'monospace', fontSize: this.fs(14), color: '#ccd',
       stroke: '#0b0f1a', strokeThickness: this.p(2)
     }).setOrigin(0.5);
 
+    const items: Phaser.GameObjects.GameObject[] = [bg, panel, title, sub];
+
+    if (hasXp) {
+      const xpTop = boxY + this.p(108);
+      items.push(...this.drawXpSummary(s, boxX, boxW, xpTop));
+    }
+
     // RETURN TO MAP button — rounded, themed border, text in accent colour.
     const btnW = this.p(160), btnH = this.p(36);
-    const btnCX = W / 2, btnCY = H / 2 + this.p(45);
+    const btnCX = W / 2, btnCY = boxY + boxH - this.p(38);
     const btnX = btnCX - btnW / 2, btnY = btnCY - btnH / 2;
     const btnR = this.p(7);
     const btnG = this.add.graphics();
@@ -1607,7 +1641,88 @@ export class UIScene extends Phaser.Scene {
     btnHit.on('pointerover', () => drawBtn(true));
     btnHit.on('pointerout', () => drawBtn(false));
 
-    this.endPanel = this.add.container(0, 0, [bg, panel, title, sub, btnG, btnText, btnHit]).setDepth(1000);
+    items.push(btnG, btnText, btnHit);
+    this.endPanel = this.add.container(0, 0, items).setDepth(1000);
+  }
+
+  /** Count nonzero rows in an XP breakdown so the panel can size itself. */
+  private countXpRows(b: XpBreakdown): number {
+    let n = 0;
+    if (b.base > 0) n++;
+    if (b.endlessWaves > 0) n++;
+    if (b.noTowersLost > 0) n++;
+    if (b.coinsCollected > 0) n++;
+    if (b.coinsRemaining > 0) n++;
+    if (b.lessHits > 0) n++;
+    if (b.coinConversion > 0) n++;
+    return Math.max(1, n);
+  }
+
+  /** Draw the XP summary block (header, breakdown rows, total, optional
+   *  level-up + unlocked callout). Returns the GameObjects so callers can
+   *  add them to the panel container. */
+  private drawXpSummary(s: GameEndState, boxX: number, boxW: number, topY: number): Phaser.GameObjects.GameObject[] {
+    const b = s.xpBreakdown!;
+    const items: Phaser.GameObjects.GameObject[] = [];
+    const header = this.add.text(boxX + boxW / 2, topY, 'XP THIS RUN', {
+      fontFamily: 'monospace', fontSize: this.fs(12), fontStyle: 'bold', color: '#b4a8ff',
+      stroke: '#0b0f1a', strokeThickness: this.p(2),
+    }).setOrigin(0.5);
+    items.push(header);
+
+    const labelCol: { label: string; value: number }[] = [];
+    if (b.base > 0)          labelCol.push({ label: 'Level cleared',      value: b.base });
+    if (b.endlessWaves > 0)  labelCol.push({ label: 'Endless waves',      value: b.endlessWaves });
+    if (b.noTowersLost > 0)  labelCol.push({ label: 'No towers lost',     value: b.noTowersLost });
+    if (b.coinsCollected > 0) labelCol.push({ label: 'Coins collected',   value: b.coinsCollected });
+    if (b.coinsRemaining > 0) labelCol.push({ label: 'Coins remaining',   value: b.coinsRemaining });
+    if (b.lessHits > 0)      labelCol.push({ label: 'Less hits taken',    value: b.lessHits });
+    if (b.coinConversion > 0) labelCol.push({ label: 'Leftover coins',    value: b.coinConversion });
+
+    const rowYStart = topY + this.p(22);
+    const rowH = this.p(15);
+    const leftX = boxX + this.p(38);
+    const rightX = boxX + boxW - this.p(38);
+    labelCol.forEach((row, i) => {
+      const y = rowYStart + i * rowH;
+      items.push(this.add.text(leftX, y, row.label, {
+        fontFamily: 'monospace', fontSize: this.fs(11), color: '#9ab0d0',
+      }).setOrigin(0, 0.5));
+      items.push(this.add.text(rightX, y, `+${row.value}`, {
+        fontFamily: 'monospace', fontSize: this.fs(11), color: '#dfe8ff',
+      }).setOrigin(1, 0.5));
+    });
+
+    const totalY = rowYStart + labelCol.length * rowH + this.p(6);
+    items.push(this.add.text(leftX, totalY, 'TOTAL', {
+      fontFamily: 'monospace', fontSize: this.fs(12), fontStyle: 'bold', color: '#b4a8ff',
+    }).setOrigin(0, 0.5));
+    items.push(this.add.text(rightX, totalY, `+${b.total} XP`, {
+      fontFamily: 'monospace', fontSize: this.fs(12), fontStyle: 'bold', color: '#b4a8ff',
+    }).setOrigin(1, 0.5));
+
+    if (s.levelUp) {
+      const lu = s.levelUp;
+      const noticeY = totalY + this.p(22);
+      const txt = lu.unlocked.length > 0
+        ? `LEVEL UP!  LVL ${lu.oldLevel} → ${lu.newLevel}  •  ${lu.unlocked.map((u) => u.label).join(', ')}`
+        : `LEVEL UP!  LVL ${lu.oldLevel} → ${lu.newLevel}`;
+      const popText = this.add.text(boxX + boxW / 2, noticeY, txt, {
+        fontFamily: 'monospace', fontSize: this.fs(11), fontStyle: 'bold', color: '#ffd84a',
+        stroke: '#0b0f1a', strokeThickness: this.p(2),
+      }).setOrigin(0.5).setScale(0.6).setAlpha(0);
+      this.tweens.add({
+        targets: popText,
+        scale: 1,
+        alpha: 1,
+        duration: 320,
+        ease: 'Back.Out',
+        delay: 250,
+      });
+      items.push(popText);
+    }
+
+    return items;
   }
 
   /** Endless-mode death screen — shows the full RunStats breakdown plus
@@ -1622,12 +1737,14 @@ export class UIScene extends Phaser.Scene {
       coinsCollected: runStats.coinsCollected,
       coinsSpent: runStats.coinsSpent,
       towersBuilt: runStats.towersBuilt,
+      towersLost: runStats.towersLost,
       towersUpgradedToMax: runStats.towersUpgradedToMax,
       highestTowerLevel: runStats.highestTowerLevel,
       wallsBuilt: runStats.wallsBuilt,
       wallsDestroyed: runStats.wallsDestroyed,
       damageDealt: runStats.damageDealt,
       damageTaken: runStats.damageTaken,
+      playerHits: runStats.playerHits,
       timeSurvived: runStats.timeSurvived,
     };
     const newRecords = saveEndlessBest(this.levelId, stats);
@@ -1637,7 +1754,12 @@ export class UIScene extends Phaser.Scene {
 
     const bg = this.add.rectangle(0, 0, W, H, 0x000000, 0.78).setOrigin(0);
 
-    const boxW = this.p(440), boxH = this.p(420);
+    // Endless panel grows to fit the XP summary when this run earned XP.
+    const hasXp = !!s.xpBreakdown && s.xpBreakdown.total > 0;
+    const xpRowCount = hasXp ? this.countXpRows(s.xpBreakdown!) : 0;
+    const xpBlockH = hasXp ? this.p(60) + xpRowCount * this.p(15) + (s.levelUp ? this.p(40) : 0) : 0;
+
+    const boxW = this.p(440), boxH = this.p(420) + xpBlockH;
     const boxX = W / 2 - boxW / 2, boxY = H / 2 - boxH / 2;
     const boxR = this.p(10);
     const panel = this.add.graphics();
@@ -1696,6 +1818,11 @@ export class UIScene extends Phaser.Scene {
       const [a, b] = row(r.label, r.value, isRecord, i);
       items.push(a, b);
     });
+
+    if (hasXp) {
+      const xpTop = boxY + this.p(70) + rows.length * this.p(18) + this.p(10);
+      items.push(...this.drawXpSummary(s, boxX, boxW, xpTop));
+    }
 
     // Footer hint about new records
     const recordCount = Array.from(newRecords).length;
@@ -1756,5 +1883,6 @@ export class UIScene extends Phaser.Scene {
     getEvents(this.game.events).off('tutorial-speed-unlocked', this.onTutorialSpeedUnlocked);
     getEvents(this.game.events).off('build-error', this.onBuildError);
     getEvents(this.game.events).off('build-mode', this.onBuildMode);
+    getEvents(this.game.events).off('level-up', this.onLevelUp);
   }
 }
