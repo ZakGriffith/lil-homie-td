@@ -3,7 +3,31 @@ import { getRegistry } from '../core/registry';
 import { getEvents } from '../core/events';
 import { Tower } from '../entities/Tower';
 import { SFX } from '../audio/sfx';
+import { UNLOCKS, type UnlockId } from '../state/unlocks';
 import type { GameScene } from '../scenes/GameScene';
+import type { TowerKind } from '../entities/Tower';
+
+/** Lookup table: which player-level unlock gates the NEXT upgrade for
+ *  a tower of the given kind sitting at the given level. Absent
+ *  entries (e.g. arrow level 0 → 1) are always free. */
+const TIER_UNLOCK: Partial<Record<TowerKind, Record<number, UnlockId>>> = {
+  arrow: {
+    1: 'tower_arrow_tier3',
+  },
+  cannon: {
+    0: 'tower_cannon_tier2',
+    1: 'tower_cannon_tier3',
+  },
+};
+
+function tierUnlockInfo(scene: GameScene, t: Tower): { id: UnlockId; required: number; unlocked: boolean } | null {
+  const id = TIER_UNLOCK[t.kind]?.[t.level];
+  if (!id) return null;
+  const def = UNLOCKS.find((u) => u.id === id);
+  if (!def) return null;
+  const progress = getRegistry(scene.game).get('playerProgress');
+  return { id, required: def.requiredLevel, unlocked: progress.isUnlocked(id) };
+}
 
 /**
  * Tower selection ring + the upgrade/sell panel that appears above (or
@@ -167,13 +191,21 @@ export class TowerPanelSystem {
     const btnW = 80 * ms, btnH = 22 * ms, btnR = 5 * ms;
     const btnY = H / 2 - btnH / 2 - 6 * ms;
 
-    // Upgrade
-    const canUp = t.canUpgrade();
+    // Upgrade — selected tier jumps may be gated behind a player-level unlock.
+    const tierGate = tierUnlockInfo(scene, t);
+    const tierLocked = !!tierGate && !tierGate.unlocked;
+    const canUp = t.canUpgrade() && !tierLocked;
     const upCost = t.upgradeCost();
     const affordable = canUp && scene.player.money >= upCost;
-    const upLabel = canUp ? `UPGRADE $${upCost}` : 'MAX LEVEL';
-    const upStroke = !canUp ? 0x556677 : affordable ? 0x4ad96a : 0xd94a4a;
-    const upTextColor = !canUp ? '#888' : affordable ? '#7cf29a' : '#ff9a9a';
+    const upLabel = tierLocked
+      ? `LVL ${tierGate!.required} TO UNLOCK`
+      : canUp ? `UPGRADE $${upCost}` : 'MAX LEVEL';
+    const upStroke = tierLocked ? 0x6a5fb0
+      : !canUp ? 0x556677
+      : affordable ? 0x4ad96a : 0xd94a4a;
+    const upTextColor = tierLocked ? '#b4a8ff'
+      : !canUp ? '#888'
+      : affordable ? '#7cf29a' : '#ff9a9a';
     const upX = -W / 2 + 8 * ms, upCX = upX + btnW / 2;
     const upG = scene.add.graphics();
     let upHover = false;
@@ -233,6 +265,12 @@ export class TowerPanelSystem {
     const t = scene.selectedTower;
     if (!t) return;
     if (!t.canUpgrade()) return;
+    // Tier-3 jump requires the player-level unlock.
+    const tierGate = tierUnlockInfo(scene, t);
+    if (tierGate && !tierGate.unlocked) {
+      scene.hud.floatText(t.x, t.y - 40, `LVL ${tierGate.required} TO UNLOCK`, '#b4a8ff');
+      return;
+    }
     const cost = t.upgradeCost();
     if (scene.player.money < cost) {
       scene.hud.floatText(t.x, t.y - 40, `NEED $${cost}`, '#ff6a6a');

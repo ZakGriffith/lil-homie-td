@@ -10,6 +10,7 @@ import { SFX } from './audio/sfx';
 import { installViewportResizeListener } from './viewport';
 import { getRegistry } from './core/registry';
 import { getEvents } from './core/events';
+import { PlayerProgressState } from './state/PlayerProgressState';
 
 const overlay = document.getElementById('overlay') as HTMLDivElement;
 const startBtn = document.getElementById('startBtn') as HTMLButtonElement;
@@ -126,12 +127,23 @@ function start() {
     if (landing) landing.classList.remove('loading');
   });
 
+  // Load meta-progression state (player XP / level / unlocks) once at
+  // boot. The single instance lives on the typed registry and is read
+  // from any scene that needs it. saves to localStorage on every
+  // addXp() so we don't have to plumb writes into scene shutdown.
+  const reg = getRegistry(game);
+  reg.set('playerProgress', PlayerProgressState.load());
+
+  // Dev convenience: window.tdProgress in the browser console for
+  // setLevel / wipe / inspect during playtesting.
+  (window as unknown as { tdProgress?: PlayerProgressState }).tdProgress =
+    reg.get('playerProgress');
+
   // Resize / orientation handling. When the viewport changes, update the
   // shared scale registry values and broadcast a `viewport-changed` event.
   // Each scene is responsible for setting its own gameSize (LevelSelect locks
   // to a 3:2 fit; GameScene fills the device viewport), so this top-level
   // handler intentionally does NOT call setGameSize itself.
-  const reg = getRegistry(game);
   installViewportResizeListener((vp) => {
     reg.set('sf', vp.uiScale);
     reg.set('cameraZoom', vp.cameraZoom);

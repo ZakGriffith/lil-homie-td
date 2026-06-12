@@ -4,6 +4,27 @@ import type { Biome } from '../levels';
 import type { BuildKind } from '../state/BuildState';
 import type { TowerKind } from '../entities/Tower';
 import type { GameEndState } from './registry';
+import type { UnlockDef } from '../state/unlocks';
+
+/** Per-source breakdown of XP gained from one event (level clear,
+ *  endless wave, coin conversion). Used by the summary UI to show
+ *  where each chunk came from. */
+export type XpBreakdown = {
+  base: number;
+  noTowersLost: number;
+  coinsCollected: number;
+  coinsRemaining: number;
+  lessHits: number;
+  coinConversion: number;
+  endlessWaves: number;
+  total: number;
+};
+
+export type LevelUpPayload = {
+  oldLevel: number;
+  newLevel: number;
+  unlocked: UnlockDef[];
+};
 
 /** Payload of the `hud` event — assembled by GameScene.hudState(). */
 export type HudState = {
@@ -68,6 +89,10 @@ export interface EventMap {
   'ui-speed': [number];
   'ui-pause': [];
   'ui-resume': [];
+
+  // Meta-progression
+  'xp-gained': [XpBreakdown];
+  'level-up': [LevelUpPayload];
 
   // Tutorial
   'tutorial-level-clicked': [number];

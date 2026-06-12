@@ -4,6 +4,8 @@ import { getEvents } from '../core/events';
 import { CFG } from '../config';
 import { Enemy } from '../entities/Enemy';
 import { SFX } from '../audio/sfx';
+import { hasMedal, loadMedals } from '../levels';
+import { awardXp, computeEndlessRunEndXp, computeWinXp } from '../state/xpAwards';
 import type { GameScene } from '../scenes/GameScene';
 
 /**
@@ -196,10 +198,29 @@ export class EndSystem {
       scene.runStats.wavesCleared = scene.waveState.wave;
       scene.runStats.timeSurvived = scene.vTime;
       scene.runStats.bossesKilled = scene.bossState.endlessBossesCleared;
+      // Endless mode awards end-of-run XP (performance bonuses + coin
+      // conversion). Campaign deaths grant no XP. Per-wave endless XP
+      // was already awarded live as the player cleared waves — fold
+      // its running total into the displayed breakdown so the summary
+      // reflects everything earned this run, not just the death bonus.
+      let xpBreakdown: import('../core/events').XpBreakdown | undefined;
+      let levelUpInfo: { oldLevel: number; newLevel: number; unlocked: import('../state/unlocks').UnlockDef[] } | undefined;
+      if (scene.difficulty === 'endless') {
+        const endBonus = computeEndlessRunEndXp(scene);
+        const r = awardXp(scene, endBonus);
+        xpBreakdown = {
+          ...endBonus,
+          endlessWaves: scene.endlessWaveXpEarned,
+          total: endBonus.total + scene.endlessWaveXpEarned,
+        };
+        if (r.leveled) levelUpInfo = { oldLevel: r.oldLevel, newLevel: r.newLevel, unlocked: r.unlocked };
+      }
       const payload = {
         win: false, name: 'Ranger',
         kills: scene.player.kills, money: scene.player.money,
         runStats: scene.difficulty === 'endless' ? scene.runStats : undefined,
+        xpBreakdown,
+        levelUp: levelUpInfo,
       };
       getRegistry(scene.game).set('gameEndState', payload);
       getEvents(scene.game.events).emit('game-end', payload);
@@ -212,7 +233,23 @@ export class EndSystem {
     scene.physics.pause();
     SFX.fadeOutBgm(1500);
     SFX.play('victory');
-    const payload = { win: true, name: 'Ranger', kills: scene.player.kills, money: scene.player.money };
+    // First clear has to be sampled BEFORE saveMedal runs (UIScene.showEnd
+    // calls it after this event fires), since the bigger base reward only
+    // applies on first-ever wins of this campaign level.
+    const isFirstClear = !hasMedal(loadMedals(), scene.levelId);
+    const xpBreakdown = computeWinXp(scene, isFirstClear);
+    const result = awardXp(scene, xpBreakdown);
+    const levelUp = result.leveled
+      ? { oldLevel: result.oldLevel, newLevel: result.newLevel, unlocked: result.unlocked }
+      : undefined;
+    const payload = {
+      win: true,
+      name: 'Ranger',
+      kills: scene.player.kills,
+      money: scene.player.money,
+      xpBreakdown,
+      levelUp,
+    };
     getRegistry(scene.game).set('gameEndState', payload);
     getEvents(scene.game.events).emit('game-end', payload);
   }

@@ -141,6 +141,9 @@ export class SellSystem {
       for (let i = 0; i < t.size; i++)
         gridSet(scene.grid, t.tileX + i, t.tileY + j, 0);
     scene.gridVersion++; scene._wallCheckCache.clear(); scene.pathing.rebuildGapBlockers();
+    // Enemy-killed tower — drives the "no towers lost" XP bonus. Player-
+    // initiated sells go through executeSell() and don't count.
+    scene.runStats.towersLost++;
     const burst = scene.add.sprite(t.x, t.y, 'fx_death_0').setDepth(15).setScale(0.5);
     burst.play('fx-death');
     burst.once('animationcomplete', () => burst.destroy());

@@ -9,6 +9,7 @@ import { SFX } from '../audio/sfx';
 import { Biome } from '../levels';
 import { computeViewport, viewportWorldSize } from '../viewport';
 import { gridGet } from './Pathfinding';
+import { awardXp, endlessWaveXp } from '../state/xpAwards';
 import type { GameScene } from '../scenes/GameScene';
 
 // Singles run events 1-6 (one boss per event, fixed order regardless of
@@ -698,6 +699,14 @@ export class SpawnSystem {
 
     // Non-boss wave finished → start build break, advance wave counter.
     if (!isBossWave && scene.waveState.waveSpawned >= waveSize && scene.waveState.waveKills >= waveSize) {
+      // Endless mode awards per-wave XP with a soft cap. Award BEFORE
+      // enterWaveBreak() so we know which wave was just cleared (the
+      // call increments). Campaign wins XP via EndSystem.win().
+      if (scene.difficulty === 'endless') {
+        const wb = endlessWaveXp(scene.waveState.wave);
+        scene.endlessWaveXpEarned += wb.total;
+        awardXp(scene, wb);
+      }
       scene.waveState.enterWaveBreak(time, CFG.spawn.waveBreak);
       return;
     }
